@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "version": "0.1.0",
+  "author": "TNG Technology Consulting GmbH",
+  "name": "LLM Support",
+  "description": "A Thunderbird extension enabling LLM support while writing E-Mails",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "llm-thunderbird@tngtech.com",
+      "strict_min_version": "110"
+    }
+  },
+  "permissions": [
+    "compose"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "compose_action": {
+    "default_title": "LLM Support"
+  }
+}
