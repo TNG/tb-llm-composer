@@ -8,7 +8,8 @@
 
 browser.composeAction.onClicked.addListener(async (tab) => {
     // Get the existing message.
-    let details = await browser.compose.getComposeDetails(tab.id);
+    const tabId = tab.id || 12312093;
+    let details = await browser.compose.getComposeDetails(tabId);
     console.log(details);
 
     if (details.isPlainText) {
@@ -19,10 +20,10 @@ browser.composeAction.onClicked.addListener(async (tab) => {
         // Make direct modifications to the message text, and send it back to the editor.
         body += "\n\nSent from my Thunderbird";
         console.log(body);
-        browser.compose.setComposeDetails(tab.id, { plainTextBody: body });
+        browser.compose.setComposeDetails(tabId, { plainTextBody: body });
     } else {
         // The message is being composed in HTML mode. Parse the message into an HTML document.
-        let document = new DOMParser().parseFromString(details.body, "text/html");
+        let document = new DOMParser().parseFromString(details.body || "", "text/html");
         console.log(document);
 
         // Use normal DOM manipulation to modify the message.
@@ -33,6 +34,6 @@ browser.composeAction.onClicked.addListener(async (tab) => {
         // Serialize the document back to HTML, and send it back to the editor.
         let html = new XMLSerializer().serializeToString(document);
         console.log(html);
-        browser.compose.setComposeDetails(tab.id, { body: html });
+        browser.compose.setComposeDetails(tabId, { body: html });
     }
 });

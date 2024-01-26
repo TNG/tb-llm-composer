@@ -4,6 +4,7 @@
   "description": "A Thunderbird extension enabling LLM support while writing E-Mails",
   "main": "background.js",
   "scripts": {
+    "start": "tsc --watch",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -19,5 +20,8 @@
   "author": "TNG Technology Consulting GmbH",
   "dependencies": {
     "typescript": "^5.3.3"
+  },
+  "devDependencies": {
+    "@types/thunderbird-webext-browser": "^109.0.4"
   }
 }
