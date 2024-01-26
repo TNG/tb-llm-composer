@@ -16,5 +16,8 @@
     "huggingface",
     "llm-ls"
   ],
-  "author": "TNG Technology Consulting GmbH"
+  "author": "TNG Technology Consulting GmbH",
+  "dependencies": {
+    "typescript": "^5.3.3"
+  }
 }
