@@ -6,34 +6,30 @@
 // persistent listener and the background will wake up (restart) each time the
 // event is fired.
 
+const STANDARD_TEST_TO_PREPEND = "Hi, I'm a fake LLM, here is my fake reply:\n\n";
+
 browser.composeAction.onClicked.addListener(async (tab) => {
-    // Get the existing message.
-    const tabId = tab.id || 12312093;
-    let details = await browser.compose.getComposeDetails(tabId);
-    console.log(details);
+    const openTabId = tab.id || 12312093;
+    let tabDetails = await browser.compose.getComposeDetails(openTabId);
+    console.log(tabDetails);
 
-    if (details.isPlainText) {
-        // The message is being composed in plain text mode.
-        let body = details.plainTextBody;
-        console.log(body);
+    if (tabDetails.isPlainText) {
+        let plainTextBody = tabDetails.plainTextBody;
+        console.log(plainTextBody);
 
-        // Make direct modifications to the message text, and send it back to the editor.
-        body += "\n\nSent from my Thunderbird";
-        console.log(body);
-        browser.compose.setComposeDetails(tabId, { plainTextBody: body });
+        plainTextBody = STANDARD_TEST_TO_PREPEND + plainTextBody;
+        console.log(plainTextBody);
+        browser.compose.setComposeDetails(openTabId, { plainTextBody: plainTextBody });
     } else {
-        // The message is being composed in HTML mode. Parse the message into an HTML document.
-        let document = new DOMParser().parseFromString(details.body || "", "text/html");
-        console.log(document);
+        let htmlTabWithBody = new DOMParser().parseFromString(tabDetails.body || "", "text/html");
+        console.log(htmlTabWithBody);
 
-        // Use normal DOM manipulation to modify the message.
-        let para = document.createElement("p");
-        para.textContent = "Sent from my Thunderbird";
-        document.body.appendChild(para);
+        let newParagraph = htmlTabWithBody.createElement("p");
+        newParagraph.textContent = STANDARD_TEST_TO_PREPEND;
+        htmlTabWithBody.body.prepend(STANDARD_TEST_TO_PREPEND);
 
-        // Serialize the document back to HTML, and send it back to the editor.
-        let html = new XMLSerializer().serializeToString(document);
+        let html = new XMLSerializer().serializeToString(htmlTabWithBody);
         console.log(html);
-        browser.compose.setComposeDetails(tabId, { body: html });
+        browser.compose.setComposeDetails(openTabId, { body: html });
     }
 });

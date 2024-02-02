@@ -27,13 +27,13 @@ npm ci
 
 ### Test add-on
 
-* "Start" the addon
+* "Start" the addon:
   ```shell
   npm start
   ```
-  This will recompile the typescript files automatically if they change.
-  However, Thunderbird will not detect these changes unless the add-on is reloaded.
-* Start Thunderbird
-* Go to Menu -> Add-ons
+  this will recompile the typescript files automatically if they change.
+* Start Thunderbird.
+* Go to Hamburger Menu -> Add-ons and Themes.
 * Click on the settings symbol -> Debug Add-ons -> Load Temporary Add-on...
 * Browse to this repo and select the [manifest.json](./manifest.json)
+* To reload the changes, click on the "Reload" button in the LLM Support tab.

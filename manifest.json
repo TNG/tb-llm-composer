@@ -13,12 +13,18 @@
   "permissions": [
     "compose"
   ],
+  "icons": {
+    "64": "icons/icon-64px.png",
+    "32": "icons/icon-32px.png",
+    "16": "icons/icon-16px.png"
+  },
   "background": {
     "scripts": [
       "dist/background.js"
     ]
   },
   "compose_action": {
-    "default_title": "LLM Support"
+    "default_title": "To LLM",
+    "default_icon": "icons/icon-64px.png"
   }
 }
