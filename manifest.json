@@ -23,6 +23,9 @@
       "dist/background.js"
     ]
   },
+  "options_ui": {
+    "page": "public/options.html"
+  },
   "compose_action": {
     "default_title": "To LLM",
     "default_icon": "icons/icon-64px.png"
