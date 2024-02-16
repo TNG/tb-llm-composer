@@ -1,4 +1,4 @@
-const getInputElement = (selector: string) => {
+function getInputElement(selector: string): HTMLInputElement {
     const inputElement = document.querySelector(selector) as HTMLInputElement | null;
     if (!inputElement) {
         throw Error(`Selector "${selector}" could not be found. Contact devs`)
@@ -6,7 +6,7 @@ const getInputElement = (selector: string) => {
     return inputElement;
 }
 
-const throwError = (message: string) => {
+function throwError(message: string): never {
     throw new Error(message)
 }
 
@@ -22,7 +22,7 @@ const defaultOptions: Options = {
 }
 
 
-const saveOptions = (e: Event) => {
+async function saveOptions(e: Event): Promise<void> {
     console.log(e)
     const model = getInputElement("#url").value ?? throwError("model can't be empty");
     const contextWindow = getInputElement("#context_window").value
@@ -32,19 +32,20 @@ const saveOptions = (e: Event) => {
         api_token: getInputElement("#api_token").value,
         context_window: parseInt(contextWindow),
     } as Options;
+
+    // no await on purpose, otherwise the code does not work
     browser.storage.sync.set({
         options: options
     });
     e.preventDefault();
 }
 
-const restoreOptions = () => {
-    (browser.storage.sync.get('options') as Promise<Options | undefined>)
-        .then((options) => {
-            getInputElement("#url").value = options?.model || defaultOptions.model;
-            getInputElement("#api_token").value = options?.api_token || defaultOptions.api_token || "";
-            getInputElement("#context_window").value = `${options?.context_window || defaultOptions.context_window}`;
-        });
+async function restoreOptions(): Promise<void> {
+    const options =  await (browser.storage.sync.get('options') as Promise<Options | undefined>)
+
+    getInputElement("#url").value = options?.model || defaultOptions.model;
+    getInputElement("#api_token").value = options?.api_token || defaultOptions.api_token || "";
+    getInputElement("#context_window").value = `${options?.context_window || defaultOptions.context_window}`;
 }
 
 document.addEventListener('DOMContentLoaded', restoreOptions);

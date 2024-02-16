@@ -11,7 +11,8 @@
     }
   },
   "permissions": [
-    "compose"
+    "compose",
+    "storage"
   ],
   "icons": {
     "64": "icons/icon-64px.png",
