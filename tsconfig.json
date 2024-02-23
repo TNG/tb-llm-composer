@@ -1,39 +1,39 @@
 {
   "compilerOptions": {
     /* Basic Options */
-    "target": "es6",                                 // Specify ECMAScript target version
-    "module": "es2020",                              // Specify module code generation
-    "lib": ["es2020", "dom"],                        // Specify library files to be included in the compilation
-    "outDir": "./dist",                              // Redirect output structure to the directory
-    "rootDir": "./src",                              // Specify the root directory of input files
-    "removeComments": true,                          // Do not emit comments to output
-    "strict": true,                                  // Enable all strict type-checking options
+    "target": "es6", // Specify ECMAScript target version
+    "module": "es2020", // Specify module code generation
+    "lib": ["es2020", "dom"], // Specify library files to be included in the compilation
+    "outDir": "./dist", // Redirect output structure to the directory
+    "rootDir": "./src", // Specify the root directory of input files
+    "removeComments": true, // Do not emit comments to output
+    "strict": true, // Enable all strict type-checking options
 
     /* Strict Type-Checking Options */
-    "noImplicitAny": true,                           // Raise error on expressions and declarations with an implied 'any' type
-    "strictNullChecks": true,                        // Enable strict null checks
-    "strictFunctionTypes": true,                     // Enable strict checking of function types
-    "strictBindCallApply": true,                     // Enable strict 'bind', 'call', and 'apply' methods on functions
-    "strictPropertyInitialization": true,            // Ensure non-undefined class properties are initialized in the constructor
-    "noImplicitThis": true,                          // Raise error on 'this' expressions with an implied 'any' type
-    "alwaysStrict": true,                            // Parse in strict mode and emit "use strict" for each source file
+    "noImplicitAny": true, // Raise error on expressions and declarations with an implied 'any' type
+    "strictNullChecks": true, // Enable strict null checks
+    "strictFunctionTypes": true, // Enable strict checking of function types
+    "strictBindCallApply": true, // Enable strict 'bind', 'call', and 'apply' methods on functions
+    "strictPropertyInitialization": true, // Ensure non-undefined class properties are initialized in the constructor
+    "noImplicitThis": true, // Raise error on 'this' expressions with an implied 'any' type
+    "alwaysStrict": true, // Parse in strict mode and emit "use strict" for each source file
 
     /* Additional Checks */
-    "noUnusedLocals": true,                          // Report errors on unused locals
-    "noUnusedParameters": true,                      // Report errors on unused parameters
-    "noImplicitReturns": true,                       // Report error when not all code paths in function return a value
-    "noFallthroughCasesInSwitch": true,              // Report errors for fallthrough cases in switch statement
+    "noUnusedLocals": true, // Report errors on unused locals
+    "noUnusedParameters": true, // Report errors on unused parameters
+    "noImplicitReturns": true, // Report error when not all code paths in function return a value
+    "noFallthroughCasesInSwitch": true, // Report errors for fallthrough cases in switch statement
 
     /* Module Resolution Options */
-    "moduleResolution": "node",                      // Choose the module resolution strategy
-    "esModuleInterop": true,                         // Enables emit interoperability between CommonJS and ES Modules
-    "forceConsistentCasingInFileNames": true         // Disallow inconsistently-cased references to the same file
+    "moduleResolution": "node", // Choose the module resolution strategy
+    "esModuleInterop": true, // Enables emit interoperability between CommonJS and ES Modules
+    "forceConsistentCasingInFileNames": true // Disallow inconsistently-cased references to the same file
   },
   "include": [
-    "src/**/*.ts"                                    // Include all TypeScript files in src (and subdirectories)
+    "src/**/*.ts" // Include all TypeScript files in src (and subdirectories)
   ],
   "exclude": [
-    "node_modules",                                  // Exclude the node_modules directory
-    "**/*.spec.ts"                                   // Exclude test files
+    "node_modules", // Exclude the node_modules directory
+    "**/*.spec.ts" // Exclude test files
   ]
 }

@@ -1,76 +1,76 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings Page</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-        }
-        .settings-section {
-            margin-bottom: 20px;
-        }
-        .settings-section h2 {
-            border-bottom: 1px solid #ccc;
-            padding-bottom: 5px;
-        }
-        .form-group {
-            margin-bottom: 10px;
-        }
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-        }
-        .form-group input[type="text"],
-        .form-group select {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .form-group input[type="checkbox"] {
-            margin-right: 5px;
-        }
-        button {
-            padding: 10px 15px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
+      body {
+        font-family: Arial, sans-serif;
+      }
+      .settings-section {
+        margin-bottom: 20px;
+      }
+      .settings-section h2 {
+        border-bottom: 1px solid #ccc;
+        padding-bottom: 5px;
+      }
+      .form-group {
+        margin-bottom: 10px;
+      }
+      .form-group label {
+        display: block;
+        margin-bottom: 5px;
+      }
+      .form-group input[type="text"],
+      .form-group select {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      .form-group input[type="checkbox"] {
+        margin-right: 5px;
+      }
+      button {
+        padding: 10px 15px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #0056b3;
+      }
     </style>
-</head>
-<body>
-<div class="settings-container">
-    <form id="settingsForm">
+  </head>
+  <body>
+    <div class="settings-container">
+      <form id="settingsForm">
         <div class="settings-section">
-            <h2>LLM API Settings</h2>
-            <div class="form-group">
-                <label for="url">URL:</label>
-                <input type="text" id="url" name="URL">
-            </div>
-            <div class="form-group">
-                <label for="api_token">Api token:</label>
-                <input type="text" id="api_token" name="api token">
-            </div>
+          <h2>LLM API Settings</h2>
+          <div class="form-group">
+            <label for="url">URL:</label>
+            <input type="text" id="url" name="URL" />
+          </div>
+          <div class="form-group">
+            <label for="api_token">Api token:</label>
+            <input type="text" id="api_token" name="api token" />
+          </div>
         </div>
 
         <div class="settings-section">
-            <h2>Model settings</h2>
-            <div class="form-group">
-                <label for="context_window">Context window:</label>
-                <input type="number" id="context_window" name="context window">
-            </div>
+          <h2>Model settings</h2>
+          <div class="form-group">
+            <label for="context_window">Context window:</label>
+            <input type="number" id="context_window" name="context window" />
+          </div>
         </div>
 
         <button type="submit">Save Settings</button>
-    </form>
-</div>
-<script src="../dist/options.js"></script>
-</body>
+      </form>
+    </div>
+    <script src="../dist/options.js"></script>
+  </body>
 </html>

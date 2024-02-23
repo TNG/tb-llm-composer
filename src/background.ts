@@ -9,27 +9,29 @@
 const STANDARD_TEST_TO_PREPEND = "Hi, I'm a fake LLM, here is my fake reply:\n\n";
 
 browser.composeAction.onClicked.addListener(async (tab) => {
-    const openTabId = tab.id || 12312093;
-    let tabDetails = await browser.compose.getComposeDetails(openTabId);
-    console.log(tabDetails);
+  const openTabId = tab.id || 12312093;
+  let tabDetails = await browser.compose.getComposeDetails(openTabId);
+  console.log(tabDetails);
 
-    if (tabDetails.isPlainText) {
-        let plainTextBody = tabDetails.plainTextBody;
-        console.log(plainTextBody);
+  if (tabDetails.isPlainText) {
+    let plainTextBody = tabDetails.plainTextBody;
+    console.log(plainTextBody);
 
-        plainTextBody = STANDARD_TEST_TO_PREPEND + plainTextBody;
-        console.log(plainTextBody);
-        browser.compose.setComposeDetails(openTabId, { plainTextBody: plainTextBody });
-    } else {
-        let htmlTabWithBody = new DOMParser().parseFromString(tabDetails.body || "", "text/html");
-        console.log(htmlTabWithBody);
+    plainTextBody = STANDARD_TEST_TO_PREPEND + plainTextBody;
+    console.log(plainTextBody);
+    browser.compose.setComposeDetails(openTabId, {
+      plainTextBody: plainTextBody,
+    });
+  } else {
+    let htmlTabWithBody = new DOMParser().parseFromString(tabDetails.body || "", "text/html");
+    console.log(htmlTabWithBody);
 
-        let newParagraph = htmlTabWithBody.createElement("p");
-        newParagraph.textContent = STANDARD_TEST_TO_PREPEND;
-        htmlTabWithBody.body.prepend(STANDARD_TEST_TO_PREPEND);
+    let newParagraph = htmlTabWithBody.createElement("p");
+    newParagraph.textContent = STANDARD_TEST_TO_PREPEND;
+    htmlTabWithBody.body.prepend(STANDARD_TEST_TO_PREPEND);
 
-        let html = new XMLSerializer().serializeToString(htmlTabWithBody);
-        console.log(html);
-        browser.compose.setComposeDetails(openTabId, { body: html });
-    }
+    let html = new XMLSerializer().serializeToString(htmlTabWithBody);
+    console.log(html);
+    browser.compose.setComposeDetails(openTabId, { body: html });
+  }
 });

@@ -10,19 +10,14 @@
       "strict_min_version": "110"
     }
   },
-  "permissions": [
-    "compose",
-    "storage"
-  ],
+  "permissions": ["compose", "storage"],
   "icons": {
     "64": "icons/icon-64px.png",
     "32": "icons/icon-32px.png",
     "16": "icons/icon-16px.png"
   },
   "background": {
-    "scripts": [
-      "dist/background.js"
-    ]
+    "scripts": ["dist/background.js"]
   },
   "options_ui": {
     "page": "public/options.html",
