@@ -39,7 +39,7 @@ async function saveOptions(e: Event): Promise<void> {
 }
 
 async function restoreOptions(): Promise<void> {
-  const options = await (browser.storage.sync.get("options") as Promise<Options | undefined>);
+  const options = (await browser.storage.sync.get("options"))?.options as Options | undefined;
 
   getInputElement("#url").value = options?.model || defaultOptions.model;
   getInputElement("#api_token").value = options?.api_token || defaultOptions.api_token || "";
