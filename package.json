@@ -4,7 +4,7 @@
   "description": "A Thunderbird extension enabling LLM support while writing E-Mails",
   "main": "background.js",
   "scripts": {
-    "start": "tsc --watch",
+    "start": "webpack --watch",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -23,6 +23,9 @@
   },
   "devDependencies": {
     "@types/thunderbird-webext-browser": "^109.0.4",
-    "prettier": "3.2.5"
+    "prettier": "3.2.5",
+    "ts-loader": "^9.5.1",
+    "webpack": "^5.90.3",
+    "webpack-cli": "^5.1.4"
   }
 }
