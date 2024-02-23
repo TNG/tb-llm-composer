@@ -8,6 +8,21 @@ A Thunderbird extension enabling LLM support while writing E-Mails.
 - [Thunderbird Extension API](https://webextension-api.thunderbird.net/en/stable/)
 - [Example extensions (source)](https://github.com/thunderbird/sample-extensions)
 
+## Using
+
+### Install the Plugin
+
+For now, see section [Test add-on](#test-add-on)
+
+### Configure plugin
+
+Open the preference window of the plugin.
+Specify the following things:
+
+- URL: The URL to the endpoint of the LLM.
+- If you don't have access to an LLM, try https://github.com/cheahjs/free-llm-api-resource
+- Api token: Leave empty if public, otherwise obtain one.
+
 ## Contributing
 
 ### Setup
@@ -24,6 +39,8 @@ npm ci
 ```
 
 ### Test add-on
+
+<a name="test-add-on"></a>
 
 - "Start" the addon:
   ```shell
