@@ -1,3 +1,5 @@
+import { getPluginOptions, Options } from "./optionUtils";
+
 function getInputElement(selector: string): HTMLInputElement {
   const inputElement = document.querySelector(selector) as HTMLInputElement | null;
   if (!inputElement) {
@@ -5,17 +7,6 @@ function getInputElement(selector: string): HTMLInputElement {
   }
   return inputElement;
 }
-
-interface Options {
-  model: string;
-  api_token?: string;
-  context_window: number;
-}
-
-const defaultOptions: Options = {
-  model: "",
-  context_window: 4096,
-};
 
 function showNotification(message: string, isSuccess: boolean) {
   const notification = document.getElementById('notification');
@@ -31,17 +22,15 @@ function showNotification(message: string, isSuccess: boolean) {
 }
 
 async function saveOptions(e: Event): Promise<void> {
-  console.log(e);
+  e.preventDefault();
   const model = getInputElement("#url").value
   if (!model) {
     showNotification("model can't be empty", false);
-    e.preventDefault();
     return;
   }
   const contextWindow = getInputElement("#context_window").value
   if (!contextWindow) {
     showNotification("context window has to be set (greater than zero)", false);
-    e.preventDefault();
     return;
   }
   const options = {
@@ -55,15 +44,14 @@ async function saveOptions(e: Event): Promise<void> {
     options: options,
   });
   showNotification("Settings saved", true)
-  e.preventDefault();
 }
 
 async function restoreOptions(): Promise<void> {
-  const options = (await browser.storage.sync.get("options"))?.options as Options | undefined;
+  const options = await getPluginOptions();
 
-  getInputElement("#url").value = options?.model || defaultOptions.model;
-  getInputElement("#api_token").value = options?.api_token || defaultOptions.api_token || "";
-  getInputElement("#context_window").value = `${options?.context_window || defaultOptions.context_window}`;
+  getInputElement("#url").value = options.model;
+  getInputElement("#api_token").value = options.api_token || "";
+  getInputElement("#context_window").value = `${options.context_window}`;
 }
 
 document.addEventListener("DOMContentLoaded", restoreOptions);

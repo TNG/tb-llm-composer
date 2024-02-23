@@ -6,32 +6,49 @@
 // persistent listener and the background will wake up (restart) each time the
 // event is fired.
 
-const STANDARD_TEST_TO_PREPEND = "Hi, I'm a fake LLM, here is my fake reply:\n\n";
+import {
+  isLlmTextcompletionResponse,
+  LlmTextCompletionResponse,
+  sentContentToLlm,
+  TgiErrorResponse
+} from "./llmConnection";
+
+const LLM_DISABLED_TEXT = "LLM Support for HTML Mails is not yet supported\n\n";
+
+function addParagraphToHtml(htmlBody: string, text: string) {
+  const htmlTabWithBody = new DOMParser().parseFromString(htmlBody, "text/html");
+  const newParagraph = htmlTabWithBody.createElement("p");
+  newParagraph.textContent = text;
+  htmlTabWithBody.body.prepend(newParagraph);
+  return new XMLSerializer().serializeToString(htmlTabWithBody);
+}
+
+function handleLlmSuccessResponse(tabId: number, emailBody: string, response: LlmTextCompletionResponse) {
+  const updatedBody = emailBody + "\n" + response.generated_text;
+  browser.compose.setComposeDetails(tabId, {
+    plainTextBody: updatedBody,
+  });
+}
+
+function handleLlmErrorResponse(response: TgiErrorResponse) {
+  console.warn(response);
+}
 
 browser.composeAction.onClicked.addListener(async (tab) => {
   const openTabId = tab.id || 12312093;
-  let tabDetails = await browser.compose.getComposeDetails(openTabId);
-  console.log(tabDetails);
-
+  const tabDetails = await browser.compose.getComposeDetails(openTabId);
   if (tabDetails.isPlainText) {
     let plainTextBody = tabDetails.plainTextBody;
-    console.log(plainTextBody);
-
-    plainTextBody = STANDARD_TEST_TO_PREPEND + plainTextBody;
-    console.log(plainTextBody);
-    browser.compose.setComposeDetails(openTabId, {
-      plainTextBody: plainTextBody,
-    });
+    if (plainTextBody) {
+      const response = await sentContentToLlm(plainTextBody);
+      if (isLlmTextcompletionResponse(response)) {
+        handleLlmSuccessResponse(openTabId, plainTextBody, response as LlmTextCompletionResponse);
+      } else {
+        handleLlmErrorResponse(response as TgiErrorResponse);
+      }
+    }
   } else {
-    let htmlTabWithBody = new DOMParser().parseFromString(tabDetails.body || "", "text/html");
-    console.log(htmlTabWithBody);
-
-    let newParagraph = htmlTabWithBody.createElement("p");
-    newParagraph.textContent = STANDARD_TEST_TO_PREPEND;
-    htmlTabWithBody.body.prepend(STANDARD_TEST_TO_PREPEND);
-
-    let html = new XMLSerializer().serializeToString(htmlTabWithBody);
-    console.log(html);
+    const html = addParagraphToHtml(tabDetails.body || "", LLM_DISABLED_TEXT);
     browser.compose.setComposeDetails(openTabId, { body: html });
   }
 });
