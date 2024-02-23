@@ -6,10 +6,6 @@ function getInputElement(selector: string): HTMLInputElement {
   return inputElement;
 }
 
-function throwError(message: string): never {
-  throw new Error(message);
-}
-
 interface Options {
   model: string;
   api_token?: string;
@@ -21,10 +17,33 @@ const defaultOptions: Options = {
   context_window: 4096,
 };
 
+function showNotification(message: string, isSuccess: boolean) {
+  const notification = document.getElementById('notification');
+  if (!notification) {
+    throw Error(`Element "notification" could not be found. Contact devs`);
+  }
+  notification.textContent = message;
+  notification.style.backgroundColor = isSuccess ? '#4CAF50' : '#f44336'; // Green for success, red for failure
+  notification.className = 'notification show';
+  setTimeout(function() {
+    notification.className = 'notification';
+  }, 3000); // The notification will disappear after 3 seconds
+}
+
 async function saveOptions(e: Event): Promise<void> {
   console.log(e);
-  const model = getInputElement("#url").value ?? throwError("model can't be empty");
-  const contextWindow = getInputElement("#context_window").value ?? throwError("context window has to be set");
+  const model = getInputElement("#url").value
+  if (!model) {
+    showNotification("model can't be empty", false);
+    e.preventDefault();
+    return;
+  }
+  const contextWindow = getInputElement("#context_window").value
+  if (!contextWindow) {
+    showNotification("context window has to be set (greater than zero)", false);
+    e.preventDefault();
+    return;
+  }
   const options = {
     model: model,
     api_token: getInputElement("#api_token").value,
@@ -35,6 +54,7 @@ async function saveOptions(e: Event): Promise<void> {
   browser.storage.sync.set({
     options: options,
   });
+  showNotification("Settings saved", true)
   e.preventDefault();
 }
 
