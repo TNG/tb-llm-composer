@@ -25,7 +25,8 @@
     ]
   },
   "options_ui": {
-    "page": "public/options.html"
+    "page": "public/options.html",
+    "browser_style": false
   },
   "compose_action": {
     "default_title": "To LLM",
