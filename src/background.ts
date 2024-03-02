@@ -6,12 +6,7 @@
 // persistent listener and the background will wake up (restart) each time the
 // event is fired.
 
-import {
-  isLlmTextcompletionResponse,
-  LlmTextCompletionResponse,
-  sentContentToLlm,
-  TgiErrorResponse
-} from "./llmConnection";
+import { isLlmTextcompletionResponse, LlmTextCompletionResponse, sentContentToLlm, TgiErrorResponse } from "./llmConnection";
 
 const LLM_DISABLED_TEXT = "LLM Support for HTML Mails is not yet supported\n\n";
 
@@ -23,10 +18,17 @@ function addParagraphToHtml(htmlBody: string, text: string) {
   return new XMLSerializer().serializeToString(htmlTabWithBody);
 }
 
-function handleLlmSuccessResponse(tabId: number, emailBody: string, response: LlmTextCompletionResponse) {
-  const updatedBody = emailBody + "\n" + response.generated_text;
+function removeNonAlphabeticCharsAtTheBeginning(str: string): string {
+  console.log("str: ", str);
+  const try_1 = str.replace(/^.*?(Dear)/, "$1");
+  return try_1.replace(/^[^a-zA-Z]*[\s\n-]*/, "");
+}
+
+function handleLlmSuccessResponse(tabId: number, response: LlmTextCompletionResponse) {
+  const generateTextWithoutWhitespacesAndDashesAtTheBeginning = removeNonAlphabeticCharsAtTheBeginning(response.generated_text);
+  console.log("generateTextWithoutWhitespacesAndDashesAtTheBeginning: ", generateTextWithoutWhitespacesAndDashesAtTheBeginning);
   browser.compose.setComposeDetails(tabId, {
-    plainTextBody: updatedBody,
+    plainTextBody: generateTextWithoutWhitespacesAndDashesAtTheBeginning,
   });
 }
 
@@ -42,7 +44,7 @@ browser.composeAction.onClicked.addListener(async (tab) => {
     if (plainTextBody) {
       const response = await sentContentToLlm(plainTextBody);
       if (isLlmTextcompletionResponse(response)) {
-        handleLlmSuccessResponse(openTabId, plainTextBody, response as LlmTextCompletionResponse);
+        handleLlmSuccessResponse(openTabId, response as LlmTextCompletionResponse);
       } else {
         handleLlmErrorResponse(response as TgiErrorResponse);
       }

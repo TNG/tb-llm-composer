@@ -86,8 +86,14 @@ export function isLlmTextcompletionResponse(response: LlmTextCompletionResponse 
 
 // @ts-ignore options will be used later
 function buildRequestBody(content: string, options: Options): LlmApiRequestBody {
+  const llmContext =
+    "You are an AI language model asked to write an email.\n" +
+    "The email should be written in a professional manner and should be polite and respectful.\n" +
+    "In the reply, just include the email itself, no need to include the original text from the user.\n" +
+    "Do not include the email subject in you reply.\n" +
+    "The user prompt is the following:\n";
   return {
-    inputs: content,
+    inputs: llmContext + content,
     parameters: defaultParams,
   };
 }
@@ -111,6 +117,6 @@ async function callLlmApi(url: string, requestBody: LlmApiRequestBody, token?: s
 export async function sentContentToLlm(content: string) {
   const options = await getPluginOptions();
   const requestBody = buildRequestBody(content, options);
-  console.log("Sending request to LLM:", requestBody)
+  console.log("Sending request to LLM:", requestBody);
   return callLlmApi(options.model, requestBody, options.api_token);
 }
