@@ -10,7 +10,7 @@
       "strict_min_version": "110"
     }
   },
-  "permissions": ["compose", "storage"],
+  "permissions": ["compose", "storage", "notifications"],
   "icons": {
     "64": "icons/icon-64px.png",
     "32": "icons/icon-32px.png",
@@ -25,6 +25,8 @@
   },
   "compose_action": {
     "default_title": "To LLM",
-    "default_icon": "icons/icon-64px.png"
+    "default_icon": {
+      "64": "icons/icon-64px.png"
+    }
   }
 }

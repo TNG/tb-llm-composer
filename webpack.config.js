@@ -1,4 +1,6 @@
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 const path = require("path");
+const buildFolder = "dist"
 
 module.exports = {
   mode: "development",
@@ -8,7 +10,7 @@ module.exports = {
     background: "./src/background.ts",
   },
   output: {
-    path: path.resolve(__dirname, "dist"),
+    path: path.resolve(__dirname, buildFolder),
     filename: "[name].js",
   },
   module: {
@@ -23,4 +25,14 @@ module.exports = {
   resolve: {
     extensions: [".ts", ".js"],
   },
+  plugins: [
+    new CopyWebpackPlugin({
+      patterns: [
+        {
+          from: path.resolve(__dirname, 'icons'),
+          to: path.resolve(__dirname, buildFolder + '/icons')
+        },
+      ],
+    }),
+  ],
 };

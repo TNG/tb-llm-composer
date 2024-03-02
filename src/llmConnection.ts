@@ -130,7 +130,7 @@ async function callLlmApi(url: string, requestBody: LlmApiRequestBody, token?: s
     body: JSON.stringify(requestBody),
   });
   if (!response.ok) {
-    throw Error("Network response was not ok: " + (await response.text()));
+    throw Error(`Error response from ${url}: ${await response.text()}`);
   }
   return (await response.json()) as LlmTextCompletionResponse | TgiErrorResponse;
 }

@@ -7,8 +7,11 @@
 // event is fired.
 
 import { isLlmTextcompletionResponse, LlmTextCompletionResponse, sentContentToLlm, TgiErrorResponse } from "./llmConnection";
+import IconPath = browser._manifest.IconPath;
 
-const LLM_DISABLED_TEXT = "LLM Support for HTML Mails is not yet supported\n\n";
+const LLM_DISABLED_TEXT: string = "LLM Support for HTML Mails is not yet supported\n\n";
+
+const defaultIcons: IconPath = { 64: "icons/icon-64px.png" };
 
 function addParagraphToHtml(htmlBody: string, text: string) {
   const htmlTabWithBody = new DOMParser().parseFromString(htmlBody, "text/html");
@@ -33,18 +36,40 @@ function handleLlmErrorResponse(response: TgiErrorResponse) {
   console.warn(response);
 }
 
+async function withErrorHandling(tabId: number, callback: () => void) {
+  await browser.composeAction.disable(tabId);
+  await browser.composeAction.setIcon({ path: { 32: "icons/loader-32px.gif" } });
+  try {
+    await callback();
+    return true;
+  } catch (e) {
+    const notificationId = await browser.notifications.create({
+      title: "Thunderbird LLM Extension Error",
+      message: (e as Error).message,
+      type: "basic",
+    });
+    setTimeout(() => browser.notifications.clear(notificationId), 2000);
+    return false;
+  } finally {
+    await browser.composeAction.enable(tabId);
+    await browser.composeAction.setIcon({ path: defaultIcons });
+  }
+}
+
 browser.composeAction.onClicked.addListener(async (tab) => {
   const openTabId = tab.id || 12312093;
   const tabDetails = await browser.compose.getComposeDetails(openTabId);
   if (tabDetails.isPlainText) {
-    let plainTextBody = tabDetails.plainTextBody;
+    let plainTextBody = tabDetails.plainTextBody || "";
     if (plainTextBody) {
-      const response = await sentContentToLlm(plainTextBody);
-      if (isLlmTextcompletionResponse(response)) {
-        handleLlmSuccessResponse(openTabId, response as LlmTextCompletionResponse);
-      } else {
-        handleLlmErrorResponse(response as TgiErrorResponse);
-      }
+      await withErrorHandling(openTabId, async () => {
+        const response = await sentContentToLlm(plainTextBody);
+        if (isLlmTextcompletionResponse(response)) {
+          handleLlmSuccessResponse(openTabId, response as LlmTextCompletionResponse);
+        } else {
+          handleLlmErrorResponse(response as TgiErrorResponse);
+        }
+      });
     }
   } else {
     const html = addParagraphToHtml(tabDetails.body || "", LLM_DISABLED_TEXT);
