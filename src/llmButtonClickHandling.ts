@@ -4,7 +4,7 @@ import Tab = browser.tabs.Tab;
 import IconPath = browser._manifest.IconPath;
 
 const LLM_HTML_NOT_IMPLEMENTED_TEXT: string = "LLM Support for HTML Mails is not yet implemented";
-const DEFAULT_PROMPT = "Write an EMail in which I quit my job";
+const DEFAULT_PROMPT = "I quit my job";
 const DEFAULT_ICONS: IconPath = { 64: "icons/icon-64px.png" };
 
 function removeUntilFirstAlphabeticalIncludingSpacesNewlines(str: string) {

@@ -49,7 +49,7 @@ const defaultOptions: Options = {
     "You are an AI language model asked to write an email.\n" +
     "The email should be written in a professional manner and should be polite and respectful.\n" +
     "In the reply, just include the email itself, no need to include the original text from the user.\n" +
-    "Do not include the email subject in you reply.\n",
+    "Do not include the email subject in your reply.\n",
 };
 
 export async function getPluginOptions(): Promise<Options> {
