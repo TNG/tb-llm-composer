@@ -2,45 +2,20 @@
 
 A Thunderbird extension enabling LLM support while writing E-Mails.
 
-## Useful links
-
-- [Thunderbird Add-On Documentation](https://developer.thunderbird.net/add-ons/about-add-ons)
-- [Thunderbird Extension API](https://webextension-api.thunderbird.net/en/stable/)
-- [Example extensions (source)](https://github.com/thunderbird/sample-extensions)
-
-## Using
-
-### Install the Plugin
-
-For now, see section [Test add-on](#test-add-on)
-
-### Configure plugin
-
-Open the preference window of the plugin.
-Specify the following things:
-
-- URL: The URL to the endpoint of the LLM.
-  If you don't have access to an LLM, try https://github.com/cheahjs/free-llm-api-resource
-- Api token: Leave empty if public, otherwise obtain one.
-
-## Contributing
-
-### Setup
+## Requirements
 
 The following tools are needed:
 
 - Thunderbird
 - npm
 
-To install all dependencies, run
+## Install the Plugin
 
-```shell
-npm ci
-```
-
-### Test add-on
-
-<a name="test-add-on"></a>
+- Clone the repository
+- To install all dependencies, run
+  ```shell
+  npm ci
+  ```
 
 - "Start" the addon:
   ```shell
@@ -52,3 +27,12 @@ npm ci
 - Click on the settings symbol -> Debug Add-ons -> Load Temporary Add-on...
 - Browse to this repo and select the [manifest.json](./manifest.json)
 - To reload the changes, click on the "Reload" button in the LLM Support tab.
+
+## Configure plugin
+
+Open the preference window of the plugin.
+Specify the following things:
+
+- URL: The URL to the endpoint of the LLM.
+  If you don't have access to an LLM, try https://github.com/cheahjs/free-llm-api-resource
+- Api token: Leave empty if public, otherwise obtain one.
