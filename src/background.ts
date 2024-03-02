@@ -18,17 +18,14 @@ function addParagraphToHtml(htmlBody: string, text: string) {
   return new XMLSerializer().serializeToString(htmlTabWithBody);
 }
 
-function removeNonAlphabeticCharsAtTheBeginning(str: string): string {
-  console.log("str: ", str);
-  const try_1 = str.replace(/^.*?(Dear)/, "$1");
-  return try_1.replace(/^[^a-zA-Z]*[\s\n-]*/, "");
+function removeUntilFirstAlphabeticalIncludingSpacesNewlines(str: string) {
+  return str.replace(/^[^a-zA-Z]*[\s\n]*/, "");
 }
 
 function handleLlmSuccessResponse(tabId: number, response: LlmTextCompletionResponse) {
-  const generateTextWithoutWhitespacesAndDashesAtTheBeginning = removeNonAlphabeticCharsAtTheBeginning(response.generated_text);
-  console.log("generateTextWithoutWhitespacesAndDashesAtTheBeginning: ", generateTextWithoutWhitespacesAndDashesAtTheBeginning);
+  const cleanedUpResponse = removeUntilFirstAlphabeticalIncludingSpacesNewlines(response.choices[0].message.content);
   browser.compose.setComposeDetails(tabId, {
-    plainTextBody: generateTextWithoutWhitespacesAndDashesAtTheBeginning,
+    plainTextBody: cleanedUpResponse,
   });
 }
 

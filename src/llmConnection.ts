@@ -35,9 +35,18 @@ const defaultParams: LlmParameters = {
   watermark: true,
 };
 
-interface LlmApiRequestBody {
-  inputs: string;
-  parameters?: LlmParameters;
+enum LlmRoles {
+  SYSTEM = "system",
+  USER = "user",
+}
+
+interface LlmApiRequestMessage {
+  content: string;
+  role: LlmRoles;
+}
+
+interface LlmApiRequestBody extends LlmParameters {
+  messages: LlmApiRequestMessage[];
 }
 
 export interface InputToken {
@@ -53,6 +62,17 @@ export interface TokensAndLogprobs {
   top_logprobs?: [object];
 }
 
+export interface LlmChoice {
+  message: {
+    content: string;
+    role: LlmRoles;
+  };
+  index: number;
+  prefill: [string];
+  logprobs: [number];
+  finish_reason: "lenght" | "eos_token " | "stop_sequence" | "error";
+}
+
 export interface LlmTextCompletionResponse {
   status: number;
   id: string;
@@ -66,8 +86,8 @@ export interface LlmTextCompletionResponse {
     completion_tokens: number;
     total_tokens: number;
   };
-  generated_text: string;
-  finish_reason: "lenght" | "eos_token" | "stop_sequence" | "error";
+  choices: LlmChoice[];
+  finish_reason: "length" | "eos_token" | "stop_sequence" | "error";
   prefill?: [InputToken];
   logprobs?: TokensAndLogprobs;
 }
@@ -92,9 +112,10 @@ function buildRequestBody(content: string, options: Options): LlmApiRequestBody 
     "In the reply, just include the email itself, no need to include the original text from the user.\n" +
     "Do not include the email subject in you reply.\n" +
     "The user prompt is the following:\n";
+  const context: LlmApiRequestMessage = { content: llmContext, role: LlmRoles.SYSTEM };
   return {
-    inputs: llmContext + content,
-    parameters: defaultParams,
+    messages: [context, { content, role: LlmRoles.USER }],
+    ...defaultParams,
   };
 }
 
