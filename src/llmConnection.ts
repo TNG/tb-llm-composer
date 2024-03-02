@@ -65,14 +65,34 @@ export interface TgiErrorResponse {
   };
 }
 
+const DEFAULT_PROMPT = "Schreib die Partner, dass ich kündige, auf Deutsch.";
+
 export function isLlmTextcompletionResponse(response: LlmTextCompletionResponse | TgiErrorResponse) {
   return "id" in response;
 }
 
-function buildRequestBody(content: string, options: Options): LlmApiRequestBody {
-  const context: LlmApiRequestMessage = { content: options.llmContext, role: LlmRoles.SYSTEM };
+export async function sentContentToLlm(tabDetails: browser.compose.ComposeDetails) {
+  const options = await getPluginOptions();
+
+  const requestBody = await buildRequestBody(tabDetails, options);
+  console.log("requestBody: ", requestBody);
+
+  return callLlmApi(options.model, requestBody, options.api_token);
+}
+
+async function buildRequestBody(tabDetails: browser.compose.ComposeDetails, options: Options): Promise<LlmApiRequestBody> {
+  const identity = await browser.identities.get(tabDetails.identityId as string);
+  const signatureInstructions =
+    "\nThe user signature should appear as is at the end of the email. Their signature is:\n " + identity.signature;
+  const context: LlmApiRequestMessage = {
+    content: options.llmContext + signatureInstructions,
+    role: LlmRoles.SYSTEM,
+  };
+
+  const currentMessageContent: LlmApiRequestMessage = { content: tabDetails.plainTextBody || DEFAULT_PROMPT, role: LlmRoles.USER };
+
   return {
-    messages: [context, { content, role: LlmRoles.USER }],
+    messages: [context, currentMessageContent],
     ...options.params,
   };
 }
@@ -91,11 +111,4 @@ async function callLlmApi(url: string, requestBody: LlmApiRequestBody, token?: s
     throw Error(`Error response from ${url}: ${await response.text()}`);
   }
   return (await response.json()) as LlmTextCompletionResponse | TgiErrorResponse;
-}
-
-export async function sentContentToLlm(content: string) {
-  const options = await getPluginOptions();
-  const requestBody = buildRequestBody(content, options);
-  console.log("requestBody: ", requestBody);
-  return callLlmApi(options.model, requestBody, options.api_token);
 }

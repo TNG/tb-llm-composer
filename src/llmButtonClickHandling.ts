@@ -4,7 +4,6 @@ import Tab = browser.tabs.Tab;
 import IconPath = browser._manifest.IconPath;
 
 const LLM_HTML_NOT_IMPLEMENTED_TEXT: string = "LLM Support for HTML Mails is not yet implemented";
-const DEFAULT_PROMPT = "I quit my job";
 const DEFAULT_ICONS: IconPath = { 64: "icons/icon-64px.png" };
 
 function removeUntilFirstAlphabeticalIncludingSpacesNewlines(str: string) {
@@ -30,8 +29,8 @@ async function withButtonLoading(tabId: number, callback: () => Promise<any>) {
   await browser.composeAction.setIcon({ path: DEFAULT_ICONS });
 }
 
-async function communicateWithLlm(openTabId: number, plainTextBody: string) {
-  const response = await sentContentToLlm(plainTextBody);
+async function communicateWithLlm(openTabId: number, tabDetails: browser.compose.ComposeDetails) {
+  const response = await sentContentToLlm(tabDetails);
   if (isLlmTextcompletionResponse(response)) {
     handleLlmSuccessResponse(openTabId, response as LlmTextCompletionResponse);
   } else {
@@ -45,7 +44,7 @@ export async function llmActionClickHandler(tab: Tab) {
   if (tabDetails.isPlainText) {
     await withButtonLoading(
       openTabId,
-      notifyOnError(() => communicateWithLlm(openTabId, tabDetails.plainTextBody || DEFAULT_PROMPT)),
+      notifyOnError(() => communicateWithLlm(openTabId, tabDetails)),
     );
   } else {
     await timedNotification("Thunderbird LLM Extension", LLM_HTML_NOT_IMPLEMENTED_TEXT);
