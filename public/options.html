@@ -73,12 +73,19 @@
           animation: fadein 0.5s, fadeout 0.5s 2.5s;
       }
 
-      #other_options{
+      textarea{
         width: 90%;
-        height: 300px;
         padding: 8px;
         border: 1px solid #000;
         border-radius: 4px;
+      }
+
+      #other_options{
+        height: 300px;
+      }
+
+      #llm_context{
+        height: 150px;
       }
 
       @-webkit-keyframes fadein {
@@ -115,6 +122,12 @@
             <label for="api_token">Api token:</label>
             <input type="text" id="api_token" name="api token" />
           </div>
+        </div>
+
+        <div class="settings-section">
+          <h2>Context</h2>
+          <label for="llm_context">LLM Context:</label>
+          <textarea id="llm_context" name="llm context window"> </textarea>
         </div>
 
         <div class="settings-section">

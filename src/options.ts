@@ -1,5 +1,4 @@
 import { getPluginOptions, Options } from "./optionUtils";
-import { defaultParams } from "./llmConnection";
 
 function getInputElement(selector: string): HTMLInputElement {
   const inputElement = document.querySelector(selector) as HTMLInputElement | null;
@@ -39,6 +38,7 @@ async function saveOptions(e: Event): Promise<void> {
     api_token: getInputElement("#api_token").value,
     context_window: parseInt(contextWindow),
     params: JSON.parse(getInputElement("#other_options").value),
+    llmContext: getInputElement("#llm_context").value,
   } as Options;
 
   // no await on purpose, otherwise the code does not work
@@ -54,11 +54,8 @@ async function restoreOptions(): Promise<void> {
   getInputElement("#url").value = options.model;
   getInputElement("#api_token").value = options.api_token || "";
   getInputElement("#context_window").value = `${options.context_window}`;
-  getInputElement("#other_options").value = options.params
-    ? JSON.stringify(options.params, null, 2)
-    : JSON.stringify(defaultParams, null, 2);
-
-  console.log("options.params: ", options.params);
+  getInputElement("#other_options").value = JSON.stringify(options.params, null, 2);
+  getInputElement("#llm_context").value = options.llmContext;
 }
 
 document.addEventListener("DOMContentLoaded", restoreOptions);
