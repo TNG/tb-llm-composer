@@ -1,7 +1,10 @@
+import { LlmParameters } from "./llmConnection";
+
 export interface Options {
   model: string;
   api_token?: string;
   context_window: number;
+  params?: LlmParameters;
 }
 
 const defaultOptions: Options = {

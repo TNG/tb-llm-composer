@@ -1,6 +1,6 @@
 import { getPluginOptions, Options } from "./optionUtils";
 
-interface LlmParameters {
+export interface LlmParameters {
   max_new_tokens?: number;
   temperature?: number;
   top_p?: number;
@@ -20,7 +20,7 @@ interface LlmParameters {
   logprobs?: number;
 }
 
-const defaultParams: LlmParameters = {
+export let defaultParams: LlmParameters = {
   best_of: 1,
   decoder_input_details: true,
   logprobs: 3,
@@ -104,7 +104,6 @@ export function isLlmTextcompletionResponse(response: LlmTextCompletionResponse 
   return "id" in response;
 }
 
-// @ts-ignore options will be used later
 function buildRequestBody(content: string, options: Options): LlmApiRequestBody {
   const llmContext =
     "You are an AI language model asked to write an email.\n" +
@@ -115,7 +114,7 @@ function buildRequestBody(content: string, options: Options): LlmApiRequestBody 
   const context: LlmApiRequestMessage = { content: llmContext, role: LlmRoles.SYSTEM };
   return {
     messages: [context, { content, role: LlmRoles.USER }],
-    ...defaultParams,
+    ...(options.params || defaultParams),
   };
 }
 
@@ -138,6 +137,6 @@ async function callLlmApi(url: string, requestBody: LlmApiRequestBody, token?: s
 export async function sentContentToLlm(content: string) {
   const options = await getPluginOptions();
   const requestBody = buildRequestBody(content, options);
-  console.log("Sending request to LLM:", requestBody);
+  console.log("requestBody: ", requestBody);
   return callLlmApi(options.model, requestBody, options.api_token);
 }

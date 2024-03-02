@@ -1,4 +1,5 @@
 import { getPluginOptions, Options } from "./optionUtils";
+import { defaultParams } from "./llmConnection";
 
 function getInputElement(selector: string): HTMLInputElement {
   const inputElement = document.querySelector(selector) as HTMLInputElement | null;
@@ -9,26 +10,26 @@ function getInputElement(selector: string): HTMLInputElement {
 }
 
 function showNotification(message: string, isSuccess: boolean) {
-  const notification = document.getElementById('notification');
+  const notification = document.getElementById("notification");
   if (!notification) {
     throw Error(`Element "notification" could not be found. Contact devs`);
   }
   notification.textContent = message;
-  notification.style.backgroundColor = isSuccess ? '#4CAF50' : '#f44336'; // Green for success, red for failure
-  notification.className = 'notification show';
-  setTimeout(function() {
-    notification.className = 'notification';
+  notification.style.backgroundColor = isSuccess ? "#4CAF50" : "#f44336"; // Green for success, red for failure
+  notification.className = "notification show";
+  setTimeout(function () {
+    notification.className = "notification";
   }, 3000); // The notification will disappear after 3 seconds
 }
 
 async function saveOptions(e: Event): Promise<void> {
   e.preventDefault();
-  const model = getInputElement("#url").value
+  const model = getInputElement("#url").value;
   if (!model) {
     showNotification("model can't be empty", false);
     return;
   }
-  const contextWindow = getInputElement("#context_window").value
+  const contextWindow = getInputElement("#context_window").value;
   if (!contextWindow) {
     showNotification("context window has to be set (greater than zero)", false);
     return;
@@ -37,13 +38,14 @@ async function saveOptions(e: Event): Promise<void> {
     model: model,
     api_token: getInputElement("#api_token").value,
     context_window: parseInt(contextWindow),
+    params: JSON.parse(getInputElement("#other_options").value),
   } as Options;
 
   // no await on purpose, otherwise the code does not work
   browser.storage.sync.set({
     options: options,
   });
-  showNotification("Settings saved", true)
+  showNotification("Settings saved", true);
 }
 
 async function restoreOptions(): Promise<void> {
@@ -52,6 +54,11 @@ async function restoreOptions(): Promise<void> {
   getInputElement("#url").value = options.model;
   getInputElement("#api_token").value = options.api_token || "";
   getInputElement("#context_window").value = `${options.context_window}`;
+  getInputElement("#other_options").value = options.params
+    ? JSON.stringify(options.params, null, 2)
+    : JSON.stringify(defaultParams, null, 2);
+
+  console.log("options.params: ", options.params);
 }
 
 document.addEventListener("DOMContentLoaded", restoreOptions);

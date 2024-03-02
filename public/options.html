@@ -73,6 +73,14 @@
           animation: fadein 0.5s, fadeout 0.5s 2.5s;
       }
 
+      #other_options{
+        width: 90%;
+        height: 300px;
+        padding: 8px;
+        border: 1px solid #000;
+        border-radius: 4px;
+      }
+
       @-webkit-keyframes fadein {
           from {bottom: 0; opacity: 0;}
           to {bottom: 30px; opacity: 1;}
@@ -114,6 +122,8 @@
           <div class="form-group">
             <label for="context_window">Context window:</label>
             <input type="number" id="context_window" name="context window" />
+            <label for="other_options">Other options:</label>
+            <textarea id="other_options" name="other option window"> </textarea>
           </div>
         </div>
 
