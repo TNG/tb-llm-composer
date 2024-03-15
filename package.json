@@ -5,6 +5,10 @@
   "main": "background.js",
   "scripts": {
     "start": "webpack --watch",
+    "build": "webpack --mode production",
+    "zip": "cd build && bestzip ../llm-thunderbird.xpi ./*",
+    "ship": "npm run build && npm run zip",
+    "format": "prettier --write .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -23,6 +27,7 @@
   },
   "devDependencies": {
     "@types/thunderbird-webext-browser": "^109.0.4",
+    "bestzip": "^2.2.1",
     "copy-webpack-plugin": "^12.0.2",
     "prettier": "3.2.5",
     "ts-loader": "^9.5.1",

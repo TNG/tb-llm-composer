@@ -17,16 +17,14 @@ The following tools are needed:
   npm ci
   ```
 
-- "Start" the addon:
+- Build the addon package:
   ```shell
-  npm start
+  npm ship
   ```
-  this will recompile the typescript files automatically if they change.
 - Start Thunderbird.
 - Go to Hamburger Menu -> Add-ons and Themes.
-- Click on the settings symbol -> Debug Add-ons -> Load Temporary Add-on...
-- Browse to this repo and select the [manifest.json](./manifest.json)
-- To reload the changes, click on the "Reload" button in the LLM Support tab.
+- Click on the settings symbol -> Install Add-ons from file
+- Browse to this repo and select [llm-thunderbird.xpi](llm-thunderbird.xpi)
 
 ## Configure plugin
 

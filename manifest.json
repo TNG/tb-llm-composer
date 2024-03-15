@@ -23,11 +23,11 @@
   },
   "background": {
     "scripts": [
-      "dist/background.js"
+      "build/background.js"
     ]
   },
   "options_ui": {
-    "page": "public/options.html",
+    "page": "./build/public/options.html",
     "browser_style": false
   },
   "compose_action": {
