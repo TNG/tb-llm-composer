@@ -6,7 +6,9 @@
   "scripts": {
     "start": "webpack --watch",
     "build": "webpack --mode production",
-    "zip": "cd build && bestzip ../llm-thunderbird.xpi ./*",
+    "zip": "run-script-os",
+    "zip:darwin:linux": "cd build && zip -r ../llm-thunderbird.xpi ./*",
+    "zip:win32": "cd build && 7z a -tzip ../llm-thunderbird.xpi ./*",
     "ship": "npm run build && npm run zip",
     "format": "prettier --write .",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -27,9 +29,9 @@
   },
   "devDependencies": {
     "@types/thunderbird-webext-browser": "^109.0.4",
-    "bestzip": "^2.2.1",
     "copy-webpack-plugin": "^12.0.2",
     "prettier": "3.2.5",
+    "run-script-os": "^1.1.6",
     "ts-loader": "^9.5.1",
     "webpack": "^5.90.3",
     "webpack-cli": "^5.1.4"

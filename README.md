@@ -8,6 +8,7 @@ The following tools are needed:
 
 - Thunderbird
 - npm
+- (Windows): 7zip (its installation folder, usually "C:\Program Files\7-Zip", needs to be added to the PATH environment variable)
 
 ## Install the Plugin
 
