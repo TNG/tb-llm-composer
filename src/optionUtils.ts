@@ -41,7 +41,7 @@ export const defaultParams: LlmParameters = {
   watermark: true,
 };
 
-const defaultOptions: Options = {
+export const defaultOptions: Options = {
   model: "",
   context_window: 4096,
   params: defaultParams,

@@ -1,4 +1,4 @@
-import { isLlmTextcompletionResponse, LlmTextCompletionResponse, sentContentToLlm, TgiErrorResponse } from "./llmConnection";
+import { isLlmTextcompletionResponse, LlmTextCompletionResponse, sendContentToLlm, TgiErrorResponse } from "./llmConnection";
 import { notifyOnError, timedNotification } from "./notifications";
 import Tab = browser.tabs.Tab;
 import IconPath = browser._manifest.IconPath;
@@ -30,7 +30,7 @@ async function withButtonLoading(tabId: number, callback: () => Promise<any>) {
 }
 
 async function communicateWithLlm(openTabId: number, tabDetails: browser.compose.ComposeDetails) {
-  const response = await sentContentToLlm(tabDetails);
+  const response = await sendContentToLlm(tabDetails);
   if (isLlmTextcompletionResponse(response)) {
     handleLlmSuccessResponse(openTabId, response as LlmTextCompletionResponse);
   } else {

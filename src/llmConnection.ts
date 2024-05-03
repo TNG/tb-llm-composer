@@ -1,6 +1,6 @@
 import { getPluginOptions, LlmParameters, Options } from "./optionUtils";
 
-enum LlmRoles {
+export enum LlmRoles {
   SYSTEM = "system",
   USER = "user",
 }
@@ -10,7 +10,7 @@ interface LlmApiRequestMessage {
   role: LlmRoles;
 }
 
-interface LlmApiRequestBody extends LlmParameters {
+export interface LlmApiRequestBody extends LlmParameters {
   messages: LlmApiRequestMessage[];
 }
 
@@ -65,25 +65,20 @@ export interface TgiErrorResponse {
   };
 }
 
-const DEFAULT_PROMPT = "Schreib die Partner, dass ich kündige, auf Deutsch.";
+export const DEFAULT_PROMPT = "Schreib die Partner, dass ich kündige, auf Deutsch.";
 
-export function isLlmTextcompletionResponse(response: LlmTextCompletionResponse | TgiErrorResponse) {
-  return "id" in response;
-}
-
-export async function sentContentToLlm(tabDetails: browser.compose.ComposeDetails) {
+export async function sendContentToLlm(tabDetails: browser.compose.ComposeDetails) {
   const options = await getPluginOptions();
+  console.log("options.api_token: ", options.api_token);
 
   const requestBody = await buildRequestBody(tabDetails, options);
-  console.log("requestBody: ", requestBody);
 
   return callLlmApi(options.model, requestBody, options.api_token);
 }
 
 async function buildRequestBody(tabDetails: browser.compose.ComposeDetails, options: Options): Promise<LlmApiRequestBody> {
   const identity = await browser.identities.get(tabDetails.identityId as string);
-  const signatureInstructions =
-    "\nThe user signature should appear as is at the end of the email. Their signature is:\n " + identity.signature;
+  const signatureInstructions = getSignatureInstructions(identity.signature);
   const context: LlmApiRequestMessage = {
     content: options.llmContext + signatureInstructions,
     role: LlmRoles.SYSTEM,
@@ -97,8 +92,17 @@ async function buildRequestBody(tabDetails: browser.compose.ComposeDetails, opti
   };
 }
 
-async function callLlmApi(url: string, requestBody: LlmApiRequestBody, token?: string) {
+export function getSignatureInstructions(signature: string | undefined): string {
+  return "\nThe user signature should appear as is at the end of the email. Their signature is:\n " + signature;
+}
+
+async function callLlmApi(
+  url: string,
+  requestBody: LlmApiRequestBody,
+  token?: string,
+): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
   const headers: { [key: string]: string } = { "Content-Type": "application/json" };
+  console.log("token: ", token);
   if (token) {
     headers.Authorization = "Bearer " + token;
   }
@@ -110,5 +114,10 @@ async function callLlmApi(url: string, requestBody: LlmApiRequestBody, token?: s
   if (!response.ok) {
     throw Error(`Error response from ${url}: ${await response.text()}`);
   }
+
   return (await response.json()) as LlmTextCompletionResponse | TgiErrorResponse;
+}
+
+export function isLlmTextcompletionResponse(response: LlmTextCompletionResponse | TgiErrorResponse) {
+  return "id" in response;
 }
