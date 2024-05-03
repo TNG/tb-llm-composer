@@ -69,7 +69,6 @@ export const DEFAULT_PROMPT = "Schreib die Partner, dass ich kündige, auf Deuts
 
 export async function sendContentToLlm(tabDetails: browser.compose.ComposeDetails) {
   const options = await getPluginOptions();
-  console.log("options.api_token: ", options.api_token);
 
   const requestBody = await buildRequestBody(tabDetails, options);
 
