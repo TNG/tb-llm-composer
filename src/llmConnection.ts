@@ -35,7 +35,7 @@ export interface LlmChoice {
   index: number;
   prefill: [string];
   logprobs: [number];
-  finish_reason: "lenght" | "eos_token " | "stop_sequence" | "error";
+  finish_reason: FinishReason;
 }
 
 export interface LlmTextCompletionResponse {
@@ -52,10 +52,12 @@ export interface LlmTextCompletionResponse {
     total_tokens: number;
   };
   choices: LlmChoice[];
-  finish_reason: "length" | "eos_token" | "stop_sequence" | "error";
+  finish_reason: FinishReason;
   prefill?: [InputToken];
   logprobs?: TokensAndLogprobs;
 }
+
+type FinishReason = "length" | "eos_token" | "stop_sequence" | "error";
 
 export interface TgiErrorResponse {
   error: {

@@ -2,7 +2,7 @@ export async function timedNotification(title: string, message: string, ms: numb
   const notificationId = await browser.notifications.create({
     title,
     message,
-    type: "basic"
+    type: "basic",
   });
   setTimeout(() => browser.notifications.clear(notificationId), ms);
 }

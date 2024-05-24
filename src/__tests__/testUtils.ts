@@ -12,25 +12,11 @@ interface expectRequestContentArgs {
 
 interface mockBrowserAndFetchArgs extends expectRequestContentArgs {
   notOKResponse?: true;
+  isPlainText?: boolean;
 }
 
 export function mockBrowserAndFetch(args: mockBrowserAndFetchArgs = {}) {
-  global.browser = {
-    storage: {
-      // @ts-ignore
-      sync: {
-        get: jest
-          .fn()
-          .mockReturnValue(
-            args.params || args.options
-              ? { options: { ...defaultOptions, ...args.options, params: { ...defaultOptions.params, ...args.params } } }
-              : {},
-          ),
-      },
-    },
-    // @ts-ignore
-    identities: { get: jest.fn().mockReturnValue({ signature: DEFAULT_TEST_SIGNATURE }) },
-  };
+  mockBrowser(args);
 
   if (args.notOKResponse) {
     global.fetch = jest.fn().mockResolvedValue({
@@ -56,6 +42,40 @@ export function mockBrowserAndFetch(args: mockBrowserAndFetchArgs = {}) {
 
     return fetchResponse;
   }
+}
+
+export function mockBrowser(args: mockBrowserAndFetchArgs) {
+  global.browser = {
+    storage: {
+      // @ts-ignore
+      sync: {
+        get: jest
+          .fn()
+          .mockReturnValue(
+            args.params || args.options
+              ? { options: { ...defaultOptions, ...args.options, params: { ...defaultOptions.params, ...args.params } } }
+              : {},
+          ),
+      },
+    },
+    // @ts-ignore
+    identities: { get: jest.fn().mockReturnValue({ signature: DEFAULT_TEST_SIGNATURE }) },
+    // @ts-ignore
+    compose: {
+      getComposeDetails: jest.fn().mockResolvedValue({ isPlainText: args.isPlainText !== false }),
+      setComposeDetails: jest.fn(),
+    },
+    // @ts-ignore
+    composeAction: {
+      disable: jest.fn(),
+      setIcon: jest.fn(),
+      enable: jest.fn(),
+    },
+    // @ts-ignore
+    notifications: {
+      create: jest.fn(),
+    },
+  };
 }
 
 export function getExpectedRequestContent(args: expectRequestContentArgs = {}) {
