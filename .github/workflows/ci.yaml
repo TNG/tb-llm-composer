@@ -1,0 +1,27 @@
+name: Build and run tests
+on: [push]
+
+env:
+  node_version: 22
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.node_version }}
+
+    - name: Build
+      run: |
+        npm ci
+        npx webpack
+
+    - name: Test
+      run: |
+        npm test
