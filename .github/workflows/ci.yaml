@@ -20,7 +20,7 @@ jobs:
     - name: Build
       run: |
         npm ci
-        npx webpack
+        npm run build
 
     - name: Test
       run: |

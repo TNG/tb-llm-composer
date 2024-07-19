@@ -2,3 +2,5 @@
 node_modules
 /build
 *.xpi
+/coverage
+/llm-thunderbird

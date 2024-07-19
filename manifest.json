@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "version": "0.1.0",
   "author": "TNG Technology Consulting GmbH",
-  "name": "LLM Support",
+  "name": "LLM Composer",
   "description": "A Thunderbird extension enabling LLM support while writing E-Mails",
   "browser_specific_settings": {
     "gecko": {
