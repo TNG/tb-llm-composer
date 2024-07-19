@@ -1,5 +1,8 @@
 import { getPluginOptions, Options } from "./optionUtils";
 
+document.addEventListener("DOMContentLoaded", restoreOptions);
+document.querySelector("form")?.addEventListener("submit", saveOptions);
+
 function getInputElement(selector: string): HTMLInputElement {
   const inputElement = document.querySelector(selector) as HTMLInputElement | null;
   if (!inputElement) {
@@ -14,15 +17,15 @@ function showNotification(message: string, isSuccess: boolean) {
     throw Error(`Element "notification" could not be found. Contact devs`);
   }
   notification.textContent = message;
-  notification.style.backgroundColor = isSuccess ? "#4CAF50" : "#f44336"; // Green for success, red for failure
+  notification.style.backgroundColor = isSuccess ? "green" : "red";
   notification.className = "notification show";
   setTimeout(function () {
     notification.className = "notification";
   }, 3000); // The notification will disappear after 3 seconds
 }
 
-async function saveOptions(e: Event): Promise<void> {
-  e.preventDefault();
+export async function saveOptions(event: Event): Promise<void> {
+  event.preventDefault();
   const model = getInputElement("#url").value;
   if (!model) {
     showNotification("model can't be empty", false);
@@ -48,7 +51,7 @@ async function saveOptions(e: Event): Promise<void> {
   showNotification("Settings saved", true);
 }
 
-async function restoreOptions(): Promise<void> {
+export async function restoreOptions(): Promise<void> {
   const options = await getPluginOptions();
 
   getInputElement("#url").value = options.model;
@@ -57,6 +60,3 @@ async function restoreOptions(): Promise<void> {
   getInputElement("#other_options").value = JSON.stringify(options.params, null, 2);
   getInputElement("#llm_context").value = options.llmContext;
 }
-
-document.addEventListener("DOMContentLoaded", restoreOptions);
-document.querySelector("form")?.addEventListener("submit", saveOptions);

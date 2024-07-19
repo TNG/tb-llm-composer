@@ -49,13 +49,18 @@ export function mockBrowser(args: mockBrowserAndFetchArgs) {
     storage: {
       // @ts-ignore
       sync: {
-        get: jest
-          .fn()
-          .mockReturnValue(
-            args.params || args.options
-              ? { options: { ...defaultOptions, ...args.options, params: { ...defaultOptions.params, ...args.params } } }
-              : {},
-          ),
+        get: jest.fn().mockReturnValue(
+          args.params || args.options
+            ? {
+                options: {
+                  ...defaultOptions,
+                  ...args.options,
+                  params: { ...defaultOptions.params, ...args.options?.params, ...args.params },
+                },
+              }
+            : {},
+        ),
+        set: jest.fn(),
       },
     },
     // @ts-ignore
@@ -99,4 +104,74 @@ export function getExpectedRequestContent(args: expectRequestContentArgs = {}) {
     },
     method: "POST",
   };
+}
+
+export interface MockQuerySelectorValues {
+  url?: string;
+  contextWindow?: string;
+  apiToken?: string;
+  otherOptions?: string;
+  llmContext?: string;
+}
+
+interface MockNotification {
+  textContent: string | null;
+  style: { backgroundColor: string };
+  className: string;
+}
+
+const MOCK_EMPTY_NOTIFICATION: MockNotification = {
+  textContent: null,
+  style: { backgroundColor: "" },
+  className: "",
+};
+
+interface MockOptionsHTMLValues {
+  url: HTMLInputElement;
+  contextWindow: HTMLInputElement;
+  apiToken: HTMLInputElement;
+  otherOptions: HTMLInputElement;
+  llmContext: HTMLInputElement;
+}
+
+export function mockDocumentQuerySelector(values: MockQuerySelectorValues): MockOptionsHTMLValues {
+  const mockInputElements: MockOptionsHTMLValues = {
+    url: { value: values.url } as HTMLInputElement,
+    contextWindow: { value: values.contextWindow } as HTMLInputElement,
+    apiToken: { value: values.apiToken } as HTMLInputElement,
+    otherOptions: { value: values.otherOptions } as HTMLInputElement,
+    llmContext: { value: values.llmContext } as HTMLInputElement,
+  };
+
+  document.querySelector = function (selector: string): HTMLInputElement | null {
+    switch (selector) {
+      case "#url":
+        return mockInputElements.url;
+      case "#context_window":
+        return mockInputElements.contextWindow;
+      case "#api_token":
+        return mockInputElements.apiToken;
+      case "#other_options":
+        return mockInputElements.otherOptions;
+      case "#llm_context":
+        return mockInputElements.llmContext;
+      default:
+        throw Error(`Mock of querySelector for selector "${selector}" could not be found.`);
+    }
+  };
+
+  return mockInputElements;
+}
+
+export function mockDocumentGetElementById(notification: MockNotification = { ...MOCK_EMPTY_NOTIFICATION }): MockNotification {
+  document.getElementById = function (id: string): HTMLElement | null {
+    switch (id) {
+      case "notification":
+        return notification as HTMLElement;
+      default:
+        throw Error(`Mock of getElementById for id "${id}" could not be found.`);
+    }
+  };
+
+  return notification;
 }
