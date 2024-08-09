@@ -103,7 +103,6 @@ async function callLlmApi(
   token?: string,
 ): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
   const headers: { [key: string]: string } = { "Content-Type": "application/json" };
-  console.log("token: ", token);
   if (token) {
     headers.Authorization = "Bearer " + token;
   }
