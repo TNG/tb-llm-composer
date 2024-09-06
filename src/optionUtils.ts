@@ -48,7 +48,7 @@ export const defaultOptions: Options = {
   params: defaultParams,
   llmContext:
     "You are an AI language model asked to write an email.\n" +
-    "The email should be written in a professional manner and should be polite and respectful.\n" +
+    "The email should be concise.\n" +
     "In the reply, just include the email itself, no need to include the original text from the user.\n" +
     "Do not include the email subject in your reply.\n",
   include_recent_mails: true,
