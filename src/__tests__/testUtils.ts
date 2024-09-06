@@ -1,7 +1,5 @@
-import { DEFAULT_PROMPT, getSignatureInstructions, LlmRoles } from "../llmConnection";
+import { DEFAULT_PROMPT, LlmRoles } from "../llmConnection";
 import { defaultOptions, LlmParameters, Options } from "../optionUtils";
-
-const DEFAULT_TEST_SIGNATURE = "Test User Signature";
 
 interface expectRequestContentArgs {
   content?: string;
@@ -13,6 +11,7 @@ interface expectRequestContentArgs {
 interface mockBrowserAndFetchArgs extends expectRequestContentArgs {
   notOKResponse?: true;
   isPlainText?: boolean;
+  signature?: string;
 }
 
 export function mockBrowserAndFetch(args: mockBrowserAndFetchArgs = {}) {
@@ -28,7 +27,7 @@ export function mockBrowserAndFetch(args: mockBrowserAndFetchArgs = {}) {
     const fetchResponse = {
       messages: [
         {
-          content: (args.systemContext ?? defaultOptions.llmContext) + getSignatureInstructions(DEFAULT_TEST_SIGNATURE),
+          content: args.systemContext ?? defaultOptions.llmContext,
           role: LlmRoles.SYSTEM,
         },
         { content: args.content ?? DEFAULT_PROMPT, role: LlmRoles.USER },
@@ -64,7 +63,7 @@ export function mockBrowser(args: mockBrowserAndFetchArgs) {
       },
     },
     // @ts-ignore
-    identities: { get: jest.fn().mockReturnValue({ signature: DEFAULT_TEST_SIGNATURE }) },
+    identities: { get: jest.fn().mockReturnValue({ signature: args.signature }) },
     // @ts-ignore
     compose: {
       getComposeDetails: jest.fn().mockResolvedValue({ isPlainText: args.isPlainText !== false }),
@@ -87,7 +86,7 @@ export function getExpectedRequestContent(args: expectRequestContentArgs = {}) {
   const expectedRequestBody = {
     messages: [
       {
-        content: (args.systemContext ?? defaultOptions.llmContext) + getSignatureInstructions(DEFAULT_TEST_SIGNATURE),
+        content: args.systemContext ?? defaultOptions.llmContext,
         role: LlmRoles.SYSTEM,
       },
       { content: args.content ?? DEFAULT_PROMPT, role: LlmRoles.USER },
@@ -109,6 +108,7 @@ export function getExpectedRequestContent(args: expectRequestContentArgs = {}) {
 export interface MockQuerySelectorValues {
   url?: string;
   contextWindow?: string;
+  includeRecentMails?: boolean;
   apiToken?: string;
   otherOptions?: string;
   llmContext?: string;
@@ -129,6 +129,7 @@ const MOCK_EMPTY_NOTIFICATION: MockNotification = {
 interface MockOptionsHTMLValues {
   url: HTMLInputElement;
   contextWindow: HTMLInputElement;
+  includeRecentMails: HTMLInputElement;
   apiToken: HTMLInputElement;
   otherOptions: HTMLInputElement;
   llmContext: HTMLInputElement;
@@ -138,6 +139,7 @@ export function mockDocumentQuerySelector(values: MockQuerySelectorValues): Mock
   const mockInputElements: MockOptionsHTMLValues = {
     url: { value: values.url } as HTMLInputElement,
     contextWindow: { value: values.contextWindow } as HTMLInputElement,
+    includeRecentMails: { checked: values.includeRecentMails } as HTMLInputElement,
     apiToken: { value: values.apiToken } as HTMLInputElement,
     otherOptions: { value: values.otherOptions } as HTMLInputElement,
     llmContext: { value: values.llmContext } as HTMLInputElement,
@@ -149,6 +151,8 @@ export function mockDocumentQuerySelector(values: MockQuerySelectorValues): Mock
         return mockInputElements.url;
       case "#context_window":
         return mockInputElements.contextWindow;
+      case "#use_last_mails":
+        return mockInputElements.includeRecentMails;
       case "#api_token":
         return mockInputElements.apiToken;
       case "#other_options":

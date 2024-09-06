@@ -104,6 +104,7 @@ describe("The options functions", () => {
         model: "https://url.com",
         api_token: "abc",
         context_window: 2000,
+        include_recent_mails: false,
         params: { ...defaultOptions.params, temperature: 0.2 },
         llmContext: "My context",
       };
@@ -117,6 +118,7 @@ describe("The options functions", () => {
       expect(mockInputElements.url.value).toEqual(testOptions.model);
       expect(mockInputElements.apiToken.value).toEqual(testOptions.api_token);
       expect(mockInputElements.contextWindow.value).toEqual(`${testOptions.context_window}`);
+      expect(mockInputElements.includeRecentMails.checked).toEqual(testOptions.include_recent_mails);
       expect(JSON.parse(mockInputElements.otherOptions.value)).toEqual(testOptions.params);
       expect(mockInputElements.llmContext.value).toEqual(testOptions.llmContext);
     });

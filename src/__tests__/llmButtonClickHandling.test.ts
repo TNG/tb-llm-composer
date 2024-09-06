@@ -22,7 +22,7 @@ describe("The llmActionClickHandler", () => {
 
   test("calls communicateWithLlm", async () => {
     mockBrowser({});
-    (sendContentToLlm as jest.Mock<any, any>).mockResolvedValue(getTestResponse());
+    (sendContentToLlm as jest.Mock).mockResolvedValue(getTestResponse());
 
     await llmActionClickHandler(testTab);
 
@@ -39,7 +39,7 @@ describe("The llmActionClickHandler", () => {
 
   test("notifies errors", async () => {
     mockBrowser({});
-    (sendContentToLlm as jest.Mock<any, any>).mockResolvedValue(getErrorResponse());
+    (sendContentToLlm as jest.Mock).mockResolvedValue(getErrorResponse());
 
     await llmActionClickHandler(testTab);
 
@@ -53,7 +53,7 @@ describe("The llmActionClickHandler", () => {
 
   test("throws when used with html", async () => {
     mockBrowser({ isPlainText: false });
-    (sendContentToLlm as jest.Mock<any, any>).mockResolvedValue(getTestResponse());
+    (sendContentToLlm as jest.Mock).mockResolvedValue(getTestResponse());
 
     await llmActionClickHandler(testTab);
 

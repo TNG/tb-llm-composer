@@ -22,6 +22,7 @@ export interface Options {
   model: string;
   api_token?: string;
   context_window: number;
+  include_recent_mails: boolean;
   params: LlmParameters;
   llmContext: string;
 }
@@ -50,6 +51,7 @@ export const defaultOptions: Options = {
     "The email should be written in a professional manner and should be polite and respectful.\n" +
     "In the reply, just include the email itself, no need to include the original text from the user.\n" +
     "Do not include the email subject in your reply.\n",
+  include_recent_mails: true,
 };
 
 export async function getPluginOptions(): Promise<Options> {

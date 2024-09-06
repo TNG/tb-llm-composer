@@ -67,25 +67,40 @@ export interface TgiErrorResponse {
   };
 }
 
-export const DEFAULT_PROMPT = "Schreib die Partner, dass ich kündige, auf Deutsch.";
+export const DEFAULT_PROMPT = "Schreib den Partnern, dass ich kündige, auf Deutsch.";
 
-export async function sendContentToLlm(tabDetails: browser.compose.ComposeDetails) {
+export async function sendContentToLlm(tabDetails: browser.compose.ComposeDetails, oldMessages: string[]) {
   const options = await getPluginOptions();
 
-  const requestBody = await buildRequestBody(tabDetails, options);
+  const requestBody = await buildRequestBody(tabDetails, oldMessages, options);
 
   return callLlmApi(options.model, requestBody, options.api_token);
 }
 
-async function buildRequestBody(tabDetails: browser.compose.ComposeDetails, options: Options): Promise<LlmApiRequestBody> {
+function buildOldMessagesContext(oldMessages: string[]) {
+  return (
+    "\nFurthermore, here are some older messages to give you an idea of the style I'm writing in when talking to this person:\n" +
+    oldMessages.map((value, index) => `Message ${index}:\n` + value).join("\n\n")
+  );
+}
+
+async function buildRequestBody(
+  tabDetails: browser.compose.ComposeDetails,
+  oldMessages: string[],
+  options: Options,
+): Promise<LlmApiRequestBody> {
   const identity = await browser.identities.get(tabDetails.identityId as string);
-  const signatureInstructions = getSignatureInstructions(identity.signature);
+  const signatureInstructions = identity.signature ? getSignatureInstructions(identity.signature) : "";
+  const oldMessagesContext = options.include_recent_mails && oldMessages.length > 0 ? buildOldMessagesContext(oldMessages) : "";
   const context: LlmApiRequestMessage = {
-    content: options.llmContext + signatureInstructions,
+    content: options.llmContext + signatureInstructions + oldMessagesContext,
     role: LlmRoles.SYSTEM,
   };
 
-  const currentMessageContent: LlmApiRequestMessage = { content: tabDetails.plainTextBody || DEFAULT_PROMPT, role: LlmRoles.USER };
+  const currentMessageContent: LlmApiRequestMessage = {
+    content: tabDetails.plainTextBody || DEFAULT_PROMPT,
+    role: LlmRoles.USER,
+  };
 
   return {
     messages: [context, currentMessageContent],

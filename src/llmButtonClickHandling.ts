@@ -1,5 +1,7 @@
 import { isLlmTextcompletionResponse, LlmTextCompletionResponse, sendContentToLlm, TgiErrorResponse } from "./llmConnection";
 import { notifyOnError, timedNotification } from "./notifications";
+import { getSentMessages } from "./retrieveSentContext";
+import { getFirstRecipientMailAddress } from "./emailHelpers";
 import Tab = browser.tabs.Tab;
 import IconPath = browser._manifest.IconPath;
 
@@ -27,8 +29,16 @@ async function withButtonLoading(tabId: number, callback: () => Promise<any>) {
   await browser.composeAction.setIcon({ path: DEFAULT_ICONS });
 }
 
+async function getOldMessagesToFirstRecipient(tabDetails: browser.compose.ComposeDetails) {
+  const recipient = getFirstRecipientMailAddress(tabDetails);
+
+  return recipient ? await getSentMessages(recipient.toString()) : [];
+}
+
 async function communicateWithLlm(openTabId: number, tabDetails: browser.compose.ComposeDetails) {
-  const response = await sendContentToLlm(tabDetails);
+  const oldMessages = await getOldMessagesToFirstRecipient(tabDetails);
+
+  const response = await sendContentToLlm(tabDetails, oldMessages);
   if (isLlmTextcompletionResponse(response)) {
     await handleLlmSuccessResponse(openTabId, response as LlmTextCompletionResponse);
   } else {

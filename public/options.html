@@ -67,6 +67,8 @@
           bottom: 30px; /* 30px from the bottom */
       }
 
+      /* is used from javascript code */
+      /*noinspection CssUnusedSymbol */
       .notification.show {
           visibility: visible; /* Show the notification */
           -webkit-animation: fadein 0.5s, fadeout 0.5s 2.5s;
@@ -126,8 +128,15 @@
 
         <div class="settings-section">
           <h2>Context</h2>
-          <label for="llm_context">LLM Context:</label>
-          <textarea id="llm_context" name="llm context window"> </textarea>
+          <div class="form-group">
+            <label for="llm_context">LLM Context:</label>
+            <textarea id="llm_context" name="llm context window"> </textarea>
+          </div>
+          <div class="form-group">
+            <input type="checkbox" id="use_last_mails" name="use last mails">
+            <label for="use_last_mails" style="display: inline-block; margin-left: 5px">Use last few mails to same
+              recipient as context</label>
+          </div>
         </div>
 
         <div class="settings-section">
@@ -144,6 +153,7 @@
       </form>
       <div id="notification" class="notification"></div>
     </div>
+    <!--suppress HtmlUnknownTarget generated from ../src/options.ts-->
     <script src="../options.js"></script>
   </body>
 </html>

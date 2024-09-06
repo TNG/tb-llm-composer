@@ -40,11 +40,12 @@ export async function saveOptions(event: Event): Promise<void> {
     model: model,
     api_token: getInputElement("#api_token").value,
     context_window: parseInt(contextWindow),
+    include_recent_mails: getInputElement("#use_last_mails").checked,
     params: JSON.parse(getInputElement("#other_options").value),
     llmContext: getInputElement("#llm_context").value,
   } as Options;
 
-  // no await on purpose, otherwise the code does not work
+  // noinspection ES6MissingAwait deliberately trigger async call without await
   browser.storage.sync.set({
     options: options,
   });
@@ -57,6 +58,7 @@ export async function restoreOptions(): Promise<void> {
   getInputElement("#url").value = options.model;
   getInputElement("#api_token").value = options.api_token || "";
   getInputElement("#context_window").value = `${options.context_window}`;
+  getInputElement("#use_last_mails").checked = options.include_recent_mails;
   getInputElement("#other_options").value = JSON.stringify(options.params, null, 2);
   getInputElement("#llm_context").value = options.llmContext;
 }

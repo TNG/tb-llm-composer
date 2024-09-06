@@ -48,7 +48,13 @@ module.exports = (env, argv) => {
             to: path.resolve(__dirname, buildFolder),
             transform(input) {
               const content = input.toString();
-              return content.replace(new RegExp("(./)?" + buildFolder + "/", "g"), "");
+              // adjust relative paths in packaged manifest.json
+              let newContent = content.replace(new RegExp("(./)?" + buildFolder + "/", "g"), "");
+              if (isProductionMode) {
+                // remove "dev" suffixes in manifest.json for production build
+                newContent = newContent.replaceAll(" (dev)", "").replace("llm-thunderbird-dev@tngtech.com", "llm-thunderbird@tngtech.com");
+              }
+              return newContent;
             },
           },
         ],
