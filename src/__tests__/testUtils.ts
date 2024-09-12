@@ -12,6 +12,7 @@ interface mockBrowserAndFetchArgs extends expectRequestContentArgs {
   notOKResponse?: true;
   isPlainText?: boolean;
   signature?: string;
+  plainTextBody?: string;
 }
 
 export function mockBrowserAndFetch(args: mockBrowserAndFetchArgs = {}) {
@@ -66,7 +67,9 @@ export function mockBrowser(args: mockBrowserAndFetchArgs) {
     identities: { get: jest.fn().mockReturnValue({ signature: args.signature }) },
     // @ts-ignore
     compose: {
-      getComposeDetails: jest.fn().mockResolvedValue({ isPlainText: args.isPlainText !== false }),
+      getComposeDetails: jest
+        .fn()
+        .mockResolvedValue({ isPlainText: args.isPlainText !== false, plainTextBody: args.plainTextBody || undefined }),
       setComposeDetails: jest.fn(),
     },
     // @ts-ignore
