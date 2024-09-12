@@ -10,6 +10,7 @@
 ### Install dependencies
 
 In the project root run
+
 ```shell
 npm ci
 ```
@@ -55,28 +56,52 @@ In particular, when adding new top-level buttons, make them distinguishable for 
 
 ## Test Emails
 
+These emails can be used to test the plugin (you can also create your own, but copying these is faster). Send around
+the 2-3 emails between the two email addresses and then reply using the given prompt to test the plugin. One
+conversation is extremely informal, the second one is extremely formal. This will allow to test the plugin ability to
+adapt to the register of the previous emails.
+
 ### English Informal Conversation
+
 #### Mailer Starting Mail
+
+```text
 Hi,
 so about the barbeque on saturday, start at 11? Bring some beer ;)
 
 Cheers,
 John
+```
+
 #### Thunderbird Reply 1
+
+```text
 Sure, what do you prefer, Weiß or Pilz?
 
 Cheers,
 <your first name>
+```
+
 #### Mailer Reply
+
+```text
 Bring a bit of both, also some Helles would be nice.
 
-Cheers 
+Cheers
 John
+```
+
 #### Thunderbird Prompt
+
+```text
 ok, what about wine?
+```
 
 ### English Formal Conversation
+
 #### Thunderbird Starting Mail
+
+```text
 Dear Professor John Doe,
 
 I am writing to extend an esteemed invitation to participate in a
@@ -145,7 +170,11 @@ information or clarification.
 
 Sincerely,
 <your name>
+```
+
 #### Mailer Reply
+
+```text
 Dear <your name>,
 
 I am honored to accept your esteemed invitation to participate in the symposium "Software Engineering in the 20th Century: What Went Wrong" to be held on June 6th at the Motorworld in Munich. I am delighted to contribute to this academic gathering of distinguished experts in the field of software engineering.
@@ -160,5 +189,10 @@ Please do not hesitate to contact me if you require any additional information o
 
 Sincerely,
 Prof. John Doe
+```
+
 #### Thunderbird Prompt
+
+```text
 cool
+```
