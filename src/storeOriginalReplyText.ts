@@ -3,8 +3,10 @@ import Tab = browser.tabs.Tab;
 export const ORIGINAL_TAB_CONVERSATION: { [tab_id: string]: string } = {};
 
 export async function storeOriginalReplyText(tab: Tab): Promise<void> {
-  if (tab.type === "messageCompose") {
-    const openTabId = tab.id || 12312093;
+  const openTabId = tab.id || 12312093;
+  const composeDetails = await browser.compose.getComposeDetails(openTabId);
+
+  if (composeDetails.type === "reply") {
     const tabDetails = await browser.compose.getComposeDetails(openTabId);
 
     if (tabDetails.plainTextBody) {
@@ -14,6 +16,10 @@ export async function storeOriginalReplyText(tab: Tab): Promise<void> {
         : tabDetails.plainTextBody;
 
       ORIGINAL_TAB_CONVERSATION[openTabId] = previousConversationRaw.trim();
+
+      return;
     }
   }
+
+  delete ORIGINAL_TAB_CONVERSATION[openTabId];
 }

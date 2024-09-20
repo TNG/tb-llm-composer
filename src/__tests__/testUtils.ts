@@ -1,5 +1,6 @@
 import { DEFAULT_PROMPT, LlmRoles } from "../llmConnection";
 import { defaultOptions, LlmParameters, Options } from "../optionUtils";
+import ComposeDetails = browser.compose.ComposeDetails;
 
 interface expectRequestContentArgs {
   content?: string;
@@ -13,6 +14,7 @@ interface mockBrowserAndFetchArgs extends expectRequestContentArgs {
   isPlainText?: boolean;
   signature?: string;
   plainTextBody?: string;
+  composeDetailsType?: ComposeDetails["type"];
 }
 
 export function mockBrowserAndFetch(args: mockBrowserAndFetchArgs = {}) {
@@ -69,7 +71,11 @@ export function mockBrowser(args: mockBrowserAndFetchArgs) {
     compose: {
       getComposeDetails: jest
         .fn()
-        .mockResolvedValue({ isPlainText: args.isPlainText !== false, plainTextBody: args.plainTextBody || undefined }),
+        .mockResolvedValue({
+          isPlainText: args.isPlainText !== false,
+          plainTextBody: args.plainTextBody || undefined,
+          type: args.composeDetailsType,
+        }),
       setComposeDetails: jest.fn(),
     },
     // @ts-ignore

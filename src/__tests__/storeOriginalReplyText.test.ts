@@ -15,18 +15,8 @@ describe("The storeOriginalReplyText", () => {
     Object.keys(ORIGINAL_TAB_CONVERSATION).forEach((key) => delete ORIGINAL_TAB_CONVERSATION[key]);
   });
 
-  test("does not stores original tab conversation when tab type is not messageCompose", async () => {
-    mockBrowser({ plainTextBody: "Previous Conversation" });
-    expect(ORIGINAL_TAB_CONVERSATION).toEqual({});
-
-    const wrongTypeTab: Tab = { ...testTab, type: "mail" };
-    await storeOriginalReplyText(wrongTypeTab);
-
-    expect(ORIGINAL_TAB_CONVERSATION).toEqual({});
-  });
-
-  test("does not stores original tab conversation when there is no plainTextBody", async () => {
-    mockBrowser({});
+  test("does not stores original tab conversation when composeDetails.type is not reply", async () => {
+    mockBrowser({ plainTextBody: "Previous Conversation", composeDetailsType: "draft" });
     expect(ORIGINAL_TAB_CONVERSATION).toEqual({});
 
     await storeOriginalReplyText(testTab);
@@ -34,8 +24,17 @@ describe("The storeOriginalReplyText", () => {
     expect(ORIGINAL_TAB_CONVERSATION).toEqual({});
   });
 
-  test("stores original tab conversation when tab type is messageCompose", async () => {
-    mockBrowser({ plainTextBody: "Previous Conversation" });
+  test("does not stores original tab conversation when there is no plainTextBody", async () => {
+    mockBrowser({ composeDetailsType: "reply" });
+    expect(ORIGINAL_TAB_CONVERSATION).toEqual({});
+
+    await storeOriginalReplyText(testTab);
+
+    expect(ORIGINAL_TAB_CONVERSATION).toEqual({});
+  });
+
+  test("stores original tab conversation when composeDetails.type is reply", async () => {
+    mockBrowser({ plainTextBody: "Previous Conversation", composeDetailsType: "reply" });
     expect(ORIGINAL_TAB_CONVERSATION).toEqual({});
 
     await storeOriginalReplyText(testTab);
@@ -43,8 +42,17 @@ describe("The storeOriginalReplyText", () => {
     expect(ORIGINAL_TAB_CONVERSATION).toEqual({ [testTab.id as number]: "Previous Conversation" });
   });
 
+  test("removes leftover original tab conversation for the given id when composeDetails.type is not reply", async () => {
+    mockBrowser({ plainTextBody: "Previous Conversation", composeDetailsType: "draft" });
+    ORIGINAL_TAB_CONVERSATION[testTab.id as number] = "Previous Conversation";
+
+    await storeOriginalReplyText(testTab);
+
+    expect(ORIGINAL_TAB_CONVERSATION).toEqual({});
+  });
+
   test("stores original tab conversation without leading and tailing white spaces", async () => {
-    mockBrowser({ plainTextBody: " \t\n" + "Previous Conversation" + " \t\n" });
+    mockBrowser({ plainTextBody: " \t\n" + "Previous Conversation" + " \t\n", composeDetailsType: "reply" });
     expect(ORIGINAL_TAB_CONVERSATION).toEqual({});
 
     await storeOriginalReplyText(testTab);
@@ -53,6 +61,8 @@ describe("The storeOriginalReplyText", () => {
   });
 
   test("stores original tab conversation removing the tailing signature", async () => {
+    const signature = "My\nAwesome\nSignature";
+    mockBrowser({ plainTextBody: "\n" + "Previous Conversation" + "\n\n-- \n" + signature, signature, composeDetailsType: "reply" });
     expect(ORIGINAL_TAB_CONVERSATION).toEqual({});
 
     await storeOriginalReplyText(testTab);
@@ -62,7 +72,7 @@ describe("The storeOriginalReplyText", () => {
 
   test("stores original tab conversation removing the leading signature", async () => {
     const signature = "My\nAwesome\nSignature";
-    mockBrowser({ plainTextBody: "\n\n-- \n" + signature + "\n" + "Previous Conversation", signature });
+    mockBrowser({ plainTextBody: "\n\n-- \n" + signature + "\n" + "Previous Conversation", signature, composeDetailsType: "reply" });
     expect(ORIGINAL_TAB_CONVERSATION).toEqual({});
 
     await storeOriginalReplyText(testTab);
