@@ -116,7 +116,7 @@ As a renowned authority in the realm of software engineering, your
 presence at this symposium would be a valuable addition to the esteemed
 gathering of scholars, researchers, and industry leaders. Your
 contributions to the field, as evident in your seminal works on
-engeieering of operating systems, have had a profound impact on the
+engineering of operating systems, have had a profound impact on the
 development of software engineering principles and practices. Your
 unique perspective and insights would undoubtedly enrich the discussions
 and debates that will unfold during the symposium.

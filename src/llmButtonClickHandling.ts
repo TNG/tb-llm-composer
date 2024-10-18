@@ -1,8 +1,8 @@
-import { isLlmTextcompletionResponse, LlmTextCompletionResponse, sendContentToLlm, TgiErrorResponse } from "./llmConnection";
+import { isLlmTextCompletionResponse, LlmTextCompletionResponse, sendContentToLlm, TgiErrorResponse } from "./llmConnection";
 import { notifyOnError, timedNotification } from "./notifications";
 import { getSentMessages } from "./retrieveSentContext";
 import { getFirstRecipientMailAddress } from "./emailHelpers";
-import { getOriginalTabConversationCacheContent } from "./storeOriginalReplyText";
+import { getOriginalTabConversation } from "./storeOriginalReplyText";
 import Tab = browser.tabs.Tab;
 import IconPath = browser._manifest.IconPath;
 
@@ -39,8 +39,9 @@ async function getOldMessagesToFirstRecipient(tabDetails: browser.compose.Compos
 async function communicateWithLlm(openTabId: number, tabDetails: browser.compose.ComposeDetails) {
   const oldMessages = await getOldMessagesToFirstRecipient(tabDetails);
 
-  const response = await sendContentToLlm(tabDetails, oldMessages);
-  if (isLlmTextcompletionResponse(response)) {
+  const previousConversation = await getOriginalTabConversation(openTabId);
+  const response = await sendContentToLlm(tabDetails, oldMessages, previousConversation);
+  if (isLlmTextCompletionResponse(response)) {
     await handleLlmSuccessResponse(openTabId, response as LlmTextCompletionResponse);
   } else {
     handleLlmErrorResponse(response as TgiErrorResponse);
@@ -48,9 +49,16 @@ async function communicateWithLlm(openTabId: number, tabDetails: browser.compose
 }
 
 async function handleLlmSuccessResponse(tabId: number, response: LlmTextCompletionResponse) {
-  const cleanedUpResponse = removeUntilFirstAlphabeticalIncludingSpacesNewlines(response.choices[0].message.content);
-  const originalContent = (await getOriginalTabConversationCacheContent())[tabId];
-  const responseWithPreviousConversation = cleanedUpResponse + (originalContent ? "\n\n" + originalContent : "");
+  const tabDetails = await browser.compose.getComposeDetails(tabId);
+  const identity = await browser.identities.get(tabDetails.identityId as string);
+
+  const responseWithoutSignature = identity.signature
+    ? response.choices[0].message.content.replace(identity.signature, "")
+    : response.choices[0].message.content;
+  const cleanedUpResponsePlusSignature =
+    removeUntilFirstAlphabeticalIncludingSpacesNewlines(responseWithoutSignature) + "\n\n-- \n" + identity.signature;
+  const originalContent = await getOriginalTabConversation(tabId);
+  const responseWithPreviousConversation = cleanedUpResponsePlusSignature + (originalContent ? "\n\n" + originalContent : "");
 
   await browser.compose.setComposeDetails(tabId, {
     plainTextBody: responseWithPreviousConversation,

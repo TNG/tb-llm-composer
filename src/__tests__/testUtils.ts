@@ -4,6 +4,7 @@ import ComposeDetails = browser.compose.ComposeDetails;
 
 interface expectRequestContentArgs {
   content?: string;
+  previousConversation?: string;
   systemContext?: string;
   options?: Partial<Options>;
   params?: Partial<LlmParameters>;
@@ -102,13 +103,25 @@ export function mockBrowser(args: mockBrowserAndFetchArgs) {
 }
 
 export function getExpectedRequestContent(args: expectRequestContentArgs = {}) {
+  let content = args.content
+    ? "This is what the user wants to be in its reply, everything must be included explicitly:\n" + args.content
+    : "";
+  if (args.previousConversation) {
+    content +=
+      "\nThis is the conversation the user is replying to, keep the content in mind but do not include them in your suggestion:\n" +
+      args.previousConversation;
+  }
+  if (content === "") {
+    content = DEFAULT_PROMPT;
+  }
+
   const expectedRequestBody = {
     messages: [
       {
         content: args.systemContext ?? defaultOptions.llmContext,
         role: LlmRoles.SYSTEM,
       },
-      { content: args.content ?? DEFAULT_PROMPT, role: LlmRoles.USER },
+      { content, role: LlmRoles.USER },
     ],
     ...defaultOptions.params,
     ...args.params,

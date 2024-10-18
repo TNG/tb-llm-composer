@@ -69,36 +69,35 @@ export interface TgiErrorResponse {
 
 export const DEFAULT_PROMPT = "Schreib den Partnern, dass ich kündige, auf Deutsch.";
 
-export async function sendContentToLlm(tabDetails: browser.compose.ComposeDetails, oldMessages: string[]) {
+export async function sendContentToLlm(
+  tabDetails: browser.compose.ComposeDetails,
+  oldMessages: string[],
+  previousConversation: string | undefined,
+) {
   const options = await getPluginOptions();
 
-  const requestBody = await buildRequestBody(tabDetails, oldMessages, options);
+  const requestBody = await buildRequestBody(tabDetails, oldMessages, previousConversation, options);
 
   return callLlmApi(options.model, requestBody, options.api_token);
-}
-
-function buildOldMessagesContext(oldMessages: string[]) {
-  return (
-    "\nFurthermore, here are some older messages to give you an idea of the style I'm writing in when talking to this person:\n" +
-    oldMessages.map((value, index) => `Message ${index}:\n` + value).join("\n\n")
-  );
 }
 
 async function buildRequestBody(
   tabDetails: browser.compose.ComposeDetails,
   oldMessages: string[],
+  previousConversation: string | undefined,
   options: Options,
 ): Promise<LlmApiRequestBody> {
   const identity = await browser.identities.get(tabDetails.identityId as string);
-  const signatureInstructions = identity.signature ? getSignatureInstructions(identity.signature) : "";
   const oldMessagesContext = options.include_recent_mails && oldMessages.length > 0 ? buildOldMessagesContext(oldMessages) : "";
   const context: LlmApiRequestMessage = {
-    content: options.llmContext + signatureInstructions + oldMessagesContext,
+    content: options.llmContext + oldMessagesContext,
     role: LlmRoles.SYSTEM,
   };
 
   const currentMessageContent: LlmApiRequestMessage = {
-    content: tabDetails.plainTextBody || DEFAULT_PROMPT,
+    content: tabDetails.plainTextBody
+      ? buildEmailPrompt(tabDetails.plainTextBody, identity.signature, previousConversation)
+      : DEFAULT_PROMPT,
     role: LlmRoles.USER,
   };
 
@@ -108,8 +107,27 @@ async function buildRequestBody(
   };
 }
 
-export function getSignatureInstructions(signature: string | undefined): string {
-  return "\nThe user signature should appear as is at the end of the email. Their signature is:\n " + signature;
+function buildEmailPrompt(plainText: string, signature: string | undefined, previousConversation: string | undefined): string {
+  const textWithoutSignature = signature ? plainText.replace(signature, "") : plainText;
+  const textWithoutPreviousConversation = previousConversation
+    ? textWithoutSignature.replace(previousConversation, "")
+    : textWithoutSignature;
+
+  return (
+    "This is what the user wants to be in its reply, everything must be included explicitly:\n" +
+    textWithoutPreviousConversation.trim() +
+    (previousConversation
+      ? "\nThis is the conversation the user is replying to, keep the content in mind but do not include them in your suggestion:\n" +
+        previousConversation
+      : "")
+  );
+}
+
+function buildOldMessagesContext(oldMessages: string[]) {
+  return (
+    "Furthermore, here are some older messages to give you an idea of the style I'm writing in when talking to this person:\n" +
+    oldMessages.map((value, index) => `Message ${index}:\n` + value).join("\n\n")
+  );
 }
 
 async function callLlmApi(
@@ -133,6 +151,6 @@ async function callLlmApi(
   return (await response.json()) as LlmTextCompletionResponse | TgiErrorResponse;
 }
 
-export function isLlmTextcompletionResponse(response: LlmTextCompletionResponse | TgiErrorResponse) {
+export function isLlmTextCompletionResponse(response: LlmTextCompletionResponse | TgiErrorResponse) {
   return "id" in response;
 }
