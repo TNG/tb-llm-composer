@@ -53,61 +53,89 @@
         background-color: #0056b3;
       }
       .notification {
-          visibility: hidden; /* Hidden by default */
-          min-width: 250px; /* Set a minimum width */
-          margin-left: -125px; /* Negative half of the width to center it */
-          background-color: #f44336; /* Red background by default */
-          color: #fff; /* Text color */
-          text-align: center; /* Centered text */
-          border-radius: 2px; /* Rounded borders */
-          padding: 16px; /* Padding */
-          position: fixed; /* Sit on top of the screen */
-          z-index: 1; /* Add a z-index if needed */
-          left: 50%; /* Center the div on the screen */
-          bottom: 30px; /* 30px from the bottom */
+        visibility: hidden; /* Hidden by default */
+        min-width: 250px; /* Set a minimum width */
+        margin-left: -125px; /* Negative half of the width to center it */
+        background-color: #f44336; /* Red background by default */
+        color: #fff; /* Text color */
+        text-align: center; /* Centered text */
+        border-radius: 2px; /* Rounded borders */
+        padding: 16px; /* Padding */
+        position: fixed; /* Sit on top of the screen */
+        z-index: 1; /* Add a z-index if needed */
+        left: 50%; /* Center the div on the screen */
+        bottom: 30px; /* 30px from the bottom */
       }
 
       /* is used from javascript code */
       /*noinspection CssUnusedSymbol */
       .notification.show {
-          visibility: visible; /* Show the notification */
-          -webkit-animation: fadein 0.5s, fadeout 0.5s 2.5s;
-          animation: fadein 0.5s, fadeout 0.5s 2.5s;
+        visibility: visible; /* Show the notification */
+        -webkit-animation:
+          fadein 0.5s,
+          fadeout 0.5s 2.5s;
+        animation:
+          fadein 0.5s,
+          fadeout 0.5s 2.5s;
       }
 
-      textarea{
+      textarea {
         width: 90%;
         padding: 8px;
         border: 1px solid #000;
         border-radius: 4px;
       }
 
-      #other_options{
+      #other_options {
         height: 300px;
       }
 
-      #llm_context{
+      #llm_context {
         height: 150px;
       }
 
       @-webkit-keyframes fadein {
-          from {bottom: 0; opacity: 0;}
-          to {bottom: 30px; opacity: 1;}
+        from {
+          bottom: 0;
+          opacity: 0;
+        }
+        to {
+          bottom: 30px;
+          opacity: 1;
+        }
       }
 
       @keyframes fadein {
-          from {bottom: 0; opacity: 0;}
-          to {bottom: 30px; opacity: 1;}
+        from {
+          bottom: 0;
+          opacity: 0;
+        }
+        to {
+          bottom: 30px;
+          opacity: 1;
+        }
       }
 
       @-webkit-keyframes fadeout {
-          from {bottom: 30px; opacity: 1;}
-          to {bottom: 0; opacity: 0;}
+        from {
+          bottom: 30px;
+          opacity: 1;
+        }
+        to {
+          bottom: 0;
+          opacity: 0;
+        }
       }
 
       @keyframes fadeout {
-          from {bottom: 30px; opacity: 1;}
-          to {bottom: 0; opacity: 0;}
+        from {
+          bottom: 30px;
+          opacity: 1;
+        }
+        to {
+          bottom: 0;
+          opacity: 0;
+        }
       }
     </style>
   </head>
@@ -133,9 +161,10 @@
             <textarea id="llm_context" name="llm context window"> </textarea>
           </div>
           <div class="form-group">
-            <input type="checkbox" id="use_last_mails" name="use last mails">
-            <label for="use_last_mails" style="display: inline-block; margin-left: 5px">Use last few mails to same
-              recipient as context</label>
+            <input type="checkbox" id="use_last_mails" name="use last mails" />
+            <label for="use_last_mails" style="display: inline-block; margin-left: 5px"
+              >Use last few mails to same recipient as context</label
+            >
           </div>
         </div>
 

@@ -69,13 +69,11 @@ export function mockBrowser(args: mockBrowserAndFetchArgs) {
     identities: { get: jest.fn().mockReturnValue({ signature: args.signature }) },
     // @ts-ignore
     compose: {
-      getComposeDetails: jest
-        .fn()
-        .mockResolvedValue({
-          isPlainText: args.isPlainText !== false,
-          plainTextBody: args.plainTextBody || undefined,
-          type: args.composeDetailsType,
-        }),
+      getComposeDetails: jest.fn().mockResolvedValue({
+        isPlainText: args.isPlainText !== false,
+        plainTextBody: args.plainTextBody || undefined,
+        type: args.composeDetailsType,
+      }),
       setComposeDetails: jest.fn(),
     },
     // @ts-ignore
