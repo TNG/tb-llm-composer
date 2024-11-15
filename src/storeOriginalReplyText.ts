@@ -1,25 +1,36 @@
 import Tab = browser.tabs.Tab;
 
-export const ORIGINAL_TAB_CONVERSATION: { [tab_id: string]: string } = {};
+const cacheName = "ORIGINAL_TAB_CONVERSATION";
 
-export async function storeOriginalReplyText(tab: Tab): Promise<void> {
-  const openTabId = tab.id || 12312093;
-  const composeDetails = await browser.compose.getComposeDetails(openTabId);
+export async function getOriginalTabConversationCacheContent() {
+  return (await browser.storage.local.get(cacheName)) || {};
+}
 
-  if (composeDetails.type === "reply") {
-    const tabDetails = await browser.compose.getComposeDetails(openTabId);
+export async function updateOriginalTabCache(tabId: number, content: string): Promise<void> {
+  const cache = await getOriginalTabConversationCacheContent();
+  cache[tabId] = content;
+  await browser.storage.local.set({ [cacheName]: cache });
+}
 
-    if (tabDetails.plainTextBody) {
+export async function deleteFromOriginalTabCache(tabId: number): Promise<void> {
+  const cache = await getOriginalTabConversationCacheContent();
+  delete cache[tabId];
+  await browser.storage.local.set({ [cacheName]: cache });
+}
+
+export async function clearOriginalTabCache(): Promise<void> {
+  await browser.storage.local.remove(cacheName);
+}
+
+export async function storeOriginalReplyText(tab: Tab) {
+  if (tab.id) {
+    const tabDetails = await browser.compose.getComposeDetails(tab.id);
+    if (tabDetails.type === "reply" && tabDetails.plainTextBody) {
       const identity = await browser.identities.get(tabDetails.identityId as string);
       const previousConversationRaw = identity.signature
         ? tabDetails.plainTextBody.replace("-- \n" + identity.signature, "")
         : tabDetails.plainTextBody;
-
-      ORIGINAL_TAB_CONVERSATION[openTabId] = previousConversationRaw.trim();
-
-      return;
+      await updateOriginalTabCache(tab.id, previousConversationRaw.trim());
     }
   }
-
-  delete ORIGINAL_TAB_CONVERSATION[openTabId];
 }

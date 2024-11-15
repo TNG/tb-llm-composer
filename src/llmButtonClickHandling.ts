@@ -2,7 +2,7 @@ import { isLlmTextcompletionResponse, LlmTextCompletionResponse, sendContentToLl
 import { notifyOnError, timedNotification } from "./notifications";
 import { getSentMessages } from "./retrieveSentContext";
 import { getFirstRecipientMailAddress } from "./emailHelpers";
-import { ORIGINAL_TAB_CONVERSATION } from "./storeOriginalReplyText";
+import { getOriginalTabConversationCacheContent } from "./storeOriginalReplyText";
 import Tab = browser.tabs.Tab;
 import IconPath = browser._manifest.IconPath;
 
@@ -49,8 +49,8 @@ async function communicateWithLlm(openTabId: number, tabDetails: browser.compose
 
 async function handleLlmSuccessResponse(tabId: number, response: LlmTextCompletionResponse) {
   const cleanedUpResponse = removeUntilFirstAlphabeticalIncludingSpacesNewlines(response.choices[0].message.content);
-  const responseWithPreviousConversation =
-    cleanedUpResponse + (ORIGINAL_TAB_CONVERSATION[tabId] ? "\n\n" + ORIGINAL_TAB_CONVERSATION[tabId] : "");
+  const originalContent = (await getOriginalTabConversationCacheContent())[tabId];
+  const responseWithPreviousConversation = cleanedUpResponse + (originalContent ? "\n\n" + originalContent : "");
 
   await browser.compose.setComposeDetails(tabId, {
     plainTextBody: responseWithPreviousConversation,
