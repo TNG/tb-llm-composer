@@ -3,7 +3,8 @@ import Tab = browser.tabs.Tab;
 const cacheName = "ORIGINAL_TAB_CONVERSATION";
 
 export async function getOriginalTabConversationCacheContent(): Promise<{[key: number]: string}> {
-  return (await browser.storage.local.get(cacheName)) || {};
+  const rawCache = await browser.storage.local.get(cacheName);
+  return rawCache[cacheName] || {};
 }
 
 export async function getOriginalTabConversation(tabId: number): Promise<string> {

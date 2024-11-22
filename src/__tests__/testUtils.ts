@@ -70,7 +70,7 @@ export function mockBrowser(args: mockBrowserAndFetchArgs) {
       // @ts-ignore
       local: {
         // @ts-ignore
-        get: async (key) => (localStore[key]),
+        get: async (key) => ({[key]: localStore[key]}),
         set: async (items: {[key: string]: any}) => {
           Object.entries(items).forEach(([k, v]) => localStore[k] = v)
         },
