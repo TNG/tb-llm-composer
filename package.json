@@ -1,6 +1,6 @@
 {
   "name": "llm-thunderbird",
-  "version": "0.2.0RC1",
+  "version": "0.2.0",
   "description": "A Thunderbird extension enabling LLM support while writing E-Mails",
   "main": "background.js",
   "scripts": {
