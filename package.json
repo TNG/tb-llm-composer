@@ -36,6 +36,7 @@
     "jest-environment-jsdom": "^29.7.0",
     "prettier": "3.2.5",
     "run-script-os": "^1.1.6",
+    "terser-webpack-plugin": "^5.3.10",
     "ts-jest": "^29.2.5",
     "ts-loader": "^9.5.1",
     "webpack": "^5.95.0",

@@ -1,5 +1,6 @@
 const CopyWebpackPlugin = require("copy-webpack-plugin");
 const path = require("path");
+const TerserPlugin = require("terser-webpack-plugin");
 const buildFolder = "build";
 
 module.exports = (env, argv) => {
@@ -60,5 +61,17 @@ module.exports = (env, argv) => {
         ],
       }),
     ],
+    optimization: {
+      minimize: isProductionMode,
+      minimizer: [
+        new TerserPlugin({
+          terserOptions: {
+            compress: {
+              drop_console: ['log', 'info']
+            }
+          }
+        })
+      ],
+    },
   };
 };

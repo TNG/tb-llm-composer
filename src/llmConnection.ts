@@ -81,6 +81,12 @@ export async function sendContentToLlm(
   return callLlmApi(options.model, requestBody, options.api_token);
 }
 
+/**
+ * Build the request body for interacting with the LLM
+ *
+ * ,
+ *
+ */
 async function buildRequestBody(
   tabDetails: browser.compose.ComposeDetails,
   oldMessages: string[],
@@ -139,16 +145,19 @@ async function callLlmApi(
   if (token) {
     headers.Authorization = "Bearer " + token;
   }
+  console.log(`LLM-CONNECTION: Sending request to LLM: POST ${url} with body`, requestBody)
   const response = await fetch(url, {
     method: "POST",
     headers: headers,
     body: JSON.stringify(requestBody),
   });
   if (!response.ok) {
-    throw Error(`Error response from ${url}: ${await response.text()}`);
+    const errorResponseBody = await response.text();
+    throw Error(`LLM-CONNECTION: Error response from ${url}: ${errorResponseBody}`);
   }
-
-  return (await response.json()) as LlmTextCompletionResponse | TgiErrorResponse;
+  const responseBody = (await response.json()) as LlmTextCompletionResponse | TgiErrorResponse;
+  console.log("LLM-CONNECTION: LLM responded with:", response.status, responseBody)
+  return responseBody;
 }
 
 export function isLlmTextCompletionResponse(response: LlmTextCompletionResponse | TgiErrorResponse) {
