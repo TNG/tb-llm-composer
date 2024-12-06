@@ -60,10 +60,11 @@ describe("The storeOriginalReplyText", () => {
     expect(await getOriginalTabConversationCacheContent()).toEqual({ [testTab.id as number]: "Previous Conversation" });
   });
 
-  test("stores original tab conversation removing the tailing signature", async () => {
+  test("stores original tab conversation including the tailing signature", async () => {
     const signature = "My\nAwesome\nSignature";
-    mockBrowser({
-      plainTextBody: "\n" + "Previous Conversation" + "\n\n-- \n" + signature,
+    const plainTextBodyNoLeadingNewLine = "Previous Conversation" + "\n\n-- \n" + signature;
+    const plainTextBody = "\n" + plainTextBodyNoLeadingNewLine;
+    mockBrowser({ plainTextBody,
       signature,
       composeDetailsType: "reply",
     });
@@ -71,13 +72,14 @@ describe("The storeOriginalReplyText", () => {
 
     await storeOriginalReplyText(testTab);
 
-    expect(await getOriginalTabConversationCacheContent()).toEqual({ [testTab.id as number]: "Previous Conversation" });
+    expect(await getOriginalTabConversationCacheContent()).toEqual({ [testTab.id as number]: plainTextBodyNoLeadingNewLine });
   });
 
-  test("stores original tab conversation removing the leading signature", async () => {
+  test("stores original tab conversation including the leading signature", async () => {
     const signature = "My\nAwesome\nSignature";
-    mockBrowser({
-      plainTextBody: "\n\n-- \n" + signature + "\n" + "Previous Conversation",
+    const plainTextBodyNoLeadingNewLines = signature + "\n" + "Previous Conversation";
+    const plainTextBody = "\n\n" + plainTextBodyNoLeadingNewLines;
+    mockBrowser({ plainTextBody,
       signature,
       composeDetailsType: "reply",
     });
@@ -85,7 +87,7 @@ describe("The storeOriginalReplyText", () => {
 
     await storeOriginalReplyText(testTab);
 
-    expect(await getOriginalTabConversationCacheContent()).toEqual({ [testTab.id as number]: "Previous Conversation" });
+    expect(await getOriginalTabConversationCacheContent()).toEqual({ [testTab.id as number]: plainTextBodyNoLeadingNewLines });
   });
 });
 

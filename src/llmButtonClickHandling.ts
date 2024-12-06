@@ -51,22 +51,23 @@ async function communicateWithLlm(openTabId: number, tabDetails: browser.compose
 async function handleLlmSuccessResponse(tabId: number, response: LlmTextCompletionResponse) {
   const tabDetails = await browser.compose.getComposeDetails(tabId);
   const identity = await browser.identities.get(tabDetails.identityId as string);
+  const signature: string | undefined = identity.signature;
 
-  const responseWithoutSignature = identity.signature
-    ? response.choices[0].message.content.replace(identity.signature, "")
-    : response.choices[0].message.content;
-  const cleanedUpResponsePlusSignature =
-    removeUntilFirstAlphabeticalIncludingSpacesNewlines(responseWithoutSignature) + "\n\n-- \n" + identity.signature;
   const originalContent = await getOriginalTabConversation(tabId);
-  const responseWithPreviousConversation = cleanedUpResponsePlusSignature + (originalContent ? "\n\n" + originalContent : "");
+  const cleanedUpGeneratedEmail = await getCleanedUpGeneratedEmail(response, signature);
+  const fullEmail = `${cleanedUpGeneratedEmail}${originalContent ? `\n\n${originalContent}` : ""}${!originalContent ? `\n\n${signature} ` : ""}`;
 
   await browser.compose.setComposeDetails(tabId, {
-    plainTextBody: responseWithPreviousConversation,
+    plainTextBody: fullEmail,
   });
 }
 
-function removeUntilFirstAlphabeticalIncludingSpacesNewlines(str: string) {
-  return str.replace(/^[^a-zA-Z]*[\s\n]*/, "");
+async function getCleanedUpGeneratedEmail(response: LlmTextCompletionResponse, signature: string | undefined) {
+  const responseWithoutSignature = signature
+    ? response.choices[0].message.content.replace(signature, "")
+    : response.choices[0].message.content;
+
+  return responseWithoutSignature.replace(/^\s*/, "");
 }
 
 function handleLlmErrorResponse(response: TgiErrorResponse) {

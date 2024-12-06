@@ -75,7 +75,7 @@ export function mockBrowser(args: mockBrowserAndFetchArgs) {
           Object.entries(items).forEach(([k, v]) => (localStore[k] = v));
         },
         // @ts-ignore
-        remove: async (k) => {
+        remove: async (k: string) => {
           delete localStore[k];
         },
       },

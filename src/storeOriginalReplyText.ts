@@ -35,11 +35,7 @@ export async function storeOriginalReplyText(tab: Tab) {
   if (tab.id) {
     const tabDetails = await browser.compose.getComposeDetails(tab.id);
     if (tabDetails.type === "reply" && tabDetails.plainTextBody) {
-      const identity = await browser.identities.get(tabDetails.identityId as string);
-      const previousConversationRaw = identity.signature
-        ? tabDetails.plainTextBody.replace("-- \n" + identity.signature, "")
-        : tabDetails.plainTextBody;
-      await updateOriginalTabCache(tab.id, previousConversationRaw.trim());
+      await updateOriginalTabCache(tab.id, tabDetails.plainTextBody.trim());
     }
   }
 }
