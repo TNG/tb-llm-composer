@@ -105,12 +105,10 @@ export function mockBrowser(args: mockBrowserAndFetchArgs) {
 }
 
 export function getExpectedRequestContent(args: expectRequestContentArgs = {}) {
-  let content = args.content
-    ? "This is what the user wants to be in its reply, everything must be included explicitly:\n" + args.content
-    : "";
+  let content = args.content ? "This is what the user wants to be the content of their email to be:\n" + args.content : "";
   if (args.previousConversation) {
     content +=
-      "\nThis is the conversation the user is replying to, keep the content in mind but do not include them in your suggestion:\n" +
+      "\nThis is the conversation the user is replying to. Keep its content in mind but do not include it in your suggestion:\n" +
       args.previousConversation;
   }
   if (content === "") {

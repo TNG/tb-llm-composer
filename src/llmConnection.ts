@@ -120,10 +120,10 @@ function buildEmailPrompt(plainText: string, signature: string | undefined, prev
     : textWithoutSignature;
 
   return (
-    "This is what the user wants to be in its reply, everything must be included explicitly:\n" +
+    "This is what the user wants to be the content of their email to be:\n" +
     textWithoutPreviousConversation.trim() +
     (previousConversation
-      ? "\nThis is the conversation the user is replying to, keep the content in mind but do not include them in your suggestion:\n" +
+      ? "\nThis is the conversation the user is replying to. Keep its content in mind but do not include it in your suggestion:\n" +
         previousConversation
       : "")
   );

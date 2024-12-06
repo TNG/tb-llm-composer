@@ -48,8 +48,10 @@ export const defaultOptions: Options = {
   llmContext:
     "You are an AI language model asked to write an email.\n" +
     "The email should be concise.\n" +
-    "In the reply, just include the email itself, no need to include the original text from the user.\n" +
-    "Do not include the email subject in your reply.\n",
+    "Please write the email in the following format:\n" +
+    "[Initial salutation with Recipient's Name],\n\n" +
+    "[Body of the email]\n\n" +
+    "[Salutation]\n[Your Name]",
   include_recent_mails: true,
 };
 
