@@ -30,11 +30,10 @@ export interface Options {
 export const defaultParams: LlmParameters = {
   best_of: 1,
   decoder_input_details: true,
-  logprobs: 3,
   max_new_tokens: 2000,
   repetition_penalty: 1.03,
   return_full_text: false,
-  temperature: 0.5,
+  temperature: 0.2,
   top_k: 10,
   top_p: 0.95,
   typical_p: 0.95,
