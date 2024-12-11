@@ -4,4 +4,4 @@ import { deleteFromOriginalTabCache, storeOriginalReplyText } from "./storeOrigi
 browser.composeAction.onClicked.addListener(llmActionClickHandler);
 
 browser.tabs.onCreated.addListener(storeOriginalReplyText);
-browser.tabs.onRemoved.addListener(deleteFromOriginalTabCache)
+browser.tabs.onRemoved.addListener(deleteFromOriginalTabCache);

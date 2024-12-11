@@ -62,7 +62,11 @@ describe("The storeOriginalReplyText", () => {
 
   test("stores original tab conversation removing the tailing signature", async () => {
     const signature = "My\nAwesome\nSignature";
-    mockBrowser({ plainTextBody: "\n" + "Previous Conversation" + "\n\n-- \n" + signature, signature, composeDetailsType: "reply" });
+    mockBrowser({
+      plainTextBody: "\n" + "Previous Conversation" + "\n\n-- \n" + signature,
+      signature,
+      composeDetailsType: "reply",
+    });
     expect(await getOriginalTabConversationCacheContent()).toEqual({});
 
     await storeOriginalReplyText(testTab);
@@ -72,7 +76,11 @@ describe("The storeOriginalReplyText", () => {
 
   test("stores original tab conversation removing the leading signature", async () => {
     const signature = "My\nAwesome\nSignature";
-    mockBrowser({ plainTextBody: "\n\n-- \n" + signature + "\n" + "Previous Conversation", signature, composeDetailsType: "reply" });
+    mockBrowser({
+      plainTextBody: "\n\n-- \n" + signature + "\n" + "Previous Conversation",
+      signature,
+      composeDetailsType: "reply",
+    });
     expect(await getOriginalTabConversationCacheContent()).toEqual({});
 
     await storeOriginalReplyText(testTab);

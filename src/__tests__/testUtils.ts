@@ -47,7 +47,7 @@ export function mockBrowserAndFetch(args: mockBrowserAndFetchArgs = {}) {
   }
 }
 
-const localStore: {[key: string]: any} = {}
+const localStore: { [key: string]: any } = {};
 
 export function mockBrowser(args: mockBrowserAndFetchArgs) {
   global.browser = {
@@ -70,13 +70,15 @@ export function mockBrowser(args: mockBrowserAndFetchArgs) {
       // @ts-ignore
       local: {
         // @ts-ignore
-        get: async (key) => ({[key]: localStore[key]}),
-        set: async (items: {[key: string]: any}) => {
-          Object.entries(items).forEach(([k, v]) => localStore[k] = v)
+        get: async (key) => ({ [key]: localStore[key] }),
+        set: async (items: { [key: string]: any }) => {
+          Object.entries(items).forEach(([k, v]) => (localStore[k] = v));
         },
         // @ts-ignore
-        remove: async (k) => {delete localStore[k]}
-      }
+        remove: async (k) => {
+          delete localStore[k];
+        },
+      },
     },
     // @ts-ignore
     identities: { get: jest.fn().mockReturnValue({ signature: args.signature }) },
