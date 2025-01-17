@@ -1,6 +1,10 @@
-import { mockBrowser, mockDocumentGetElementById, mockDocumentQuerySelector, MockQuerySelectorValues } from "./testUtils";
-import { restoreOptions, saveOptions } from "../options";
-import { defaultOptions, Options } from "../optionUtils";
+import {
+  mockBrowser,
+  mockDocumentGetElementById,
+  mockDocumentQuerySelector,
+  MockQuerySelectorValues
+} from "./testUtils";
+import { defaultOptions, Options, restoreOptions, saveOptions } from "../options";
 import clearAllMocks = jest.clearAllMocks;
 
 const originalBrowser = global.browser;

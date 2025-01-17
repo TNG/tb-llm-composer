@@ -2,7 +2,9 @@ import { isLlmTextCompletionResponse, LlmTextCompletionResponse, sendContentToLl
 import { notifyOnError, timedNotification } from "./notifications";
 import { getSentMessages } from "./retrieveSentContext";
 import { getFirstRecipientMailAddress } from "./emailHelpers";
-import { getOriginalTabConversation } from "./storeOriginalReplyText";
+import { getOriginalTabConversation } from "./originalTabConversation";
+import { getEmailGenerationContext, getEmailGenerationPrompt } from "./promptAndContext";
+import { getPluginOptions } from "./options";
 import Tab = browser.tabs.Tab;
 import IconPath = browser._manifest.IconPath;
 
@@ -38,9 +40,12 @@ async function getOldMessagesToFirstRecipient(tabDetails: browser.compose.Compos
 
 async function communicateWithLlm(openTabId: number, tabDetails: browser.compose.ComposeDetails) {
   const oldMessages = await getOldMessagesToFirstRecipient(tabDetails);
+  const context = await getEmailGenerationContext(oldMessages, await getPluginOptions());
 
   const previousConversation = await getOriginalTabConversation(openTabId);
-  const response = await sendContentToLlm(tabDetails, oldMessages, previousConversation);
+  const prompt = await getEmailGenerationPrompt(tabDetails, previousConversation);
+
+  const response = await sendContentToLlm(context, prompt);
   if (isLlmTextCompletionResponse(response)) {
     await handleLlmSuccessResponse(openTabId, response as LlmTextCompletionResponse);
   } else {

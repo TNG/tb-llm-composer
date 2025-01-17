@@ -1,5 +1,5 @@
 import { llmActionClickHandler } from "./llmButtonClickHandling";
-import { deleteFromOriginalTabCache, storeOriginalReplyText } from "./storeOriginalReplyText";
+import { deleteFromOriginalTabCache, storeOriginalReplyText } from "./originalTabConversation";
 
 browser.composeAction.onClicked.addListener(llmActionClickHandler);
 

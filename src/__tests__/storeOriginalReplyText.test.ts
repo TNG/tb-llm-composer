@@ -1,5 +1,9 @@
 import { mockBrowser } from "./testUtils";
-import { clearOriginalTabCache, getOriginalTabConversationCacheContent, storeOriginalReplyText } from "../storeOriginalReplyText";
+import {
+  clearOriginalTabCache,
+  getOriginalTabConversationCacheContent,
+  storeOriginalReplyText
+} from "../originalTabConversation";
 import Tab = browser.tabs.Tab;
 import clearAllMocks = jest.clearAllMocks;
 

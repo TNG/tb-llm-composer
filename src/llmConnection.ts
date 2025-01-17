@@ -1,11 +1,11 @@
-import { getPluginOptions, LlmParameters, Options } from "./optionUtils";
+import { getPluginOptions, LlmParameters } from "./options";
 
 export enum LlmRoles {
   SYSTEM = "system",
   USER = "user",
 }
 
-interface LlmApiRequestMessage {
+export interface LlmApiRequestMessage {
   content: string;
   role: LlmRoles;
 }
@@ -67,73 +67,18 @@ export interface TgiErrorResponse {
   };
 }
 
-export const DEFAULT_PROMPT = "Schreib den Partnern, dass ich kündige, auf Deutsch.";
-
 export async function sendContentToLlm(
-  tabDetails: browser.compose.ComposeDetails,
-  oldMessages: string[],
-  previousConversation: string | undefined,
+  context: LlmApiRequestMessage,
+  prompt: LlmApiRequestMessage,
 ) {
   const options = await getPluginOptions();
 
-  const requestBody = await buildRequestBody(tabDetails, oldMessages, previousConversation, options);
-
-  return callLlmApi(options.model, requestBody, options.api_token);
-}
-
-/**
- * Build the request body for interacting with the LLM
- *
- * ,
- *
- */
-async function buildRequestBody(
-  tabDetails: browser.compose.ComposeDetails,
-  oldMessages: string[],
-  previousConversation: string | undefined,
-  options: Options,
-): Promise<LlmApiRequestBody> {
-  const identity = await browser.identities.get(tabDetails.identityId as string);
-  const oldMessagesContext = options.include_recent_mails && oldMessages.length > 0 ? buildOldMessagesContext(oldMessages) : "";
-  const context: LlmApiRequestMessage = {
-    content: options.llmContext + oldMessagesContext,
-    role: LlmRoles.SYSTEM,
-  };
-
-  const currentMessageContent: LlmApiRequestMessage = {
-    content: tabDetails.plainTextBody
-      ? buildEmailPrompt(tabDetails.plainTextBody, identity.signature, previousConversation)
-      : DEFAULT_PROMPT,
-    role: LlmRoles.USER,
-  };
-
-  return {
-    messages: [context, currentMessageContent],
+  const requestBody = {
+    messages: [context, prompt],
     ...options.params,
   };
-}
 
-function buildEmailPrompt(plainText: string, signature: string | undefined, previousConversation: string | undefined): string {
-  const textWithoutSignature = signature ? plainText.replace(signature, "") : plainText;
-  const textWithoutPreviousConversation = previousConversation
-    ? textWithoutSignature.replace(previousConversation, "")
-    : textWithoutSignature;
-
-  return (
-    "This is what the user wants to be the content of their email to be:\n" +
-    textWithoutPreviousConversation.trim() +
-    (previousConversation
-      ? "\nThis is the conversation the user is replying to. Keep its content in mind but do not include it in your suggestion:\n" +
-        previousConversation
-      : "")
-  );
-}
-
-function buildOldMessagesContext(oldMessages: string[]) {
-  return (
-    "Furthermore, here are some older messages to give you an idea of the style I'm writing in when talking to this person:\n" +
-    oldMessages.map((value, index) => `Message ${index}:\n` + value).join("\n\n")
-  );
+  return callLlmApi(options.model, requestBody, options.api_token);
 }
 
 async function callLlmApi(

@@ -1,12 +1,13 @@
 import { sendContentToLlm } from "../llmConnection";
-import { defaultOptions, Options } from "../optionUtils";
 import { getExpectedRequestContent, mockBrowserAndFetch } from "./testUtils";
+import { defaultOptions, Options } from "../options";
 
 const originalBrowser = global.browser;
 const originalFetch = global.fetch;
 
 const TEST_SIGNATURE = "Test User Signature";
 
+// TODO LLL: remove pointless tests, fix others
 describe("Testing sentContentToLlm", () => {
   afterAll(() => {
     global.browser = originalBrowser;

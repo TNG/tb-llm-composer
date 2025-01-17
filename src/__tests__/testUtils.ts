@@ -1,5 +1,6 @@
-import { DEFAULT_PROMPT, LlmRoles } from "../llmConnection";
-import { defaultOptions, LlmParameters, Options } from "../optionUtils";
+import { LlmApiRequestMessage, LlmRoles } from "../llmConnection";
+import { defaultOptions, LlmParameters, Options } from "../options";
+import { DEFAULT_PROMPT } from "../promptAndContext";
 import ComposeDetails = browser.compose.ComposeDetails;
 
 interface expectRequestContentArgs {
@@ -101,6 +102,20 @@ export function mockBrowser(args: mockBrowserAndFetchArgs) {
     notifications: {
       create: jest.fn(),
     },
+  };
+}
+
+export function getExpectedEmailGenerationContext(context: string): LlmApiRequestMessage {
+  return {
+    content: context,
+    role: LlmRoles.SYSTEM,
+  };
+}
+
+export function getExpectedEmailGenerationPrompt(context: string): LlmApiRequestMessage {
+  return {
+    content: context,
+    role: LlmRoles.USER,
   };
 }
 
