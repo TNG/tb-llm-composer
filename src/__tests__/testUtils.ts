@@ -186,7 +186,9 @@ export function mockDocumentQuerySelector(values: MockQuerySelectorValues): Mock
   return mockInputElements;
 }
 
-export function mockDocumentGetElementById(notification: MockNotification = { ...MOCK_EMPTY_NOTIFICATION }): MockNotification {
+export function mockDocumentGetElementById(
+  notification: MockNotification = { ...MOCK_EMPTY_NOTIFICATION },
+): MockNotification {
   document.getElementById = function (id: string): HTMLElement | null {
     switch (id) {
       case "notification":

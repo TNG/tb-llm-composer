@@ -27,7 +27,10 @@ describe("Testing sentContentToLlm", () => {
     const result = await sendContentToLlm(MOCK_CONTEXT, MOCK_PROMPT);
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect(global.fetch).toHaveBeenCalledWith(DEFAULT_OPTIONS.model, getExpectedRequestContent([MOCK_CONTEXT, MOCK_PROMPT]));
+    expect(global.fetch).toHaveBeenCalledWith(
+      DEFAULT_OPTIONS.model,
+      getExpectedRequestContent([MOCK_CONTEXT, MOCK_PROMPT]),
+    );
     expect(result).toEqual(mockResponseBody);
   });
 
@@ -39,7 +42,10 @@ describe("Testing sentContentToLlm", () => {
     const result = await sendContentToLlm(MOCK_CONTEXT, MOCK_PROMPT);
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect(global.fetch).toHaveBeenCalledWith(DEFAULT_OPTIONS.model, getExpectedRequestContent([MOCK_CONTEXT, MOCK_PROMPT], mockToken));
+    expect(global.fetch).toHaveBeenCalledWith(
+      DEFAULT_OPTIONS.model,
+      getExpectedRequestContent([MOCK_CONTEXT, MOCK_PROMPT], mockToken),
+    );
     expect(result).toEqual(mockResponseBody);
   });
 

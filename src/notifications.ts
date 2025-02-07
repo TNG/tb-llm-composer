@@ -19,7 +19,7 @@ export function showNotification(message: string, isSuccess: boolean) {
   notification.textContent = message;
   notification.style.backgroundColor = isSuccess ? "green" : "red";
   notification.className = "notification show";
-  setTimeout(function() {
+  setTimeout(function () {
     notification.className = "notification";
   }, 3000); // The notification will disappear after 3 seconds
 }

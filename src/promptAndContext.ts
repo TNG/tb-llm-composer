@@ -3,8 +3,12 @@ import { LlmApiRequestMessage, LlmRoles } from "./llmConnection";
 
 export const DEFAULT_PROMPT = "Schreib den Partnern, dass ich kündige, auf Deutsch.";
 
-export async function getEmailGenerationContext(oldMessages: string[], options: Options): Promise<LlmApiRequestMessage> {
-  const oldMessagesContext = options.include_recent_mails && oldMessages.length > 0 ? buildOldMessagesContext(oldMessages) : "";
+export async function getEmailGenerationContext(
+  oldMessages: string[],
+  options: Options,
+): Promise<LlmApiRequestMessage> {
+  const oldMessagesContext =
+    options.include_recent_mails && oldMessages.length > 0 ? buildOldMessagesContext(oldMessages) : "";
   return {
     content: options.llmContext + oldMessagesContext,
     role: LlmRoles.SYSTEM,
@@ -32,7 +36,11 @@ export async function getEmailGenerationPrompt(
   };
 }
 
-function buildEmailPrompt(plainText: string, signature: string | undefined, previousConversation: string | undefined): string {
+function buildEmailPrompt(
+  plainText: string,
+  signature: string | undefined,
+  previousConversation: string | undefined,
+): string {
   const textWithoutSignature = signature ? plainText.replace(signature, "") : plainText;
   const textWithoutPreviousConversation = previousConversation
     ? textWithoutSignature.replace(previousConversation, "")

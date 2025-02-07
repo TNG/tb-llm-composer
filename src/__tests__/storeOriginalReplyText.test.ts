@@ -2,7 +2,7 @@ import { mockBrowser } from "./testUtils";
 import {
   clearOriginalTabCache,
   getOriginalTabConversationCacheContent,
-  storeOriginalReplyText
+  storeOriginalReplyText,
 } from "../originalTabConversation";
 import Tab = browser.tabs.Tab;
 import clearAllMocks = jest.clearAllMocks;
@@ -68,30 +68,28 @@ describe("The storeOriginalReplyText", () => {
     const signature = "My\nAwesome\nSignature";
     const plainTextBodyNoLeadingNewLine = "Previous Conversation" + "\n\n-- \n" + signature;
     const plainTextBody = "\n" + plainTextBodyNoLeadingNewLine;
-    mockBrowser({ plainTextBody,
-      signature,
-      composeDetailsType: "reply",
-    });
+    mockBrowser({ plainTextBody, signature, composeDetailsType: "reply" });
     expect(await getOriginalTabConversationCacheContent()).toEqual({});
 
     await storeOriginalReplyText(testTab);
 
-    expect(await getOriginalTabConversationCacheContent()).toEqual({ [testTab.id as number]: plainTextBodyNoLeadingNewLine });
+    expect(await getOriginalTabConversationCacheContent()).toEqual({
+      [testTab.id as number]: plainTextBodyNoLeadingNewLine,
+    });
   });
 
   test("stores original tab conversation including the leading signature", async () => {
     const signature = "My\nAwesome\nSignature";
     const plainTextBodyNoLeadingNewLines = signature + "\n" + "Previous Conversation";
     const plainTextBody = "\n\n" + plainTextBodyNoLeadingNewLines;
-    mockBrowser({ plainTextBody,
-      signature,
-      composeDetailsType: "reply",
-    });
+    mockBrowser({ plainTextBody, signature, composeDetailsType: "reply" });
     expect(await getOriginalTabConversationCacheContent()).toEqual({});
 
     await storeOriginalReplyText(testTab);
 
-    expect(await getOriginalTabConversationCacheContent()).toEqual({ [testTab.id as number]: plainTextBodyNoLeadingNewLines });
+    expect(await getOriginalTabConversationCacheContent()).toEqual({
+      [testTab.id as number]: plainTextBodyNoLeadingNewLines,
+    });
   });
 });
 

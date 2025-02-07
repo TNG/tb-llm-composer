@@ -1,4 +1,9 @@
-import { isLlmTextCompletionResponse, LlmTextCompletionResponse, sendContentToLlm, TgiErrorResponse } from "./llmConnection";
+import {
+  isLlmTextCompletionResponse,
+  LlmTextCompletionResponse,
+  sendContentToLlm,
+  TgiErrorResponse,
+} from "./llmConnection";
 import { notifyOnError, timedNotification } from "./notifications";
 import { getSentMessages } from "./retrieveSentContext";
 import { getFirstRecipientMailAddress } from "./emailHelpers";

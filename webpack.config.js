@@ -53,7 +53,9 @@ module.exports = (env, argv) => {
               let newContent = content.replace(new RegExp("(./)?" + buildFolder + "/", "g"), "");
               if (isProductionMode) {
                 // remove "dev" suffixes in manifest.json for production build
-                newContent = newContent.replaceAll(" (dev)", "").replace("llm-thunderbird-dev@tngtech.com", "llm-thunderbird@tngtech.com");
+                newContent = newContent
+                  .replaceAll(" (dev)", "")
+                  .replace("llm-thunderbird-dev@tngtech.com", "llm-thunderbird@tngtech.com");
               }
               return newContent;
             },
