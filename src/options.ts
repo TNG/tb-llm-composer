@@ -44,10 +44,10 @@ export const defaultParams: LlmParameters = {
   top_p: 0.95,
   typical_p: 0.95,
   use_cache: true,
-  watermark: true
+  watermark: true,
 };
 
-export const defaultOptions: Options = {
+export const DEFAULT_OPTIONS: Options = {
   model: "",
   context_window: 4096,
   params: defaultParams,
@@ -58,11 +58,11 @@ export const defaultOptions: Options = {
     "[Initial salutation with Recipient's Name],\n\n" +
     "[Body of the email]\n\n" +
     "[Salutation]\n[Your Name]",
-  include_recent_mails: true
+  include_recent_mails: true,
 };
 
 export async function getPluginOptions(): Promise<Options> {
-  return (await browser.storage.sync.get("options"))?.options || defaultOptions;
+  return (await browser.storage.sync.get("options"))?.options || DEFAULT_OPTIONS;
 }
 
 export async function saveOptions(event: Event): Promise<void> {

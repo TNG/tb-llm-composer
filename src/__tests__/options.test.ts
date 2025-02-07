@@ -1,10 +1,5 @@
-import {
-  mockBrowser,
-  mockDocumentGetElementById,
-  mockDocumentQuerySelector,
-  MockQuerySelectorValues
-} from "./testUtils";
-import { defaultOptions, Options, restoreOptions, saveOptions } from "../options";
+import { mockBrowser, mockDocumentGetElementById, mockDocumentQuerySelector, MockQuerySelectorValues } from "./testUtils";
+import { DEFAULT_OPTIONS, Options, restoreOptions, saveOptions } from "../options";
 import clearAllMocks = jest.clearAllMocks;
 
 const originalBrowser = global.browser;
@@ -96,11 +91,11 @@ describe("The options functions", () => {
 
       await restoreOptions();
 
-      expect(mockInputElements.url.value).toEqual(defaultOptions.model);
+      expect(mockInputElements.url.value).toEqual(DEFAULT_OPTIONS.model);
       expect(mockInputElements.apiToken.value).toEqual("");
-      expect(mockInputElements.contextWindow.value).toEqual(`${defaultOptions.context_window}`);
-      expect(mockInputElements.otherOptions.value).toEqual(JSON.stringify(defaultOptions.params, null, 2));
-      expect(mockInputElements.llmContext.value).toEqual(defaultOptions.llmContext);
+      expect(mockInputElements.contextWindow.value).toEqual(`${DEFAULT_OPTIONS.context_window}`);
+      expect(mockInputElements.otherOptions.value).toEqual(JSON.stringify(DEFAULT_OPTIONS.params, null, 2));
+      expect(mockInputElements.llmContext.value).toEqual(DEFAULT_OPTIONS.llmContext);
     });
 
     test("restores previously saved options", async () => {
@@ -109,7 +104,7 @@ describe("The options functions", () => {
         api_token: "abc",
         context_window: 2000,
         include_recent_mails: false,
-        params: { ...defaultOptions.params, temperature: 0.2 },
+        params: { ...DEFAULT_OPTIONS.params, temperature: 0.2 },
         llmContext: "My context",
       };
       mockBrowser({

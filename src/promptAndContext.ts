@@ -20,7 +20,7 @@ function buildOldMessagesContext(oldMessages: string[]) {
 
 export async function getEmailGenerationPrompt(
   tabDetails: browser.compose.ComposeDetails,
-  previousConversation: string | undefined,
+  previousConversation?: string,
 ): Promise<LlmApiRequestMessage> {
   const identity = await browser.identities.get(tabDetails.identityId as string);
 

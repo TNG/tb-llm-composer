@@ -70,7 +70,7 @@ export interface TgiErrorResponse {
 export async function sendContentToLlm(
   context: LlmApiRequestMessage,
   prompt: LlmApiRequestMessage,
-) {
+): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
   const options = await getPluginOptions();
 
   const requestBody = {
@@ -90,6 +90,7 @@ async function callLlmApi(
   if (token) {
     headers.Authorization = "Bearer " + token;
   }
+
   console.log(`LLM-CONNECTION: Sending request to LLM: POST ${url} with body`, requestBody);
   const response = await fetch(url, {
     method: "POST",
@@ -102,6 +103,7 @@ async function callLlmApi(
   }
   const responseBody = (await response.json()) as LlmTextCompletionResponse | TgiErrorResponse;
   console.log("LLM-CONNECTION: LLM responded with:", response.status, responseBody);
+
   return responseBody;
 }
 

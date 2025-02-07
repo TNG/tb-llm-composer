@@ -1,56 +1,19 @@
-import { LlmApiRequestMessage, LlmRoles } from "../llmConnection";
-import { defaultOptions, LlmParameters, Options } from "../options";
-import { DEFAULT_PROMPT } from "../promptAndContext";
+import { LlmApiRequestMessage, LlmTextCompletionResponse, TgiErrorResponse } from "../llmConnection";
+import { DEFAULT_OPTIONS, LlmParameters, Options } from "../options";
 import ComposeDetails = browser.compose.ComposeDetails;
 
-interface expectRequestContentArgs {
-  content?: string;
-  previousConversation?: string;
-  systemContext?: string;
+interface mockBrowserArgs {
   options?: Partial<Options>;
   params?: Partial<LlmParameters>;
-}
-
-interface mockBrowserAndFetchArgs extends expectRequestContentArgs {
-  notOKResponse?: true;
-  isPlainText?: boolean;
-  signature?: string;
   plainTextBody?: string;
+  isPlainText?: boolean;
   composeDetailsType?: ComposeDetails["type"];
-}
-
-export function mockBrowserAndFetch(args: mockBrowserAndFetchArgs = {}) {
-  mockBrowser(args);
-
-  if (args.notOKResponse) {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      text: jest.fn().mockReturnValue("Test Error response"),
-    });
-    return;
-  } else {
-    const fetchResponse = {
-      messages: [
-        {
-          content: args.systemContext ?? defaultOptions.llmContext,
-          role: LlmRoles.SYSTEM,
-        },
-        { content: args.content ?? DEFAULT_PROMPT, role: LlmRoles.USER },
-        { content: "Generic Test Reply", role: LlmRoles.SYSTEM },
-      ],
-    };
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue(fetchResponse),
-    });
-
-    return fetchResponse;
-  }
+  signature?: string;
 }
 
 const localStore: { [key: string]: any } = {};
 
-export function mockBrowser(args: mockBrowserAndFetchArgs) {
+export function mockBrowser(args: mockBrowserArgs) {
   global.browser = {
     storage: {
       // @ts-ignore
@@ -59,9 +22,9 @@ export function mockBrowser(args: mockBrowserAndFetchArgs) {
           args.params || args.options
             ? {
                 options: {
-                  ...defaultOptions,
+                  ...DEFAULT_OPTIONS,
                   ...args.options,
-                  params: { ...defaultOptions.params, ...args.options?.params, ...args.params },
+                  params: { ...DEFAULT_OPTIONS.params, ...args.options?.params, ...args.params },
                 },
               }
             : {},
@@ -105,48 +68,57 @@ export function mockBrowser(args: mockBrowserAndFetchArgs) {
   };
 }
 
-export function getExpectedEmailGenerationContext(context: string): LlmApiRequestMessage {
+interface mockBrowserAndFetchArgs extends mockBrowserArgs {
+  responseBody: LlmTextCompletionResponse | TgiErrorResponse | "NOT_OK_RESPONSE";
+}
+
+export function mockBrowserAndFetch(args: mockBrowserAndFetchArgs): void {
+  mockBrowser(args);
+
+  if (args.responseBody === "NOT_OK_RESPONSE") {
+    const errorResponse: Partial<Response> = {
+      ok: false,
+      text: async () => "Error response from LLM API",
+    };
+    global.fetch = jest.fn().mockResolvedValue(errorResponse);
+
+    return;
+  }
+
+  const fetchResponse: Partial<Response> = {
+    ok: true,
+    json: jest.fn().mockResolvedValue(args.responseBody),
+  };
+  global.fetch = jest.fn().mockResolvedValue(fetchResponse);
+}
+
+export function getMockResponseBody(): LlmTextCompletionResponse {
   return {
-    content: context,
-    role: LlmRoles.SYSTEM,
+    status: 1,
+    id: "1",
+    created: 1,
+    model: "test_model",
+    choices: [],
+    finish_reason: "stop_sequence",
   };
 }
 
-export function getExpectedEmailGenerationPrompt(context: string): LlmApiRequestMessage {
-  return {
-    content: context,
-    role: LlmRoles.USER,
-  };
-}
-
-export function getExpectedRequestContent(args: expectRequestContentArgs = {}) {
-  let content = args.content ? "This is what the user wants to be the content of their email to be:\n" + args.content : "";
-  if (args.previousConversation) {
-    content +=
-      "\nThis is the conversation the user is replying to. Keep its content in mind but do not include it in your suggestion:\n" +
-      args.previousConversation;
-  }
-  if (content === "") {
-    content = DEFAULT_PROMPT;
-  }
-
+export function getExpectedRequestContent(
+  messages: Array<LlmApiRequestMessage>,
+  api_token?: string,
+  params: Partial<LlmParameters> = {},
+): any {
   const expectedRequestBody = {
-    messages: [
-      {
-        content: args.systemContext ?? defaultOptions.llmContext,
-        role: LlmRoles.SYSTEM,
-      },
-      { content, role: LlmRoles.USER },
-    ],
-    ...defaultOptions.params,
-    ...args.params,
+    messages,
+    ...DEFAULT_OPTIONS.params,
+    ...params,
   };
 
   return {
     body: JSON.stringify(expectedRequestBody),
     headers: {
       "Content-Type": "application/json",
-      Authorization: args.options?.api_token ? `Bearer ${args.options.api_token}` : undefined,
+      Authorization: api_token ? `Bearer ${api_token}` : undefined,
     },
     method: "POST",
   };
