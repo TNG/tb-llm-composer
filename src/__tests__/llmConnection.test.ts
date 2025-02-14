@@ -1,6 +1,6 @@
-import { LlmApiRequestMessage, LlmRoles, sendContentToLlm } from "../llmConnection";
-import { getExpectedRequestContent, getMockResponseBody, mockBrowserAndFetch } from "./testUtils";
+import { type LlmApiRequestMessage, LlmRoles, sendContentToLlm } from "../llmConnection";
 import { DEFAULT_OPTIONS } from "../options";
+import { getExpectedRequestContent, getMockResponseBody, mockBrowserAndFetch } from "./testUtils";
 
 const originalBrowser = global.browser;
 const originalFetch = global.fetch;
@@ -37,7 +37,10 @@ describe("Testing sentContentToLlm", () => {
   test("with token, ok response", async () => {
     const mockToken = "testToken";
     const mockResponseBody = getMockResponseBody();
-    mockBrowserAndFetch({ responseBody: mockResponseBody, options: { api_token: mockToken } });
+    mockBrowserAndFetch({
+      responseBody: mockResponseBody,
+      options: { api_token: mockToken },
+    });
 
     const result = await sendContentToLlm(MOCK_CONTEXT, MOCK_PROMPT);
 

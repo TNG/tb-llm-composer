@@ -1,5 +1,5 @@
-import { Options } from "./options";
-import { LlmApiRequestMessage, LlmRoles } from "./llmConnection";
+import { type LlmApiRequestMessage, LlmRoles } from "./llmConnection";
+import type { Options } from "./options";
 
 export const DEFAULT_PROMPT = "Schreib den Partnern, dass ich kündige, auf Deutsch.";
 
@@ -16,10 +16,9 @@ export async function getEmailGenerationContext(
 }
 
 function buildOldMessagesContext(oldMessages: string[]) {
-  return (
-    "\nFurthermore, here are some older messages to give you an idea of the style I'm writing in when talking to this person:\n" +
-    oldMessages.map((value, index) => `Message ${index}:\n` + value).join("\n\n")
-  );
+  return `
+Furthermore, here are some older messages to give you an idea of the style I'm writing in when talking to this person:
+${oldMessages.map((value, index) => `Message ${index}:\n${value}`).join("\n\n")}`;
 }
 
 export async function getEmailGenerationPrompt(
@@ -42,16 +41,13 @@ function buildEmailPrompt(
   previousConversation: string | undefined,
 ): string {
   const textWithoutSignature = signature ? plainText.replace(signature, "") : plainText;
-  const textWithoutPreviousConversation = previousConversation
-    ? textWithoutSignature.replace(previousConversation, "")
-    : textWithoutSignature;
+  if (previousConversation) {
+    return `This is what the user wants to be the content of their email to be:
+${textWithoutSignature.replace(previousConversation, "").trim()}
 
-  return (
-    "This is what the user wants to be the content of their email to be:\n" +
-    textWithoutPreviousConversation.trim() +
-    (previousConversation
-      ? "\nThis is the conversation the user is replying to. Keep its content in mind but do not include it in your suggestion:\n" +
-        previousConversation
-      : "")
-  );
+This is the conversation the user is replying to. Keep its content in mind but do not include it in your suggestion:
+${previousConversation}`;
+  }
+  return `This is what the user wants to be the content of their email to be:
+${textWithoutSignature.trim()}`;
 }

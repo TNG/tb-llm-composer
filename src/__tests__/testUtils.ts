@@ -1,5 +1,5 @@
-import { LlmApiRequestMessage, LlmTextCompletionResponse, TgiErrorResponse } from "../llmConnection";
-import { DEFAULT_OPTIONS, LlmParameters, Options } from "../options";
+import type { LlmApiRequestMessage, LlmTextCompletionResponse, TgiErrorResponse } from "../llmConnection";
+import { DEFAULT_OPTIONS, type LlmParameters, type Options } from "../options";
 import ComposeDetails = browser.compose.ComposeDetails;
 
 interface mockBrowserArgs {
@@ -11,7 +11,7 @@ interface mockBrowserArgs {
   signature?: string;
 }
 
-const localStore: { [key: string]: any } = {};
+const localStore: { [key: string]: unknown } = {};
 
 export function mockBrowser(args: mockBrowserArgs) {
   global.browser = {
@@ -24,7 +24,11 @@ export function mockBrowser(args: mockBrowserArgs) {
                 options: {
                   ...DEFAULT_OPTIONS,
                   ...args.options,
-                  params: { ...DEFAULT_OPTIONS.params, ...args.options?.params, ...args.params },
+                  params: {
+                    ...DEFAULT_OPTIONS.params,
+                    ...args.options?.params,
+                    ...args.params,
+                  },
                 },
               }
             : {},
@@ -35,8 +39,10 @@ export function mockBrowser(args: mockBrowserArgs) {
       local: {
         // @ts-ignore
         get: async (key) => ({ [key]: localStore[key] }),
-        set: async (items: { [key: string]: any }) => {
-          Object.entries(items).forEach(([k, v]) => (localStore[k] = v));
+        set: async (items: { [key: string]: unknown }) => {
+          for (const [k, v] of Object.entries(items)) {
+            localStore[k] = v;
+          }
         },
         // @ts-ignore
         remove: async (k: string) => {
@@ -45,7 +51,9 @@ export function mockBrowser(args: mockBrowserArgs) {
       },
     },
     // @ts-ignore
-    identities: { get: jest.fn().mockReturnValue({ signature: args.signature }) },
+    identities: {
+      get: jest.fn().mockReturnValue({ signature: args.signature }),
+    },
     // @ts-ignore
     compose: {
       getComposeDetails: jest.fn().mockResolvedValue({
@@ -107,7 +115,7 @@ export function getExpectedRequestContent(
   messages: Array<LlmApiRequestMessage>,
   api_token?: string,
   params: Partial<LlmParameters> = {},
-): any {
+): unknown {
   const expectedRequestBody = {
     messages,
     ...DEFAULT_OPTIONS.params,
@@ -158,13 +166,15 @@ export function mockDocumentQuerySelector(values: MockQuerySelectorValues): Mock
   const mockInputElements: MockOptionsHTMLValues = {
     url: { value: values.url } as HTMLInputElement,
     contextWindow: { value: values.contextWindow } as HTMLInputElement,
-    includeRecentMails: { checked: values.includeRecentMails } as HTMLInputElement,
+    includeRecentMails: {
+      checked: values.includeRecentMails,
+    } as HTMLInputElement,
     apiToken: { value: values.apiToken } as HTMLInputElement,
     otherOptions: { value: values.otherOptions } as HTMLInputElement,
     llmContext: { value: values.llmContext } as HTMLInputElement,
   };
 
-  document.querySelector = function (selector: string): HTMLInputElement | null {
+  document.querySelector = (selector: string): HTMLInputElement | null => {
     switch (selector) {
       case "#url":
         return mockInputElements.url;
@@ -189,7 +199,7 @@ export function mockDocumentQuerySelector(values: MockQuerySelectorValues): Mock
 export function mockDocumentGetElementById(
   notification: MockNotification = { ...MOCK_EMPTY_NOTIFICATION },
 ): MockNotification {
-  document.getElementById = function (id: string): HTMLElement | null {
+  document.getElementById = (id: string): HTMLElement | null => {
     switch (id) {
       case "notification":
         return notification as HTMLElement;

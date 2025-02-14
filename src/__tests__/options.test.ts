@@ -1,10 +1,10 @@
+import { DEFAULT_OPTIONS, type Options, restoreOptions, saveOptions } from "../options";
 import {
+  type MockQuerySelectorValues,
   mockBrowser,
   mockDocumentGetElementById,
   mockDocumentQuerySelector,
-  MockQuerySelectorValues,
 } from "./testUtils";
-import { DEFAULT_OPTIONS, Options, restoreOptions, saveOptions } from "../options";
 import clearAllMocks = jest.clearAllMocks;
 
 const originalBrowser = global.browser;
@@ -29,7 +29,9 @@ describe("The options functions", () => {
       const mockNotification = mockDocumentGetElementById();
       const mockPreventDefault = jest.fn();
 
-      await saveOptions({ preventDefault: mockPreventDefault } as unknown as Event);
+      await saveOptions({
+        preventDefault: mockPreventDefault,
+      } as unknown as Event);
 
       expect(mockPreventDefault).toHaveBeenCalledTimes(1);
       expect(mockNotification).toEqual({
@@ -45,7 +47,9 @@ describe("The options functions", () => {
       const mockNotification = mockDocumentGetElementById();
       const mockPreventDefault = jest.fn();
 
-      await saveOptions({ preventDefault: mockPreventDefault } as unknown as Event);
+      await saveOptions({
+        preventDefault: mockPreventDefault,
+      } as unknown as Event);
 
       expect(mockPreventDefault).toHaveBeenCalledTimes(1);
       expect(mockNotification).toEqual({
@@ -68,7 +72,9 @@ describe("The options functions", () => {
       const mockNotification = mockDocumentGetElementById();
       const mockPreventDefault = jest.fn();
 
-      await saveOptions({ preventDefault: mockPreventDefault } as unknown as Event);
+      await saveOptions({
+        preventDefault: mockPreventDefault,
+      } as unknown as Event);
 
       expect(mockPreventDefault).toHaveBeenCalledTimes(1);
       expect(global.browser.storage.sync.set).toHaveBeenCalledTimes(1);

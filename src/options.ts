@@ -80,7 +80,7 @@ export async function saveOptions(event: Event): Promise<void> {
   const options = {
     model: model,
     api_token: getInputElement("#api_token").value,
-    context_window: parseInt(contextWindow),
+    context_window: Number.parseInt(contextWindow),
     include_recent_mails: getInputElement("#use_last_mails").checked,
     params: JSON.parse(getInputElement("#other_options").value),
     llmContext: getInputElement("#llm_context").value,

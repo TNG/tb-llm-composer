@@ -1,5 +1,5 @@
 const CopyWebpackPlugin = require("copy-webpack-plugin");
-const path = require("path");
+const path = require("node:path");
 const TerserPlugin = require("terser-webpack-plugin");
 const buildFolder = "build";
 
@@ -35,14 +35,14 @@ module.exports = (env, argv) => {
         patterns: [
           {
             from: path.resolve(__dirname, "icons"),
-            to: path.resolve(__dirname, buildFolder + "/icons"),
+            to: path.resolve(__dirname, `${buildFolder}/icons`),
             globOptions: {
               ignore: ["**/original.png"],
             },
           },
           {
             from: path.resolve(__dirname, "public"),
-            to: path.resolve(__dirname, buildFolder + "/public"),
+            to: path.resolve(__dirname, `${buildFolder}/public`),
           },
           {
             from: path.resolve(__dirname, "manifest.json"),
@@ -50,7 +50,7 @@ module.exports = (env, argv) => {
             transform(input) {
               const content = input.toString();
               // adjust relative paths in packaged manifest.json
-              let newContent = content.replace(new RegExp("(./)?" + buildFolder + "/", "g"), "");
+              let newContent = content.replace(new RegExp(`(./)?${buildFolder}/`, "g"), "");
               if (isProductionMode) {
                 // remove "dev" suffixes in manifest.json for production build
                 newContent = newContent

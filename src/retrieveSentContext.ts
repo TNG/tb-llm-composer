@@ -22,7 +22,7 @@ function findSentFolder(account: MailAccount) {
   return folders.find((folder) => folder.type === "sent");
 }
 
-async function searchSentFolder(sentFolder: MailFolder, recipientEmail: string, limit: number = 10) {
+async function searchSentFolder(sentFolder: MailFolder, recipientEmail: string, limit = 10) {
   const query: _QueryQueryInfo = {
     recipients: recipientEmail,
     folder: sentFolder,

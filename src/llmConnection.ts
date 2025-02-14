@@ -1,4 +1,4 @@
-import { getPluginOptions, LlmParameters } from "./options";
+import { type LlmParameters, getPluginOptions } from "./options";
 
 export enum LlmRoles {
   SYSTEM = "system",
@@ -86,9 +86,11 @@ async function callLlmApi(
   requestBody: LlmApiRequestBody,
   token?: string,
 ): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
-  const headers: { [key: string]: string } = { "Content-Type": "application/json" };
+  const headers: { [key: string]: string } = {
+    "Content-Type": "application/json",
+  };
   if (token) {
-    headers.Authorization = "Bearer " + token;
+    headers.Authorization = `Bearer ${token}`;
   }
 
   console.log(`LLM-CONNECTION: Sending request to LLM: POST ${url} with body`, requestBody);

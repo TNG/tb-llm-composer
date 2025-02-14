@@ -1,5 +1,5 @@
 import { llmActionClickHandler } from "../llmButtonClickHandling";
-import { LlmRoles, LlmTextCompletionResponse, sendContentToLlm, TgiErrorResponse } from "../llmConnection";
+import { LlmRoles, type LlmTextCompletionResponse, type TgiErrorResponse, sendContentToLlm } from "../llmConnection";
 import { mockBrowser } from "./testUtils";
 import Tab = browser.tabs.Tab;
 import clearAllMocks = jest.clearAllMocks;
@@ -33,8 +33,12 @@ describe("The llmActionClickHandler", () => {
     expect(global.browser.composeAction.enable).toHaveBeenCalledTimes(1);
     expect(global.browser.composeAction.enable).toHaveBeenCalledWith(12312093);
     expect(global.browser.composeAction.setIcon).toHaveBeenCalledTimes(2);
-    expect(global.browser.composeAction.setIcon).toHaveBeenNthCalledWith(1, { path: { 32: "icons/loader-32px.gif" } });
-    expect(global.browser.composeAction.setIcon).toHaveBeenNthCalledWith(2, { path: { 64: "icons/icon-64px.png" } });
+    expect(global.browser.composeAction.setIcon).toHaveBeenNthCalledWith(1, {
+      path: { 32: "icons/loader-32px.gif" },
+    });
+    expect(global.browser.composeAction.setIcon).toHaveBeenNthCalledWith(2, {
+      path: { 64: "icons/icon-64px.png" },
+    });
   });
 
   test("notifies errors", async () => {

@@ -1,11 +1,14 @@
+import { LlmRoles } from "../llmConnection";
 import { DEFAULT_OPTIONS } from "../options";
 import { getEmailGenerationContext, getEmailGenerationPrompt } from "../promptAndContext";
 import { mockBrowser } from "./testUtils";
-import { LlmRoles } from "../llmConnection";
 
 describe("Testing getEmailGenerationContext", () => {
   test("no old messages, default options", async () => {
-    const expectedContext = { content: DEFAULT_OPTIONS.llmContext, role: LlmRoles.SYSTEM };
+    const expectedContext = {
+      content: DEFAULT_OPTIONS.llmContext,
+      role: LlmRoles.SYSTEM,
+    };
 
     const result = await getEmailGenerationContext([], DEFAULT_OPTIONS);
 
@@ -14,14 +17,13 @@ describe("Testing getEmailGenerationContext", () => {
 
   test("old messages, include_recent_mails is true", async () => {
     const expectedContext = {
-      content:
-        DEFAULT_OPTIONS.llmContext +
-        "\n" +
-        "Furthermore, here are some older messages to give you an idea of the style I'm writing in when talking to this person:\n" +
-        "Message 0:\n" +
-        "old message 1\n\n" +
-        "Message 1:\n" +
-        "old message 2",
+      content: `${DEFAULT_OPTIONS.llmContext}
+Furthermore, here are some older messages to give you an idea of the style I'm writing in when talking to this person:
+Message 0:
+old message 1
+
+Message 1:
+old message 2`,
       role: LlmRoles.SYSTEM,
     };
 
@@ -34,7 +36,10 @@ describe("Testing getEmailGenerationContext", () => {
   });
 
   test("old messages, include_recent_mails is false", async () => {
-    const expectedContext = { content: DEFAULT_OPTIONS.llmContext, role: LlmRoles.SYSTEM };
+    const expectedContext = {
+      content: DEFAULT_OPTIONS.llmContext,
+      role: LlmRoles.SYSTEM,
+    };
 
     const result = await getEmailGenerationContext(["old message 1", "old message 2"], {
       ...DEFAULT_OPTIONS,
@@ -72,10 +77,10 @@ describe("Testing getEmailGenerationPrompt", () => {
     const testSignature = "My signature";
     mockBrowser({ signature: testSignature });
     const testEmailWithoutSignature = "Test email";
-    const testEmail = testEmailWithoutSignature + "\n\n" + testSignature;
+    const testEmail = `${testEmailWithoutSignature}\n\n${testSignature}`;
 
     const expectedPrompt = {
-      content: "This is what the user wants to be the content of their email to be:\n" + testEmailWithoutSignature,
+      content: `This is what the user wants to be the content of their email to be:\n${testEmailWithoutSignature}`,
       role: LlmRoles.USER,
     };
 
@@ -93,14 +98,14 @@ describe("Testing getEmailGenerationPrompt", () => {
     mockBrowser({ signature: testSignature });
     const testEmailWithoutSignature = "Test email";
     const testPreviousConversation = "Previous conversation";
-    const testEmail = testEmailWithoutSignature + "\n\n" + testSignature + "\n\n" + testPreviousConversation;
+    const testEmail = `${testEmailWithoutSignature}\n\n${testSignature}\n\n${testPreviousConversation}`;
 
     const expectedPrompt = {
-      content:
-        "This is what the user wants to be the content of their email to be:\n" +
-        testEmailWithoutSignature +
-        "\nThis is the conversation the user is replying to. Keep its content in mind but do not include it in your suggestion:\n" +
-        testPreviousConversation,
+      content: `This is what the user wants to be the content of their email to be:
+${testEmailWithoutSignature}
+
+This is the conversation the user is replying to. Keep its content in mind but do not include it in your suggestion:
+${testPreviousConversation}`,
       role: LlmRoles.USER,
     };
 

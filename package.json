@@ -10,31 +10,28 @@
     "zip:darwin:linux": "cd build && zip -r ../llm-thunderbird.xpi ./*",
     "zip:win32": "cd build && 7z a -tzip ../llm-thunderbird.xpi ./*",
     "ship": "npm run build && npm run zip",
-    "format": "prettier --write .",
     "test": "jest",
-    "test-coverage": "jest --coverage"
+    "test-coverage": "jest --coverage",
+    "lint": "biome ci ./",
+    "lint:fix": "biome check --write ./",
+    "lint:fix:unsafe": "biome check --unsafe --write ./"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/TNG/thunderbird-llm-composer"
   },
-  "keywords": [
-    "LLM",
-    "Thunderbird",
-    "huggingface",
-    "llm-ls"
-  ],
+  "keywords": ["LLM", "Thunderbird", "huggingface", "llm-ls"],
   "author": "TNG Technology Consulting GmbH",
   "dependencies": {
     "typescript": "^5.6.3"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@types/jest": "^29.5.13",
     "@types/thunderbird-webext-browser": "^109.0.4",
     "copy-webpack-plugin": "^12.0.2",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
-    "prettier": "3.2.5",
     "run-script-os": "^1.1.6",
     "terser-webpack-plugin": "^5.3.10",
     "ts-jest": "^29.2.5",

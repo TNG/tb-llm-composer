@@ -1,15 +1,15 @@
+import { getFirstRecipientMailAddress } from "./emailHelpers";
 import {
+  type LlmTextCompletionResponse,
+  type TgiErrorResponse,
   isLlmTextCompletionResponse,
-  LlmTextCompletionResponse,
   sendContentToLlm,
-  TgiErrorResponse,
 } from "./llmConnection";
 import { notifyOnError, timedNotification } from "./notifications";
-import { getSentMessages } from "./retrieveSentContext";
-import { getFirstRecipientMailAddress } from "./emailHelpers";
+import { getPluginOptions } from "./options";
 import { getOriginalTabConversation } from "./originalTabConversation";
 import { getEmailGenerationContext, getEmailGenerationPrompt } from "./promptAndContext";
-import { getPluginOptions } from "./options";
+import { getSentMessages } from "./retrieveSentContext";
 import Tab = browser.tabs.Tab;
 import IconPath = browser._manifest.IconPath;
 
@@ -29,12 +29,15 @@ export async function llmActionClickHandler(tab: Tab) {
   }
 }
 
-async function withButtonLoading(tabId: number, callback: () => Promise<any>) {
+async function withButtonLoading<T>(tabId: number, callback: () => Promise<T>) {
   await browser.composeAction.disable(tabId);
-  await browser.composeAction.setIcon({ path: { 32: "icons/loader-32px.gif" } });
-  await callback();
+  await browser.composeAction.setIcon({
+    path: { 32: "icons/loader-32px.gif" },
+  });
+  const returnValue = await callback();
   await browser.composeAction.enable(tabId);
   await browser.composeAction.setIcon({ path: DEFAULT_ICONS });
+  return returnValue;
 }
 
 async function getOldMessagesToFirstRecipient(tabDetails: browser.compose.ComposeDetails) {
@@ -81,5 +84,5 @@ async function getCleanedUpGeneratedEmail(response: LlmTextCompletionResponse, s
 }
 
 function handleLlmErrorResponse(response: TgiErrorResponse) {
-  throw Error("LLM responded with an error: " + response.error.message);
+  throw Error(`LLM responded with an error: ${response.error.message}`);
 }
