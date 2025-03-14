@@ -1,136 +1,172 @@
-import { DEFAULT_OPTIONS, type Options, restoreOptions, saveOptions } from "../options";
-import {
-  type MockQuerySelectorValues,
-  mockBrowser,
-  mockDocumentGetElementById,
-  mockDocumentQuerySelector,
-} from "./testUtils";
-import clearAllMocks = jest.clearAllMocks;
+/**
+ * @jest-environment jsdom
+ */
+import fs from "node:fs";
+import * as path from "node:path";
+import { TextDecoder, TextEncoder } from "node:util";
 
-const originalBrowser = global.browser;
-const originalDocumentQuerySelector = document.querySelector;
-const originalDocumentGetElementById = document.getElementById;
+Object.assign(global, { TextDecoder, TextEncoder });
 
-describe("The options functions", () => {
-  afterAll(() => {
-    global.browser = originalBrowser;
-    document.querySelector = originalDocumentQuerySelector;
-    document.getElementById = originalDocumentGetElementById;
+import { JSDOM } from "jsdom";
+import type { Options } from "../options";
+import { waitFor } from "./testUtils";
+import CreateNotificationOptions = browser.notifications.CreateNotificationOptions;
+
+let optionsDom: JSDOM;
+
+let browserStorage: { [key: string]: object } = {};
+let jsDomNotifications: CreateNotificationOptions[] = [];
+
+const mockBrowser = {
+  storage: {
+    sync: {
+      get: async (key: string) => {
+        console.log(`Getting element '${key}' from mock storage`);
+        return { [key]: browserStorage[key] };
+      },
+      set: async (items: { [key: string]: object }) => {
+        for (const key in items) {
+          console.log(`Setting element '${key}' from mock storage`);
+          browserStorage[key] = items[key];
+        }
+      },
+    },
+  },
+  notifications: {
+    create: async (options: CreateNotificationOptions) => {
+      jsDomNotifications.push(options);
+    },
+  },
+};
+
+/**
+ * This test runs on the <i>compiled</i> version of the options.html page located in the build folder.
+ */
+describe("The options page", () => {
+  beforeEach(async () => {
+    browserStorage = {};
+    jsDomNotifications = [];
+    const projectDir = path.resolve(__dirname, "../..");
+    const optionsHtmlFile = `${projectDir}/build/public/options.html`;
+    const optionsHtmlContent = fs.readFileSync(optionsHtmlFile, "utf-8");
+    optionsDom = new JSDOM(optionsHtmlContent, {
+      url: `file://${optionsHtmlFile}`,
+      runScripts: "dangerously",
+      resources: "usable",
+    });
+    const vmContext = optionsDom.getInternalVMContext();
+    vmContext.browser = mockBrowser;
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
   });
 
-  afterEach(() => {
-    clearAllMocks();
-  });
+  test("sets the model url option in the local storage on change", async () => {
+    const urlInput = optionsDom.window.document.getElementById("url") as HTMLInputElement;
+    expect(urlInput).not.toBeNull();
 
-  describe("saveOptions", () => {
-    test("notifies if the model is empty", async () => {
-      mockBrowser({});
-      mockDocumentQuerySelector({ url: "", contextWindow: "2000" });
-      const mockNotification = mockDocumentGetElementById();
-      const mockPreventDefault = jest.fn();
+    const expectedUrl = "https://my-llm.com/chat";
+    urlInput.value = expectedUrl;
+    urlInput.dispatchEvent(new optionsDom.window.Event("change"));
 
-      await saveOptions({
-        preventDefault: mockPreventDefault,
-      } as unknown as Event);
-
-      expect(mockPreventDefault).toHaveBeenCalledTimes(1);
-      expect(mockNotification).toEqual({
-        textContent: "model can't be empty",
-        style: { backgroundColor: "red" },
-        className: "notification show",
-      });
-    });
-
-    test("notifies if the context window is empty", async () => {
-      mockBrowser({});
-      mockDocumentQuerySelector({ url: "https://url.com", contextWindow: "" });
-      const mockNotification = mockDocumentGetElementById();
-      const mockPreventDefault = jest.fn();
-
-      await saveOptions({
-        preventDefault: mockPreventDefault,
-      } as unknown as Event);
-
-      expect(mockPreventDefault).toHaveBeenCalledTimes(1);
-      expect(mockNotification).toEqual({
-        textContent: "context window has to be set (greater than zero)",
-        style: { backgroundColor: "red" },
-        className: "notification show",
-      });
-    });
-
-    test("sets options correctly", async () => {
-      mockBrowser({});
-      const selectorValues: MockQuerySelectorValues = {
-        url: "https://url.com",
-        contextWindow: "2000",
-        apiToken: "abc",
-        otherOptions: '{"temperature": 0.2}',
-        llmContext: "My context",
-      };
-      mockDocumentQuerySelector(selectorValues);
-      const mockNotification = mockDocumentGetElementById();
-      const mockPreventDefault = jest.fn();
-
-      await saveOptions({
-        preventDefault: mockPreventDefault,
-      } as unknown as Event);
-
-      expect(mockPreventDefault).toHaveBeenCalledTimes(1);
-      expect(global.browser.storage.sync.set).toHaveBeenCalledTimes(1);
-      expect(global.browser.storage.sync.set).toHaveBeenCalledWith({
-        options: {
-          model: selectorValues.url,
-          api_token: selectorValues.apiToken,
-          context_window: 2000,
-          params: { temperature: 0.2 },
-          llmContext: selectorValues.llmContext,
-        },
-      });
-      expect(mockNotification).toEqual({
-        textContent: "Settings saved",
-        style: { backgroundColor: "green" },
-        className: "notification show",
-      });
+    await waitFor(() => {
+      expect(browserStorage).toHaveProperty("options");
+      expect((browserStorage.options as Options).model).toEqual(expectedUrl);
     });
   });
 
-  describe("restoreOptions", () => {
-    test("restores default options", async () => {
-      mockBrowser({});
-      const mockInputElements = mockDocumentQuerySelector({});
+  test("raises an error if model url option is empty after change", async () => {
+    const urlInput = optionsDom.window.document.getElementById("url") as HTMLInputElement;
+    expect(urlInput).not.toBeNull();
 
-      await restoreOptions();
+    urlInput.value = "";
+    urlInput.dispatchEvent(new optionsDom.window.Event("change"));
 
-      expect(mockInputElements.url.value).toEqual(DEFAULT_OPTIONS.model);
-      expect(mockInputElements.apiToken.value).toEqual("");
-      expect(mockInputElements.contextWindow.value).toEqual(`${DEFAULT_OPTIONS.context_window}`);
-      expect(mockInputElements.otherOptions.value).toEqual(JSON.stringify(DEFAULT_OPTIONS.params, null, 2));
-      expect(mockInputElements.llmContext.value).toEqual(DEFAULT_OPTIONS.llmContext);
+    await waitFor(() => {
+      expect(jsDomNotifications).toHaveLength(1);
+      expect(jsDomNotifications[0].message).toContain("Model URL cannot be empty");
     });
+  });
 
-    test("restores previously saved options", async () => {
-      const testOptions: Options = {
-        model: "https://url.com",
-        api_token: "abc",
-        context_window: 2000,
-        include_recent_mails: false,
-        params: { ...DEFAULT_OPTIONS.params, temperature: 0.2 },
-        llmContext: "My context",
-      };
-      mockBrowser({
-        options: testOptions,
-      });
-      const mockInputElements = mockDocumentQuerySelector({});
+  test("sets the api_token option in the local storage on change", async () => {
+    const apiTokenInput = optionsDom.window.document.getElementById("api_token") as HTMLInputElement;
+    expect(apiTokenInput).not.toBeNull();
 
-      await restoreOptions();
+    const expectedApiToken = "wasfoenaoenf";
+    apiTokenInput.value = expectedApiToken;
+    apiTokenInput.dispatchEvent(new optionsDom.window.Event("change"));
 
-      expect(mockInputElements.url.value).toEqual(testOptions.model);
-      expect(mockInputElements.apiToken.value).toEqual(testOptions.api_token);
-      expect(mockInputElements.contextWindow.value).toEqual(`${testOptions.context_window}`);
-      expect(mockInputElements.includeRecentMails.checked).toEqual(testOptions.include_recent_mails);
-      expect(JSON.parse(mockInputElements.otherOptions.value)).toEqual(testOptions.params);
-      expect(mockInputElements.llmContext.value).toEqual(testOptions.llmContext);
+    await waitFor(() => {
+      expect(browserStorage).toHaveProperty("options");
+      expect((browserStorage.options as Options).api_token).toEqual(expectedApiToken);
+    });
+  });
+
+  test("sets the context_window number option in the local storage on change", async () => {
+    const contextWindow = optionsDom.window.document.getElementById("context_window") as HTMLInputElement;
+    expect(contextWindow).not.toBeNull();
+
+    const expectedContextWindow = 9021;
+    contextWindow.valueAsNumber = expectedContextWindow;
+    contextWindow.dispatchEvent(new optionsDom.window.Event("change"));
+
+    await waitFor(() => {
+      expect(browserStorage).toHaveProperty("options");
+      expect((browserStorage.options as Options).context_window).toEqual(expectedContextWindow);
+    });
+  });
+
+  test("sets the include_recent_mails option in the local storage on change", async () => {
+    const useLastMails = optionsDom.window.document.getElementById("use_last_mails") as HTMLInputElement;
+    expect(useLastMails).not.toBeNull();
+
+    const expectedUseLastMails = false;
+    useLastMails.checked = expectedUseLastMails;
+    useLastMails.dispatchEvent(new optionsDom.window.Event("change"));
+
+    await waitFor(() => {
+      expect(browserStorage).toHaveProperty("options");
+      expect((browserStorage.options as Options).include_recent_mails).toEqual(expectedUseLastMails);
+    });
+  });
+
+  test("throws error if params is not json", async () => {
+    const otherOptionsEl = optionsDom.window.document.getElementById("other_options") as HTMLInputElement;
+    expect(otherOptionsEl).not.toBeNull();
+
+    otherOptionsEl.value = "{ not a valid JSON";
+    otherOptionsEl.dispatchEvent(new optionsDom.window.Event("change"));
+
+    await waitFor(() => {
+      expect(jsDomNotifications).toHaveLength(1);
+      expect(jsDomNotifications[0].message).toContain("JSON");
+    });
+  });
+
+  test("sets the params option in the local storage on change", async () => {
+    const otherOptionsEl = optionsDom.window.document.getElementById("other_options") as HTMLInputElement;
+    expect(otherOptionsEl).not.toBeNull();
+
+    const expectedOtherOptions = { "a key": "value" };
+    otherOptionsEl.value = JSON.stringify(expectedOtherOptions);
+    otherOptionsEl.dispatchEvent(new optionsDom.window.Event("change"));
+
+    await waitFor(() => {
+      expect(browserStorage).toHaveProperty("options");
+      expect((browserStorage.options as Options).params).toEqual(expectedOtherOptions);
+    });
+  });
+
+  test("sets the llmContext option in the local storage on change", async () => {
+    const llmContext = optionsDom.window.document.getElementById("llm_context") as HTMLInputElement;
+    expect(llmContext).not.toBeNull();
+
+    const expectedLlmContext = "Hi you are a world-destroying AI";
+    llmContext.value = expectedLlmContext;
+    llmContext.dispatchEvent(new optionsDom.window.Event("change"));
+
+    await waitFor(() => {
+      expect(browserStorage).toHaveProperty("options");
+      expect((browserStorage.options as Options).llmContext).toEqual(expectedLlmContext);
     });
   });
 });

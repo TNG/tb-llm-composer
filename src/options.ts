@@ -1,8 +1,13 @@
-import { showNotification } from "./notifications";
+import { notifyOnError } from "./notifications";
 import { getInputElement } from "./utils";
 
 document.addEventListener("DOMContentLoaded", restoreOptions);
-document.querySelector("form")?.addEventListener("submit", saveOptions);
+document.querySelector("#url")?.addEventListener("change", updateUrl);
+document.querySelector("#api_token")?.addEventListener("change", updateApiToken);
+document.querySelector("#llm_context")?.addEventListener("change", updateLlmContext);
+document.querySelector("#use_last_mails")?.addEventListener("change", updateUseLastMails);
+document.querySelector("#context_window")?.addEventListener("change", updateContextWindow);
+document.querySelector("#other_options")?.addEventListener("change", updateOtherOptions);
 
 export interface LlmParameters {
   max_new_tokens?: number;
@@ -61,32 +66,53 @@ export async function getPluginOptions(): Promise<Options> {
   return (await browser.storage.sync.get("options"))?.options || DEFAULT_OPTIONS;
 }
 
-export async function saveOptions(event: Event): Promise<void> {
-  event.preventDefault();
-  const model = getInputElement("#url").value;
-  if (!model) {
-    showNotification("model can't be empty", false);
-    return;
-  }
-  const contextWindow = getInputElement("#context_window").value;
-  if (!contextWindow) {
-    showNotification("context window has to be set (greater than zero)", false);
-    return;
-  }
-  const options = {
-    model: model,
-    api_token: getInputElement("#api_token").value,
-    context_window: Number.parseInt(contextWindow),
-    include_recent_mails: getInputElement("#use_last_mails").checked,
-    params: JSON.parse(getInputElement("#other_options").value),
-    llmContext: getInputElement("#llm_context").value,
-  } as Options;
-
-  // noinspection ES6MissingAwait deliberately trigger async call without await
-  browser.storage.sync.set({
-    options: options,
+async function updateUrl(event: Event) {
+  await notifyOnError(async () => {
+    const modelUrlInput = event.target as HTMLInputElement;
+    if (!modelUrlInput.value) {
+      throw new Error("Invalid value: Model URL cannot be empty");
+    }
+    const options = await getPluginOptions();
+    options.model = modelUrlInput.value;
+    await browser.storage.sync.set({ options });
   });
-  showNotification("Settings saved", true);
+}
+
+async function updateApiToken(event: Event) {
+  const apiTokenInput = event.target as HTMLInputElement;
+  const options = await getPluginOptions();
+  options.api_token = apiTokenInput.value;
+  await browser.storage.sync.set({ options });
+}
+
+async function updateLlmContext(event: Event) {
+  const llmContextInput = event.target as HTMLTextAreaElement;
+  const options = await getPluginOptions();
+  options.llmContext = llmContextInput.value;
+  await browser.storage.sync.set({ options });
+}
+
+async function updateUseLastMails(event: Event) {
+  const useLastMailsInput = event.target as HTMLInputElement;
+  const options = await getPluginOptions();
+  options.include_recent_mails = useLastMailsInput.checked;
+  await browser.storage.sync.set({ options });
+}
+
+async function updateContextWindow(event: Event) {
+  const contextWindowInput = event.target as HTMLInputElement;
+  const options = await getPluginOptions();
+  options.context_window = contextWindowInput.valueAsNumber;
+  await browser.storage.sync.set({ options });
+}
+
+async function updateOtherOptions(event: Event) {
+  await notifyOnError(async () => {
+    const otherOptionsElement = event.target as HTMLTextAreaElement;
+    const options = await getPluginOptions();
+    options.params = JSON.parse(otherOptionsElement.value);
+    await browser.storage.sync.set({ options });
+  });
 }
 
 export async function restoreOptions(): Promise<void> {

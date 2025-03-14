@@ -20,10 +20,7 @@ export async function llmActionClickHandler(tab: Tab) {
   const openTabId = tab.id || 12312093;
   const tabDetails = await browser.compose.getComposeDetails(openTabId);
   if (tabDetails.isPlainText) {
-    await withButtonLoading(
-      openTabId,
-      notifyOnError(() => communicateWithLlm(openTabId, tabDetails)),
-    );
+    await withButtonLoading(openTabId, () => notifyOnError(() => communicateWithLlm(openTabId, tabDetails)));
   } else {
     await timedNotification("Thunderbird LLM Extension", LLM_HTML_NOT_IMPLEMENTED_TEXT);
   }

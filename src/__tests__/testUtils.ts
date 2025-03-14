@@ -132,81 +132,23 @@ export function getExpectedRequestContent(
   };
 }
 
-export interface MockQuerySelectorValues {
-  url?: string;
-  contextWindow?: string;
-  includeRecentMails?: boolean;
-  apiToken?: string;
-  otherOptions?: string;
-  llmContext?: string;
-}
-
-interface MockNotification {
-  textContent: string | null;
-  style: { backgroundColor: string };
-  className: string;
-}
-
-const MOCK_EMPTY_NOTIFICATION: MockNotification = {
-  textContent: null,
-  style: { backgroundColor: "" },
-  className: "",
-};
-
-interface MockOptionsHTMLValues {
-  url: HTMLInputElement;
-  contextWindow: HTMLInputElement;
-  includeRecentMails: HTMLInputElement;
-  apiToken: HTMLInputElement;
-  otherOptions: HTMLInputElement;
-  llmContext: HTMLInputElement;
-}
-
-export function mockDocumentQuerySelector(values: MockQuerySelectorValues): MockOptionsHTMLValues {
-  const mockInputElements: MockOptionsHTMLValues = {
-    url: { value: values.url } as HTMLInputElement,
-    contextWindow: { value: values.contextWindow } as HTMLInputElement,
-    includeRecentMails: {
-      checked: values.includeRecentMails,
-    } as HTMLInputElement,
-    apiToken: { value: values.apiToken } as HTMLInputElement,
-    otherOptions: { value: values.otherOptions } as HTMLInputElement,
-    llmContext: { value: values.llmContext } as HTMLInputElement,
-  };
-
-  document.querySelector = (selector: string): HTMLInputElement | null => {
-    switch (selector) {
-      case "#url":
-        return mockInputElements.url;
-      case "#context_window":
-        return mockInputElements.contextWindow;
-      case "#use_last_mails":
-        return mockInputElements.includeRecentMails;
-      case "#api_token":
-        return mockInputElements.apiToken;
-      case "#other_options":
-        return mockInputElements.otherOptions;
-      case "#llm_context":
-        return mockInputElements.llmContext;
-      default:
-        throw Error(`Mock of querySelector for selector "${selector}" could not be found.`);
+export async function waitFor(
+  expectation: () => void | Promise<void>,
+  options: { timeout?: number; interval?: number } = {},
+): Promise<void> {
+  const { timeout = 1000, interval = 50 } = options;
+  const startTime = Date.now();
+  let expectationSuccessful = false;
+  while (!expectationSuccessful) {
+    if (Date.now() - startTime >= timeout) {
+      throw new Error("Timed out waiting for composer to update");
     }
-  };
-
-  return mockInputElements;
-}
-
-export function mockDocumentGetElementById(
-  notification: MockNotification = { ...MOCK_EMPTY_NOTIFICATION },
-): MockNotification {
-  document.getElementById = (id: string): HTMLElement | null => {
-    switch (id) {
-      case "notification":
-        return notification as HTMLElement;
-      default:
-        throw Error(`Mock of getElementById for id "${id}" could not be found.`);
+    try {
+      await expectation();
+      expectationSuccessful = true;
+    } catch (e) {
+      console.warn("Expectation not met (yet)", e);
+      await new Promise((resolve) => setTimeout(resolve, interval));
     }
-  };
-
-  return notification;
+  }
 }

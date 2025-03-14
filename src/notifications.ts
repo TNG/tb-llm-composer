@@ -1,4 +1,4 @@
-export async function timedNotification(title: string, message: string, ms = 3000) {
+export async function timedNotification(title: string, message: string, ms = 30000) {
   const notificationId = await browser.notifications.create({
     title,
     message,
@@ -8,18 +8,5 @@ export async function timedNotification(title: string, message: string, ms = 300
 }
 
 export function notifyOnError<T>(callback: () => Promise<T>) {
-  return () => callback().catch((e) => timedNotification("Thunderbird LLM Extension Error", (e as Error).message));
-}
-
-export function showNotification(message: string, isSuccess: boolean) {
-  const notification = document.getElementById("notification");
-  if (!notification) {
-    throw Error(`Element "notification" could not be found. Contact devs`);
-  }
-  notification.textContent = message;
-  notification.style.backgroundColor = isSuccess ? "green" : "red";
-  notification.className = "notification show";
-  setTimeout(() => {
-    notification.className = "notification";
-  }, 3000); // The notification will disappear after 3 seconds
+  return callback().catch((e) => timedNotification("Thunderbird LLM Extension Error", (e as Error).message));
 }
