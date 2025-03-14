@@ -40,7 +40,7 @@ export const defaultParams: LlmParameters = {
   temperature: 0.2,
   typical_p: 0.95,
   use_cache: true,
-  watermark: true
+  watermark: true,
 };
 
 export const DEFAULT_OPTIONS: Options = {
@@ -54,7 +54,7 @@ export const DEFAULT_OPTIONS: Options = {
     "[Initial salutation with Recipient's Name],\n\n" +
     "[Body of the email]\n\n" +
     "[Salutation]\n[Your Name]",
-  include_recent_mails: true
+  include_recent_mails: true,
 };
 
 export async function getPluginOptions(): Promise<Options> {
@@ -79,12 +79,12 @@ export async function saveOptions(event: Event): Promise<void> {
     context_window: Number.parseInt(contextWindow),
     include_recent_mails: getInputElement("#use_last_mails").checked,
     params: JSON.parse(getInputElement("#other_options").value),
-    llmContext: getInputElement("#llm_context").value
+    llmContext: getInputElement("#llm_context").value,
   } as Options;
 
   // noinspection ES6MissingAwait deliberately trigger async call without await
   browser.storage.sync.set({
-    options: options
+    options: options,
   });
   showNotification("Settings saved", true);
 }
