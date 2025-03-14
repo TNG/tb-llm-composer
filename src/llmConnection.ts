@@ -72,6 +72,9 @@ export async function sendContentToLlm(
   prompt: LlmApiRequestMessage,
 ): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
   const options = await getPluginOptions();
+  if (!options.model) {
+    throw Error("Missing LLM model, set it in the options panel.");
+  }
 
   const requestBody = {
     messages: [context, prompt],
