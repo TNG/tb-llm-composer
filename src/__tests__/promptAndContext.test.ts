@@ -1,6 +1,6 @@
 import { LlmRoles } from "../llmConnection";
 import { DEFAULT_OPTIONS } from "../options";
-import { getEmailGenerationContext, getEmailGenerationPrompt } from "../promptAndContext";
+import { getEmailGenerationContext, getEmailGenerationPrompt, getSummaryPromptAndContext } from "../promptAndContext";
 import { mockBrowser } from "./testUtils";
 
 describe("Testing getEmailGenerationContext", () => {
@@ -119,5 +119,27 @@ ${testPreviousConversation}`,
     );
 
     expect(result).toEqual(expectedPrompt);
+  });
+});
+
+describe("Testing getSummaryPromptAndContext", () => {
+  test("sends previous conversation", async () => {
+    const testPreviousConversation = "Previous conversation";
+    const expectedContext = [
+      {
+        content:
+          "The user wants to reply to an email. You need to give him a short summary of the previous conversation, " +
+          "highlighting the open points he needs to cover in his answer.",
+        role: LlmRoles.SYSTEM,
+      },
+      {
+        content: `Previous conversation:\n${testPreviousConversation}`,
+        role: LlmRoles.USER,
+      },
+    ];
+
+    const result = await getSummaryPromptAndContext(testPreviousConversation);
+
+    expect(result).toEqual(expectedContext);
   });
 });

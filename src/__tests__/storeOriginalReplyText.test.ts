@@ -9,7 +9,7 @@ import clearAllMocks = jest.clearAllMocks;
 
 const originalBrowser = global.browser;
 
-describe("The storeOriginalReplyText", () => {
+describe("The storeOriginalReplyTextAndSummarize", () => {
   afterAll(() => {
     global.browser = originalBrowser;
   });

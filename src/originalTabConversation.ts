@@ -33,11 +33,17 @@ export async function clearOriginalTabCache(): Promise<void> {
   await browser.storage.local.remove(cacheName);
 }
 
-export async function storeOriginalReplyText(tab: Tab) {
+export async function storeOriginalReplyText(tab: Tab): Promise<void> {
   if (tab.id) {
     const tabDetails = await browser.compose.getComposeDetails(tab.id);
+    if (!tabDetails.isPlainText) {
+      throw new Error("HTML mails are not supported");
+    }
+
+    const trimmedContent = tabDetails.plainTextBody?.trim() || "";
+
     if (tabDetails.type === "reply" && tabDetails.plainTextBody) {
-      await updateOriginalTabCache(tab.id, tabDetails.plainTextBody.trim());
+      await updateOriginalTabCache(tab.id, trimmedContent);
     }
   }
 }

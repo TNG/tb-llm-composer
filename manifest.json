@@ -10,14 +10,15 @@
       "strict_min_version": "110"
     }
   },
-  "permissions": ["compose", "storage", "notifications", "messagesRead", "accountsRead"],
+  "permissions": ["menus", "compose", "storage", "notifications", "messagesRead", "accountsRead"],
   "icons": {
     "64": "icons/icon-64px.png",
     "32": "icons/icon-32px.png",
     "16": "icons/icon-16px.png"
   },
   "background": {
-    "scripts": ["build/background.js"]
+    "scripts": ["build/background.js"],
+    "type": "module"
   },
   "options_ui": {
     "page": "./build/public/options.html",
@@ -25,7 +26,10 @@
   },
   "compose_action": {
     "default_title": "To LLM (dev)",
+    "type": "menu",
     "default_icon": {
+      "16": "icons/icon-16px.png",
+      "32": "icons/icon-32px.png",
       "64": "icons/icon-64px.png"
     }
   }

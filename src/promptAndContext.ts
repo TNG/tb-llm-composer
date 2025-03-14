@@ -51,3 +51,18 @@ ${previousConversation}`;
   return `This is what the user wants to be the content of their email to be:
 ${textWithoutSignature.trim()}`;
 }
+
+export async function getSummaryPromptAndContext(previousConversation: string): Promise<Array<LlmApiRequestMessage>> {
+  return [
+    {
+      content:
+        "The user wants to reply to an email. You need to give him a short summary of the previous conversation, " +
+        "highlighting the open points he needs to cover in his answer.",
+      role: LlmRoles.SYSTEM,
+    },
+    {
+      content: `Previous conversation:\n${previousConversation}`,
+      role: LlmRoles.USER,
+    },
+  ];
+}

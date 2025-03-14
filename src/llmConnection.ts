@@ -68,8 +68,7 @@ export interface TgiErrorResponse {
 }
 
 export async function sendContentToLlm(
-  context: LlmApiRequestMessage,
-  prompt: LlmApiRequestMessage,
+  messages: Array<LlmApiRequestMessage>,
 ): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
   const options = await getPluginOptions();
   if (!options.model) {
@@ -77,7 +76,7 @@ export async function sendContentToLlm(
   }
 
   const requestBody = {
-    messages: [context, prompt],
+    messages,
     ...options.params,
   };
 

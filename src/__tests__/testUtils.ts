@@ -1,4 +1,10 @@
-import type { LlmApiRequestMessage, LlmTextCompletionResponse, TgiErrorResponse } from "../llmConnection";
+import {
+  type LlmApiRequestMessage,
+  type LlmChoice,
+  LlmRoles,
+  type LlmTextCompletionResponse,
+  type TgiErrorResponse,
+} from "../llmConnection";
 import { DEFAULT_OPTIONS, type LlmParameters, type Options } from "../options";
 import ComposeDetails = browser.compose.ComposeDetails;
 
@@ -100,14 +106,25 @@ export function mockBrowserAndFetch(args: mockBrowserAndFetchArgs): void {
   global.fetch = jest.fn().mockResolvedValue(fetchResponse);
 }
 
-export function getMockResponseBody(): LlmTextCompletionResponse {
+export function getMockResponseBody(firstChoiceContent?: string): LlmTextCompletionResponse {
+  const firstChoice: LlmChoice = getMockLLMChoice(firstChoiceContent || "Test response", LlmRoles.SYSTEM);
   return {
     status: 1,
     id: "1",
     created: 1,
     model: "test_model",
-    choices: [],
+    choices: [firstChoice],
     finish_reason: "stop_sequence",
+  };
+}
+
+function getMockLLMChoice(content: string, role: LlmRoles): LlmChoice {
+  return {
+    message: { content, role },
+    finish_reason: "stop_sequence",
+    index: 0,
+    logprobs: [0],
+    prefill: [""],
   };
 }
 
