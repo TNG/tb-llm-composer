@@ -5,16 +5,60 @@ import {
   isLlmTextCompletionResponse,
   sendContentToLlm,
 } from "./llmConnection";
+import { addCancelRequestMenuEntry, addLlmActionsToMenu } from "./menu";
 import { notifyOnError, timedNotification } from "./notifications";
+import { getPluginOptions } from "./optionsParams";
 import { getOriginalTabConversation } from "./originalTabConversation";
 import { getEmailGenerationContext, getEmailGenerationPrompt, getSummaryPromptAndContext } from "./promptAndContext";
 import { getSentMessages } from "./retrieveSentContext";
 import Tab = browser.tabs.Tab;
-import IconPath = browser._manifest.IconPath;
-import { getPluginOptions } from "./optionsParams";
 
 const LLM_HTML_NOT_IMPLEMENTED_TEXT: string = "LLM Support for HTML Mails is not yet implemented";
-const DEFAULT_ICONS: IconPath = { 64: "icons/icon-64px.png" };
+function getActionDefaultIcon() {
+  return {
+    "64": "icons/icon-64px.png",
+  };
+}
+function getActionDefaultTitle() {
+  return browser.runtime.getManifest().compose_action?.default_title || "";
+}
+
+interface RequestStatus {
+  tabId: number;
+  isRunning: boolean;
+  abortController: AbortController;
+}
+
+export class AllRequestsStatus {
+  requests: {
+    [tabId: number]: RequestStatus;
+  } = {};
+
+  getRequestStatus(tabId: number) {
+    if (!(tabId in this.requests)) {
+      this.requests[tabId] = {
+        tabId,
+        isRunning: false,
+        abortController: new AbortController(),
+      };
+    }
+    return this.requests[tabId];
+  }
+
+  deleteRequestStatus(tabId: number) {
+    delete this.requests[tabId];
+  }
+
+  getAbortSignal(tabId: number) {
+    return this.getRequestStatus(tabId).abortController.signal;
+  }
+
+  abort(tabId: number, reason?: string) {
+    this.getRequestStatus(tabId).abortController.abort(reason);
+  }
+}
+
+export const allRequestsStatus = new AllRequestsStatus();
 
 export type LlmPluginAction = "compose" | "summarize";
 
@@ -28,21 +72,33 @@ export async function llmActionClickHandler(tab: Tab, communicateWithLlm: (tabID
 
   const tabDetails = await browser.compose.getComposeDetails(openTabId);
   if (tabDetails.isPlainText) {
-    await withButtonLoading(openTabId, () => notifyOnError(() => communicateWithLlm(openTabId)));
+    await withButtonRequestInProgress(openTabId, () => communicateWithLlm(openTabId));
   } else {
     await timedNotification("Thunderbird LLM Extension", LLM_HTML_NOT_IMPLEMENTED_TEXT);
   }
 }
 
-async function withButtonLoading<T>(tabId: number, callback: () => Promise<T>) {
-  await browser.composeAction.disable(tabId);
+async function withButtonRequestInProgress<T>(tabId: number, callback: () => Promise<T>) {
+  const requestStatus = allRequestsStatus.getRequestStatus(tabId);
+  requestStatus.isRunning = true;
   await browser.composeAction.setIcon({
+    tabId: tabId,
     path: { 32: "icons/loader-32px.gif" },
   });
-  const returnValue = await callback();
-  await browser.composeAction.enable(tabId);
-  await browser.composeAction.setIcon({ path: DEFAULT_ICONS });
-  return returnValue;
+  await browser.composeAction.setTitle({ title: "Cancel Request", tabId: tabId });
+  await addCancelRequestMenuEntry();
+
+  const response = await notifyOnError(callback);
+  await resetComposerAction(tabId);
+  return response;
+}
+
+async function resetComposerAction(tabId: number) {
+  const actionDefaultIcon = getActionDefaultIcon();
+  await browser.composeAction.setIcon({ path: actionDefaultIcon, tabId: tabId });
+  await browser.composeAction.setTitle({ title: getActionDefaultTitle(), tabId: tabId });
+  await addLlmActionsToMenu();
+  allRequestsStatus.deleteRequestStatus(tabId);
 }
 
 async function getOldMessagesToFirstRecipient(tabDetails: browser.compose.ComposeDetails) {
@@ -61,7 +117,10 @@ export async function compose(tabId: number) {
   const previousConversation = await getOriginalTabConversation(tabId);
   const prompt = await getEmailGenerationPrompt(tabDetails, previousConversation);
 
-  const response = await sendContentToLlm([context, prompt]);
+  const response = await sendContentToLlm([context, prompt], allRequestsStatus.getAbortSignal(tabId));
+  if (response == null) {
+    return;
+  }
   if (isLlmTextCompletionResponse(response)) {
     await handleComposeSuccessResponse(tabId, response as LlmTextCompletionResponse);
   } else {
@@ -109,14 +168,17 @@ export async function summarize(tabId: number, originalConversation?: string): P
     throw Error("No conversation found to summarize. Aborting.");
   }
   const messages = await getSummaryPromptAndContext(originalConversation);
-  const response = await sendContentToLlm(messages);
-
+  const requestStatus = allRequestsStatus.getRequestStatus(tabId);
+  const response = await sendContentToLlm(messages, requestStatus.abortController.signal);
+  if (response == null) {
+    return;
+  }
   if (isLlmTextCompletionResponse(response)) {
     await browser.compose.setComposeDetails(tabId, {
       plainTextBody: `${response.choices[0].message.content}\n\n\n\n${originalConversation}`,
     });
   } else {
-    throw Error(`LLM while attempting to summarize responded with an error: ${response.error.message}`);
+    throw Error(`LLM while attempting to summarize responded with an error: ${response?.error.message}`);
   }
 }
 

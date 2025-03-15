@@ -1,3 +1,4 @@
+import { USER_ABORT_MESSAGE } from "./menu";
 import { type LlmParameters, getPluginOptions } from "./optionsParams";
 
 export enum LlmRoles {
@@ -69,7 +70,8 @@ export interface TgiErrorResponse {
 
 export async function sendContentToLlm(
   messages: Array<LlmApiRequestMessage>,
-): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
+  abortSignal: AbortSignal,
+): Promise<LlmTextCompletionResponse | TgiErrorResponse | null> {
   const options = await getPluginOptions();
   if (!options.model) {
     throw Error("Missing LLM model, set it in the options panel.");
@@ -80,14 +82,15 @@ export async function sendContentToLlm(
     ...options.params,
   };
 
-  return callLlmApi(options.model, requestBody, options.api_token);
+  return callLlmApi(options.model, requestBody, abortSignal, options.api_token);
 }
 
 async function callLlmApi(
   url: string,
   requestBody: LlmApiRequestBody,
+  signal: AbortSignal,
   token?: string,
-): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
+): Promise<LlmTextCompletionResponse | TgiErrorResponse | null> {
   const headers: { [key: string]: string } = {
     "Content-Type": "application/json",
   };
@@ -96,19 +99,30 @@ async function callLlmApi(
   }
 
   console.log(`LLM-CONNECTION: Sending request to LLM: POST ${url} with body:\n`, JSON.stringify(requestBody));
-  const response = await fetch(url, {
-    method: "POST",
-    headers: headers,
-    body: JSON.stringify(requestBody),
-  });
-  if (!response.ok) {
-    const errorResponseBody = await response.text();
-    throw Error(`LLM-CONNECTION: Error response from ${url}: ${errorResponseBody}`);
-  }
-  const responseBody = (await response.json()) as LlmTextCompletionResponse | TgiErrorResponse;
-  console.log("LLM-CONNECTION: LLM responded with:", response.status, responseBody);
 
-  return responseBody;
+  try {
+    const response = await fetch(url, {
+      signal: signal,
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorResponseBody = await response.text();
+      throw Error(`LLM-CONNECTION: Error response from ${url}: ${errorResponseBody}`);
+    }
+    const responseBody = (await response.json()) as LlmTextCompletionResponse | TgiErrorResponse;
+    console.log("LLM-CONNECTION: LLM responded with:", response.status, responseBody);
+
+    return responseBody;
+  } catch (e) {
+    if (typeof e === "string" && e === USER_ABORT_MESSAGE) {
+      console.log("User aborted request, do not throw error");
+      return null;
+    }
+    throw e;
+  }
 }
 
 export function isLlmTextCompletionResponse(response: LlmTextCompletionResponse | TgiErrorResponse) {
