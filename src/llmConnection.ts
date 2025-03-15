@@ -1,4 +1,4 @@
-import { type LlmParameters, getPluginOptions } from "./optionsParams";
+import { getPluginOptions, type LlmParameters } from "./optionsParams";
 
 export enum LlmRoles {
   SYSTEM = "system",
@@ -69,6 +69,7 @@ export interface TgiErrorResponse {
 
 export async function sendContentToLlm(
   messages: Array<LlmApiRequestMessage>,
+  abortSignal: AbortSignal,
 ): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
   const options = await getPluginOptions();
   if (!options.model) {
@@ -80,12 +81,13 @@ export async function sendContentToLlm(
     ...options.params,
   };
 
-  return callLlmApi(options.model, requestBody, options.api_token);
+  return callLlmApi(options.model, requestBody, abortSignal, options.api_token);
 }
 
 async function callLlmApi(
   url: string,
   requestBody: LlmApiRequestBody,
+  signal: AbortSignal,
   token?: string,
 ): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
   const headers: { [key: string]: string } = {
@@ -97,6 +99,7 @@ async function callLlmApi(
 
   console.log(`LLM-CONNECTION: Sending request to LLM: POST ${url} with body:\n`, JSON.stringify(requestBody));
   const response = await fetch(url, {
+    signal: signal,
     method: "POST",
     headers: headers,
     body: JSON.stringify(requestBody),

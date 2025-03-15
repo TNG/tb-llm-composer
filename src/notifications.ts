@@ -8,5 +8,12 @@ export async function timedNotification(title: string, message: string, ms = 300
 }
 
 export function notifyOnError<T>(callback: () => Promise<T>) {
-  return callback().catch((e) => timedNotification("Thunderbird LLM Extension Error", (e as Error).message));
+  return callback().catch((e) => {
+    if (e.name === "AbortError") {
+      console.debug("User cancelled request, do not notify", e);
+      return;
+    }
+    const message = e?.message || e.toString();
+    timedNotification("Thunderbird LLM Extension Error", message);
+  });
 }

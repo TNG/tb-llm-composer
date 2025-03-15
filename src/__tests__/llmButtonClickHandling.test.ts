@@ -1,9 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
-import { type MockInstance, afterAll, afterEach, describe, expect, test, vi } from "vitest";
-import { type LlmPluginAction, compose, llmActionClickHandler, summarize } from "../llmButtonClickHandling";
-import { LlmRoles, type LlmTextCompletionResponse, type TgiErrorResponse, sendContentToLlm } from "../llmConnection";
-import { mockBrowser } from "./testUtils";
+import { afterAll, afterEach, describe, expect, type MockInstance, test, vi } from "vitest";
+import { compose, llmActionClickHandler, type LlmPluginAction, summarize } from "../llmButtonClickHandling";
+import {
+  type LlmApiRequestMessage,
+  LlmRoles,
+  type LlmTextCompletionResponse,
+  sendContentToLlm,
+  type TgiErrorResponse,
+} from "../llmConnection";
+import { mockBrowser, mockBrowserMenus, waitFor } from "./testUtils";
+import { handleMenuClickListener } from "../menu";
 import Tab = browser.tabs.Tab;
 import WebExtensionManifest = browser._manifest.WebExtensionManifest;
 
@@ -23,6 +30,7 @@ vi.mock("../llmConnection", async () => ({
 
 const originalBrowser = global.browser;
 
+// @ts-ignore
 describe("The llmActionClickHandler", () => {
   afterAll(() => {
     global.browser = originalBrowser;
@@ -39,7 +47,7 @@ describe("The llmActionClickHandler", () => {
     await llmActionClickHandler(MOCK_TAB, compose);
 
     expect(sendContentToLlm).toHaveBeenCalledTimes(2);
-    expectIntermittentChanges();
+    expectComposerButtonSetAndReset();
 
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
       plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}`,
@@ -54,7 +62,7 @@ describe("The llmActionClickHandler", () => {
     await llmActionClickHandler(MOCK_TAB, compose);
 
     expect(sendContentToLlm).toHaveBeenCalledTimes(2);
-    expectIntermittentChanges();
+    expectComposerButtonSetAndReset();
 
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
       plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n--\n${mockSignature}`,
@@ -68,7 +76,7 @@ describe("The llmActionClickHandler", () => {
     await llmActionClickHandler(MOCK_TAB, compose);
 
     expect(sendContentToLlm).toHaveBeenCalledTimes(1);
-    expectIntermittentChanges();
+    expectComposerButtonSetAndReset();
 
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
       plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}`,
@@ -87,6 +95,7 @@ describe("The llmActionClickHandler", () => {
       title: "Thunderbird LLM Extension Error",
       type: "basic",
     });
+    expectMenuEntriesToBe("compose", "summarize");
   });
 
   test("throws when used with html", async () => {
@@ -112,11 +121,47 @@ describe("The llmActionClickHandler", () => {
     await llmActionClickHandler(MOCK_TAB, async (tabId: number) => summarize(tabId, mockPreviousConversation));
 
     expect(sendContentToLlm).toHaveBeenCalledTimes(1);
-    expectIntermittentChanges();
+    expectComposerButtonSetAndReset();
 
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
       plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n\n\n${mockPreviousConversation}`,
     });
+  });
+
+  test("Cancel request aborts request", async () => {
+    mockBrowser({});
+    fetchMock.mockOnce(() => {
+      console.log("fetch was mocked, stalling for 500 ms");
+      return new Promise((resolve) => {
+        setTimeout(resolve, 500);
+        const response: TgiErrorResponse = {
+          error: {
+            type: "TestError",
+            message: "test error, should never be returned, this request should be aborted",
+          },
+        };
+        return response;
+      });
+    });
+    // noinspection ES6MissingAwait
+    (sendContentToLlm as unknown as MockInstance).mockImplementation(
+      async (messages: Array<LlmApiRequestMessage>, abortSignal: AbortSignal) => {
+        console.log("run with message", messages);
+        await fetch("https://fake-url.com/llm", { signal: abortSignal });
+      },
+    );
+    llmActionClickHandler(MOCK_TAB, compose);
+    await waitFor(() => {
+      expectMenuEntriesToBe("cancel");
+    });
+    // @ts-ignore
+    await handleMenuClickListener({ menuItemId: "cancel" }, MOCK_TAB);
+    await waitFor(() => {
+      expectMenuEntriesToBe("compose", "summarize");
+    });
+    expectComposerButtonSetAndReset();
+    // user should not be notified if they canceled the request themselves
+    expect(global.browser.notifications.create).not.toHaveBeenCalled();
   });
 });
 
@@ -163,16 +208,31 @@ function getErrorResponse(): TgiErrorResponse {
   };
 }
 
-function expectIntermittentChanges(): void {
+function expectComposerButtonSetAndReset() {
   expect(global.browser.composeAction.disable).toHaveBeenCalledTimes(1);
   expect(global.browser.composeAction.disable).toHaveBeenCalledWith(MOCK_TAB_ID);
   expect(global.browser.composeAction.enable).toHaveBeenCalledTimes(1);
   expect(global.browser.composeAction.enable).toHaveBeenCalledWith(MOCK_TAB_ID);
   expect(global.browser.composeAction.setIcon).toHaveBeenCalledTimes(2);
+  expect(global.browser.composeAction.setTitle).toHaveBeenCalledTimes(2);
   expect(global.browser.composeAction.setIcon).toHaveBeenNthCalledWith(1, {
     path: { 32: "icons/loader-32px.gif" },
+    tabId: MOCK_TAB_ID,
+  });
+  expect(global.browser.composeAction.setTitle).toHaveBeenNthCalledWith(1, {
+    title: "Cancel Request",
+    tabId: MOCK_TAB_ID,
   });
   expect(global.browser.composeAction.setIcon).toHaveBeenNthCalledWith(2, {
     path: { 64: "icons/icon-64px.png" },
+    tabId: MOCK_TAB_ID,
   });
+  expect(global.browser.composeAction.setTitle).toHaveBeenNthCalledWith(2, {
+    tabId: MOCK_TAB_ID,
+    title: "To LLM (dev)",
+  });
+}
+
+function expectMenuEntriesToBe(...entries: LlmPluginAction[]): void {
+  expect(mockBrowserMenus.sort()).toEqual(entries.sort());
 }

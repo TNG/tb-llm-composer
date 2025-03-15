@@ -14,6 +14,7 @@ const MOCK_PROMPT: LlmApiRequestMessage = {
   role: LlmRoles.USER,
 };
 const MOCK_MODEL_URL = "MOCK_MODEL_URL";
+const abortSignal = new AbortController().signal;
 
 describe("Testing sentContentToLlm", () => {
   afterAll(() => {
@@ -24,7 +25,7 @@ describe("Testing sentContentToLlm", () => {
   test.each([[undefined], [""]])("throws if the model is %s", async (model) => {
     mockBrowserAndFetch({ responseBody: getMockResponseBody(), options: { model } });
 
-    await expect(sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT])).rejects.toThrow(
+    await expect(sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal)).rejects.toThrow(
       "Missing LLM model, set it in the options panel.",
     );
   });
@@ -33,14 +34,17 @@ describe("Testing sentContentToLlm", () => {
     const mockResponseBody = getMockResponseBody();
     mockBrowserAndFetch({ responseBody: mockResponseBody, options: { model: MOCK_MODEL_URL } });
 
-    const result = await sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT]);
+    const result = await sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal);
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect(global.fetch).toHaveBeenCalledWith(MOCK_MODEL_URL, getExpectedRequestContent([MOCK_CONTEXT, MOCK_PROMPT]));
+    expect(global.fetch).toHaveBeenCalledWith(
+      MOCK_MODEL_URL,
+      getExpectedRequestContent([MOCK_CONTEXT, MOCK_PROMPT], abortSignal),
+    );
     expect(result).toEqual(mockResponseBody);
   });
 
-  test("with token, ok response", async () => {
+  test("with token, ok response ", async () => {
     const mockToken = "testToken";
     const mockResponseBody = getMockResponseBody();
     mockBrowserAndFetch({
@@ -48,12 +52,12 @@ describe("Testing sentContentToLlm", () => {
       options: { api_token: mockToken, model: MOCK_MODEL_URL },
     });
 
-    const result = await sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT]);
+    const result = await sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal);
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith(
       MOCK_MODEL_URL,
-      getExpectedRequestContent([MOCK_CONTEXT, MOCK_PROMPT], mockToken),
+      getExpectedRequestContent([MOCK_CONTEXT, MOCK_PROMPT], abortSignal, mockToken),
     );
     expect(result).toEqual(mockResponseBody);
   });
@@ -61,7 +65,7 @@ describe("Testing sentContentToLlm", () => {
   test("error response", async () => {
     mockBrowserAndFetch({ responseBody: "NOT_OK_RESPONSE", options: { model: MOCK_MODEL_URL } });
 
-    await expect(sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT])).rejects.toThrow(
+    await expect(sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal)).rejects.toThrow(
       `LLM-CONNECTION: Error response from ${MOCK_MODEL_URL}: Error response from LLM API`,
     );
   });
