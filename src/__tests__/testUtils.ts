@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import {
   type LlmApiRequestMessage,
   type LlmChoice,
@@ -5,9 +6,10 @@ import {
   type LlmTextCompletionResponse,
   type TgiErrorResponse,
 } from "../llmConnection";
-import ComposeDetails = browser.compose.ComposeDetails;
-import { vi } from "vitest";
 import { DEFAULT_OPTIONS, type LlmParameters, type Options } from "../optionsParams";
+import ComposeDetails = browser.compose.ComposeDetails;
+import _CreateCreateProperties = browser.menus._CreateCreateProperties;
+import type { LlmPluginAction } from "../llmButtonClickHandling";
 
 const MOCK_IDENTITY_ID = "MOCK_IDENTITY_ID";
 export const MOCK_TAB_DETAILS: browser.compose.ComposeDetails = { identityId: MOCK_IDENTITY_ID };
@@ -24,9 +26,26 @@ interface mockBrowserArgs {
 }
 
 const localStore: { [key: string]: unknown } = {};
+export let mockBrowserMenus: string[] = [];
 
 export function mockBrowser(args: mockBrowserArgs) {
+  mockBrowserMenus = [];
+  // noinspection JSUnusedGlobalSymbols
   global.browser = {
+    // @ts-ignore
+    runtime: {
+      // @ts-ignore
+      getManifest: () => ({
+        compose_action: {
+          default_title: "To LLM (dev)",
+          type: "menu",
+          default_icon: {
+            "64": "icons/icon-64px.png",
+          },
+        },
+      }),
+      lastError: undefined,
+    },
     storage: {
       // @ts-ignore
       sync: {
@@ -82,12 +101,27 @@ export function mockBrowser(args: mockBrowserArgs) {
       disable: vi.fn(),
       setIcon: vi.fn(),
       enable: vi.fn(),
+      setTitle: vi.fn(),
     },
     // @ts-ignore
     notifications: {
       create: vi.fn(),
     },
+    // @ts-ignore
+    menus: {
+      removeAll: async () => {
+        mockBrowserMenus = [];
+      },
+      create: mockMenuCreate,
+    },
   };
+}
+
+function mockMenuCreate(createProperties: _CreateCreateProperties, callback?: () => void) {
+  console.log(`MENU: Called mocked menus.create function for '${createProperties.title}'. Executing callback...`);
+  createProperties.id && mockBrowserMenus.push(createProperties.id);
+  callback?.();
+  return `mocked-menu-id-${createProperties.title}`;
 }
 
 interface mockBrowserAndFetchArgs extends mockBrowserArgs {
@@ -138,6 +172,7 @@ function getMockLLMChoice(content: string, role: LlmRoles): LlmChoice {
 
 export function getExpectedRequestContent(
   messages: Array<LlmApiRequestMessage>,
+  signal: AbortSignal,
   api_token?: string,
   params: Partial<LlmParameters> = {},
 ): unknown {
@@ -149,6 +184,7 @@ export function getExpectedRequestContent(
 
   return {
     body: JSON.stringify(expectedRequestBody),
+    signal,
     headers: {
       "Content-Type": "application/json",
       Authorization: api_token ? `Bearer ${api_token}` : undefined,
