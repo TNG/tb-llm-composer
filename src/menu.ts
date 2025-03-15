@@ -1,28 +1,41 @@
 import _LastError = browser.runtime._LastError;
 import Tab = browser.tabs.Tab;
 import OnClickData = browser.menus.OnClickData;
-import { type LlmPluginAction, executeLlmAction } from "./llmButtonClickHandling";
+import { type LlmPluginAction, allRequestsStatus, executeLlmAction } from "./llmButtonClickHandling";
 
-export const menuEntries: browser.menus._CreateCreateProperties[] = [
+export const defaultMenuEntries: browser.menus._CreateCreateProperties[] = [
   {
-    type: undefined,
     id: "summarize",
-    // @ts-ignore
     contexts: ["compose_action_menu"],
     title: "Summarize",
     enabled: true,
   },
   {
-    type: undefined,
     id: "compose",
-    // @ts-ignore
     contexts: ["compose_action_menu"],
     title: "Compose",
     enabled: true,
   },
 ];
 
+const CANCEL_REQUEST = "cancel";
+
+export const cancelRequestMenuEntry: browser.menus._CreateCreateProperties = {
+  id: CANCEL_REQUEST,
+  contexts: ["compose_action_menu"],
+  title: "Cancel Request",
+  enabled: true,
+};
+
+export async function addLlmActionsToMenu() {
+  await browser.menus.removeAll();
+  for (const menuEntry of defaultMenuEntries) {
+    await addMenuEntry(menuEntry);
+  }
+}
+
 export async function addMenuEntry(createData: browser.menus._CreateCreateProperties) {
+  console.log(`MENU: add '${createData.title}' option`);
   // biome-ignore lint/suspicious/noExplicitAny: <explanation>
   const { promise, resolve, reject } = (Promise as any).withResolvers();
   let error: _LastError | undefined;
@@ -37,10 +50,10 @@ export async function addMenuEntry(createData: browser.menus._CreateCreateProper
 
   try {
     await promise;
-    console.info(`Successfully created menu entry <${id}>`);
+    console.info(`MENU: Successfully created menu entry <${id}>`);
   } catch (error) {
     if ((error as Error).message.includes("already exists")) {
-      console.info(`The menu entry <${id}> exists already and was not added again.`);
+      console.info(`MENU: The menu entry <${id}> exists already and was not added again.`);
     } else {
       console.error("Failed to create menu entry:", createData, error);
     }
@@ -54,9 +67,12 @@ export async function handleMenuClickListener(info: OnClickData, tab?: Tab): Pro
     console.error(`No tab id found, ignoring "${info.menuItemId}" menu click`);
     return;
   }
-  await executeLlmAction(info.menuItemId as LlmPluginAction, tab);
-
-  console.log({ tab, info });
+  if (info.menuItemId === CANCEL_REQUEST) {
+    console.info(`MENU: Aborting LLM requests running in tab ${tab.id}`);
+    allRequestsStatus.abort(tab.id);
+  } else {
+    await executeLlmAction(info.menuItemId as LlmPluginAction, tab);
+  }
 }
 
 export async function enableSummarizeMenuEntryIfReply(tab: Tab): Promise<void> {
@@ -72,4 +88,10 @@ export async function enableSummarizeMenuEntryIfReply(tab: Tab): Promise<void> {
       });
     }
   }
+}
+
+export async function addCancelRequestMenuEntry() {
+  console.log("MENU: remove all menu entries and add 'Cancel request' option");
+  await browser.menus.removeAll();
+  await addMenuEntry(cancelRequestMenuEntry);
 }
