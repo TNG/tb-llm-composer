@@ -36,17 +36,19 @@ export const DEFAULT_PARAMS: LlmParameters = {
   use_cache: true,
   watermark: true,
 };
+
 export const DEFAULT_OPTIONS: Options = {
   model: "",
   context_window: 4096,
   params: DEFAULT_PARAMS,
   llmContext:
-    "You are an AI language model asked to write an email.\n" +
+    "I need to write an email.\n" +
     "The email should be concise.\n" +
-    "Please write the email in the following format:\n" +
-    "[Initial salutation with Recipient's Name],\n\n" +
+    "Respond in the following format:\n" +
+    "[initial salutation and/or Recipient's Name, this part can be omitted]\n\n" +
     "[Body of the email]\n\n" +
-    "[Salutation]\n[Your Name]",
+    "[Salutation]\n" +
+    "[Writer's name, without the mail signature]",
   include_recent_mails: true,
 };
 

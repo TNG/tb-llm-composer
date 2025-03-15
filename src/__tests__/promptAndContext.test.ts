@@ -2,23 +2,27 @@ import { afterAll, describe, expect, test } from "vitest";
 import { LlmRoles } from "../llmConnection";
 import { DEFAULT_OPTIONS } from "../optionsParams";
 import { getEmailGenerationContext, getEmailGenerationPrompt, getSummaryPromptAndContext } from "../promptAndContext";
-import { mockBrowser } from "./testUtils";
+import { MOCK_TAB_DETAILS, MOCK_USER_NAME, mockBrowser } from "./testUtils";
+
+const BASIC_PROMPT = `${DEFAULT_OPTIONS.llmContext}\nI am ${MOCK_USER_NAME}.`;
 
 describe("Testing getEmailGenerationContext", () => {
   test("no old messages, default options", async () => {
+    mockBrowser({});
     const expectedContext = {
-      content: DEFAULT_OPTIONS.llmContext,
+      content: BASIC_PROMPT,
       role: LlmRoles.SYSTEM,
     };
 
-    const result = await getEmailGenerationContext([], DEFAULT_OPTIONS);
+    const result = await getEmailGenerationContext(MOCK_TAB_DETAILS, [], DEFAULT_OPTIONS);
 
     expect(result).toEqual(expectedContext);
   });
 
   test("old messages, include_recent_mails is true", async () => {
+    mockBrowser({});
     const expectedContext = {
-      content: `${DEFAULT_OPTIONS.llmContext}
+      content: `${BASIC_PROMPT}
 Furthermore, here are some older messages to give you an idea of the style I'm writing in when talking to this person:
 Message 0:
 old message 1
@@ -28,7 +32,7 @@ old message 2`,
       role: LlmRoles.SYSTEM,
     };
 
-    const result = await getEmailGenerationContext(["old message 1", "old message 2"], {
+    const result = await getEmailGenerationContext(MOCK_TAB_DETAILS, ["old message 1", "old message 2"], {
       ...DEFAULT_OPTIONS,
       include_recent_mails: true,
     });
@@ -37,12 +41,13 @@ old message 2`,
   });
 
   test("old messages, include_recent_mails is false", async () => {
+    mockBrowser({});
     const expectedContext = {
-      content: DEFAULT_OPTIONS.llmContext,
+      content: BASIC_PROMPT,
       role: LlmRoles.SYSTEM,
     };
 
-    const result = await getEmailGenerationContext(["old message 1", "old message 2"], {
+    const result = await getEmailGenerationContext(MOCK_TAB_DETAILS, ["old message 1", "old message 2"], {
       ...DEFAULT_OPTIONS,
       include_recent_mails: false,
     });
@@ -61,7 +66,7 @@ describe("Testing getEmailGenerationPrompt", () => {
   test("plain text email body, no signature, no previous conversation", async () => {
     mockBrowser({});
     const expectedPrompt = {
-      content: "This is what the user wants to be the content of their email to be:\n" + "Test email",
+      content: "This is what I want the content of my email to be:\n" + "Test email",
       role: LlmRoles.USER,
     };
 
@@ -81,7 +86,7 @@ describe("Testing getEmailGenerationPrompt", () => {
     const testEmail = `${testEmailWithoutSignature}\n\n${testSignature}`;
 
     const expectedPrompt = {
-      content: `This is what the user wants to be the content of their email to be:\n${testEmailWithoutSignature}`,
+      content: `This is what I want the content of my email to be:\n${testEmailWithoutSignature}`,
       role: LlmRoles.USER,
     };
 
@@ -102,10 +107,10 @@ describe("Testing getEmailGenerationPrompt", () => {
     const testEmail = `${testEmailWithoutSignature}\n\n${testSignature}\n\n${testPreviousConversation}`;
 
     const expectedPrompt = {
-      content: `This is what the user wants to be the content of their email to be:
+      content: `This is what I want the content of my email to be:
 ${testEmailWithoutSignature}
 
-This is the conversation the user is replying to. Keep its content in mind but do not include it in your suggestion:
+This is the conversation I am replying to. Keep its content in mind but do not include it in your suggestion:
 ${testPreviousConversation}`,
       role: LlmRoles.USER,
     };
@@ -129,8 +134,8 @@ describe("Testing getSummaryPromptAndContext", () => {
     const expectedContext = [
       {
         content:
-          "The user wants to reply to an email. You need to give him a short summary of the previous conversation, " +
-          "highlighting the open points he needs to cover in his answer.",
+          "I want to reply to an email. Give me a short summary of the previous conversation, " +
+          "highlighting the open points I needs to cover in my answer.",
         role: LlmRoles.SYSTEM,
       },
       {

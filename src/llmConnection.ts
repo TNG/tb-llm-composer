@@ -95,7 +95,7 @@ async function callLlmApi(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  console.log(`LLM-CONNECTION: Sending request to LLM: POST ${url} with body`, requestBody);
+  console.log(`LLM-CONNECTION: Sending request to LLM: POST ${url} with body:\n`, JSON.stringify(requestBody));
   const response = await fetch(url, {
     method: "POST",
     headers: headers,

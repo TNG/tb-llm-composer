@@ -35,19 +35,7 @@ describe("The llmActionClickHandler", () => {
 
     await llmActionClickHandler(MOCK_TAB, compose);
 
-    expect(sendContentToLlm).toHaveBeenCalledTimes(1);
-
-    expect(global.browser.composeAction.disable).toHaveBeenCalledTimes(1);
-    expect(global.browser.composeAction.disable).toHaveBeenCalledWith(MOCK_TAB_ID);
-    expect(global.browser.composeAction.enable).toHaveBeenCalledTimes(1);
-    expect(global.browser.composeAction.enable).toHaveBeenCalledWith(MOCK_TAB_ID);
-    expect(global.browser.composeAction.setIcon).toHaveBeenCalledTimes(2);
-    expect(global.browser.composeAction.setIcon).toHaveBeenNthCalledWith(1, {
-      path: { 32: "icons/loader-32px.gif" },
-    });
-    expect(global.browser.composeAction.setIcon).toHaveBeenNthCalledWith(2, {
-      path: { 64: "icons/icon-64px.png" },
-    });
+    expectSendToLllmAndIntermittentChanges();
 
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
       plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n `,
@@ -90,19 +78,8 @@ describe("The llmActionClickHandler", () => {
 
     await llmActionClickHandler(MOCK_TAB, async (tabId: number) => summarize(tabId, mockPreviousConversation));
 
-    expect(sendContentToLlm).toHaveBeenCalledTimes(1);
+    expectSendToLllmAndIntermittentChanges();
 
-    expect(global.browser.composeAction.disable).toHaveBeenCalledTimes(1);
-    expect(global.browser.composeAction.disable).toHaveBeenCalledWith(MOCK_TAB_ID);
-    expect(global.browser.composeAction.enable).toHaveBeenCalledTimes(1);
-    expect(global.browser.composeAction.enable).toHaveBeenCalledWith(MOCK_TAB_ID);
-    expect(global.browser.composeAction.setIcon).toHaveBeenCalledTimes(2);
-    expect(global.browser.composeAction.setIcon).toHaveBeenNthCalledWith(1, {
-      path: { 32: "icons/loader-32px.gif" },
-    });
-    expect(global.browser.composeAction.setIcon).toHaveBeenNthCalledWith(2, {
-      path: { 64: "icons/icon-64px.png" },
-    });
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
       plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n\n\n${mockPreviousConversation}`,
     });
@@ -136,4 +113,20 @@ function getErrorResponse(): TgiErrorResponse {
       code: "Test Code",
     },
   };
+}
+
+function expectSendToLllmAndIntermittentChanges(): void {
+  expect(sendContentToLlm).toHaveBeenCalledTimes(1);
+
+  expect(global.browser.composeAction.disable).toHaveBeenCalledTimes(1);
+  expect(global.browser.composeAction.disable).toHaveBeenCalledWith(MOCK_TAB_ID);
+  expect(global.browser.composeAction.enable).toHaveBeenCalledTimes(1);
+  expect(global.browser.composeAction.enable).toHaveBeenCalledWith(MOCK_TAB_ID);
+  expect(global.browser.composeAction.setIcon).toHaveBeenCalledTimes(2);
+  expect(global.browser.composeAction.setIcon).toHaveBeenNthCalledWith(1, {
+    path: { 32: "icons/loader-32px.gif" },
+  });
+  expect(global.browser.composeAction.setIcon).toHaveBeenNthCalledWith(2, {
+    path: { 64: "icons/icon-64px.png" },
+  });
 }

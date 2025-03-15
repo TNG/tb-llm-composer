@@ -5,13 +5,27 @@ import type { Options } from "./optionsParams";
 export const DEFAULT_PROMPT = "Schreib den Partnern, dass ich kündige, auf Deutsch.";
 
 export async function getEmailGenerationContext(
+  tabDetails: browser.compose.ComposeDetails,
   oldMessages: string[],
   options: Options,
 ): Promise<LlmApiRequestMessage> {
+  const writerIdentityId = tabDetails.identityId;
+  if (!writerIdentityId) {
+    // It should never happen, if it does this is a bug
+    throw Error("No Identity ID found for this tab, aborting operation.");
+  }
+
+  const identity = await browser.identities.get(writerIdentityId);
+  if (!identity) {
+    // It should never happen, if it does this is a bug
+    throw Error(`Could not find an identity for ID '${tabDetails.identityId}'`);
+  }
+
+  const accountContext = `\nI am ${identity.name}.`;
   const oldMessagesContext =
     options.include_recent_mails && oldMessages.length > 0 ? buildOldMessagesContext(oldMessages) : "";
   return {
-    content: options.llmContext + oldMessagesContext,
+    content: options.llmContext + accountContext + oldMessagesContext,
     role: LlmRoles.SYSTEM,
   };
 }
@@ -45,24 +59,24 @@ function buildEmailPrompt(
   signature: string | undefined,
   previousConversation: string | undefined,
 ): string {
+  const thisIsWhatIWantTheContentToBe = "This is what I want the content of my email to be:";
   const textWithoutSignature = signature ? plainText.replace(signature, "") : plainText;
   if (previousConversation) {
-    return `This is what the user wants to be the content of their email to be:
-${textWithoutSignature.replace(previousConversation, "").trim()}
-
-This is the conversation the user is replying to. Keep its content in mind but do not include it in your suggestion:
-${previousConversation}`;
+    return (
+      `${thisIsWhatIWantTheContentToBe}\n${textWithoutSignature.replace(previousConversation, "").trim()}\n\n` +
+      `This is the conversation I am replying to. Keep its content in mind but do not include it in your suggestion:\n${previousConversation}`
+    );
   }
-  return `This is what the user wants to be the content of their email to be:
-${textWithoutSignature.trim()}`;
+
+  return `${thisIsWhatIWantTheContentToBe}\n${textWithoutSignature.trim()}`;
 }
 
 export async function getSummaryPromptAndContext(previousConversation: string): Promise<Array<LlmApiRequestMessage>> {
   return [
     {
       content:
-        "The user wants to reply to an email. You need to give him a short summary of the previous conversation, " +
-        "highlighting the open points he needs to cover in his answer.",
+        "I want to reply to an email. Give me a short summary of the previous conversation, " +
+        "highlighting the open points I needs to cover in my answer.",
       role: LlmRoles.SYSTEM,
     },
     {

@@ -53,7 +53,8 @@ export async function compose(tabId: number) {
   const tabDetails = await browser.compose.getComposeDetails(tabId);
 
   const oldMessages = await getOldMessagesToFirstRecipient(tabDetails);
-  const context = await getEmailGenerationContext(oldMessages, await getPluginOptions());
+  const options = await getPluginOptions();
+  const context = await getEmailGenerationContext(tabDetails, oldMessages, options);
 
   const previousConversation = await getOriginalTabConversation(tabId);
   const prompt = await getEmailGenerationPrompt(tabDetails, previousConversation);
@@ -96,7 +97,11 @@ function handleLlmErrorResponse(response: TgiErrorResponse) {
   throw Error(`LLM responded with an error: ${response.error.message}`);
 }
 
-export async function summarize(tabId: number, originalConversation: string): Promise<void> {
+export async function summarize(tabId: number, originalConversation?: string): Promise<void> {
+  if (!originalConversation) {
+    // This should never happen, as we do not want to allow summarize to be called when there is nothing to summarize
+    throw Error("No conversation found to summarize. Aborting.");
+  }
   const messages = await getSummaryPromptAndContext(originalConversation);
   const response = await sendContentToLlm(messages);
 

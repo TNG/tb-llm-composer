@@ -9,7 +9,7 @@ export async function getOriginalTabConversationCacheContent(): Promise<{
   return rawCache[cacheName] || {};
 }
 
-export async function getOriginalTabConversation(tabId: number): Promise<string> {
+export async function getOriginalTabConversation(tabId: number): Promise<string | undefined> {
   console.log("LLM-CONVO-CACHE: Retrieving original convo for tab", tabId);
   return (await getOriginalTabConversationCacheContent())[tabId];
 }

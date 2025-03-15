@@ -9,6 +9,10 @@ import ComposeDetails = browser.compose.ComposeDetails;
 import { vi } from "vitest";
 import { DEFAULT_OPTIONS, type LlmParameters, type Options } from "../optionsParams";
 
+const MOCK_IDENTITY_ID = "MOCK_IDENTITY_ID";
+export const MOCK_TAB_DETAILS: browser.compose.ComposeDetails = { identityId: MOCK_IDENTITY_ID };
+export const MOCK_USER_NAME = "MOCK_USER_NAME";
+
 interface mockBrowserArgs {
   options?: Partial<Options>;
   params?: Partial<LlmParameters>;
@@ -59,11 +63,12 @@ export function mockBrowser(args: mockBrowserArgs) {
     },
     // @ts-ignore
     identities: {
-      get: vi.fn().mockReturnValue({ signature: args.signature }),
+      get: vi.fn().mockReturnValue({ name: MOCK_USER_NAME, signature: args.signature }),
     },
     // @ts-ignore
     compose: {
       getComposeDetails: vi.fn().mockResolvedValue({
+        identityId: MOCK_IDENTITY_ID,
         isPlainText: args.isPlainText !== false,
         plainTextBody: args.plainTextBody || undefined,
         type: args.composeDetailsType,
