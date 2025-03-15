@@ -33,7 +33,13 @@ necessary,
 in order to not interfere with a production version of the plugin.
 This means you can run both, the most recent production version of the plugin alongside the dev-version you are
 currently working on.
-Please ensure that this still works when adding new functionality.
+
+> [!IMPORTANT]
+> If you want to use the plugin's shortcuts, change the ones for the production LLM to something else,
+> since the dev-version will often reset the shortcuts.
+> Using the same shortcuts for both will result in non-deterministic behavior. 
+
+Please ensure that the dev-production separation still works when adding new functionality.
 In particular, when adding new top-level buttons, make them distinguishable for dev and production versions
 (see [webpack-config](./webpack.config.js) to see how this is currently handled for the manifest.json).
 

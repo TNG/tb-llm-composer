@@ -32,5 +32,19 @@
       "32": "icons/icon-32px.png",
       "64": "icons/icon-64px.png"
     }
+  },
+  "commands": {
+    "compose": {
+      "suggested_key": {
+        "default": "Ctrl+Alt+L"
+      },
+      "description": "Instructs the LLM to write a mail for you"
+    },
+    "summarize": {
+      "suggested_key": {
+        "default": "Ctrl+Alt+K"
+      },
+      "description": "Instructs the LLM to summarize the current state of a conversation"
+    }
   }
 }

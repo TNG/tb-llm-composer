@@ -16,6 +16,8 @@ import { getPluginOptions } from "./optionsParams";
 const LLM_HTML_NOT_IMPLEMENTED_TEXT: string = "LLM Support for HTML Mails is not yet implemented";
 const DEFAULT_ICONS: IconPath = { 64: "icons/icon-64px.png" };
 
+export type LlmPluginAction = "compose" | "summarize";
+
 export async function llmActionClickHandler(tab: Tab, communicateWithLlm: (tabID: number) => Promise<void>) {
   const openTabId = tab.id;
   if (openTabId === undefined) {
@@ -111,5 +113,18 @@ export async function summarize(tabId: number, originalConversation?: string): P
     });
   } else {
     throw Error(`LLM while attempting to summarize responded with an error: ${response.error.message}`);
+  }
+}
+
+export async function executeLlmAction(actionId: LlmPluginAction, tab: Tab) {
+  switch (actionId) {
+    case "summarize":
+      await llmActionClickHandler(tab, async (tabId: number) =>
+        summarize(tabId, await getOriginalTabConversation(tabId)),
+      );
+      break;
+    case "compose":
+      await llmActionClickHandler(tab, compose);
+      break;
   }
 }

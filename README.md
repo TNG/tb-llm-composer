@@ -23,6 +23,15 @@ Specify the following things:
   If you don't have access to an LLM, try https://github.com/cheahjs/free-llm-api-resource
 - Api token: Leave empty if public, otherwise obtain one.
 
+### Shortcuts
+
+By default, the plugin, introduces the following shortcuts:
+- `Ctrl+Alt+L`: to ask the LLM to compose a mail
+- `Ctrl+Alt+K`: to ask the LLM to summarize the existing conversation
+
+Shortcuts can be customized in
+"Add-ons Manger" >> Settings ⚙ >> "Manage Extension Shortcuts"
+
 ## Contributing
 
 See [Contributing](./CONTRIBUTING.md)

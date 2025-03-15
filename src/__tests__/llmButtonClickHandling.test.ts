@@ -1,8 +1,11 @@
-import { compose, llmActionClickHandler, summarize } from "../llmButtonClickHandling";
+import fs from "node:fs";
+import path from "node:path";
+import { type LlmPluginAction, compose, llmActionClickHandler, summarize } from "../llmButtonClickHandling";
 import { LlmRoles, type LlmTextCompletionResponse, type TgiErrorResponse, sendContentToLlm } from "../llmConnection";
 import { mockBrowser } from "./testUtils";
 import Tab = browser.tabs.Tab;
 import { type MockInstance, afterAll, afterEach, describe, expect, test, vi } from "vitest";
+import WebExtensionManifest = browser._manifest.WebExtensionManifest;
 
 const MOCK_TAB_ID = 99999999;
 const MOCK_TAB: Tab = {
@@ -83,6 +86,20 @@ describe("The llmActionClickHandler", () => {
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
       plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n\n\n${mockPreviousConversation}`,
     });
+  });
+});
+
+describe("The LlmPluginAction type", () => {
+  test("matches the commands defined in the manifest.json config", () => {
+    const manifestFile = path.resolve(__dirname, "../../manifest.json");
+    const manifestJson = JSON.parse(fs.readFileSync(manifestFile, "utf-8")) as WebExtensionManifest;
+    const shortcuts = manifestJson.commands;
+
+    const existingActions: LlmPluginAction[] = ["compose", "summarize"];
+
+    for (const shortcut in shortcuts) {
+      expect(existingActions).toContain(shortcut);
+    }
   });
 });
 

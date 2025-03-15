@@ -1,26 +1,26 @@
 import _LastError = browser.runtime._LastError;
 import Tab = browser.tabs.Tab;
 import OnClickData = browser.menus.OnClickData;
-import { compose, llmActionClickHandler, summarize } from "./llmButtonClickHandling";
-import { getOriginalTabConversation } from "./originalTabConversation";
+import { type LlmPluginAction, executeLlmAction } from "./llmButtonClickHandling";
 
-export const SUMMARIZE_MENU_ENTRY: browser.menus._CreateCreateProperties = {
-  type: undefined,
-  id: "summarize",
-  // @ts-ignore
-  contexts: ["compose_action_menu"],
-  title: "Summarize",
-  enabled: true,
-};
-
-export const COMPOSE_MENU_ENTRY: browser.menus._CreateCreateProperties = {
-  type: undefined,
-  id: "compose",
-  // @ts-ignore
-  contexts: ["compose_action_menu"],
-  title: "Compose",
-  enabled: true,
-};
+export const menuEntries: browser.menus._CreateCreateProperties[] = [
+  {
+    type: undefined,
+    id: "summarize",
+    // @ts-ignore
+    contexts: ["compose_action_menu"],
+    title: "Summarize",
+    enabled: true,
+  },
+  {
+    type: undefined,
+    id: "compose",
+    // @ts-ignore
+    contexts: ["compose_action_menu"],
+    title: "Compose",
+    enabled: true,
+  },
+];
 
 export async function addMenuEntry(createData: browser.menus._CreateCreateProperties) {
   // biome-ignore lint/suspicious/noExplicitAny: <explanation>
@@ -54,17 +54,7 @@ export async function handleMenuClickListener(info: OnClickData, tab?: Tab): Pro
     console.error(`No tab id found, ignoring "${info.menuItemId}" menu click`);
     return;
   }
-
-  switch (info.menuItemId) {
-    case SUMMARIZE_MENU_ENTRY.id:
-      await llmActionClickHandler(tab, async (tabId: number) =>
-        summarize(tabId, await getOriginalTabConversation(tabId)),
-      );
-      break;
-    case COMPOSE_MENU_ENTRY.id:
-      await llmActionClickHandler(tab, compose);
-      break;
-  }
+  await executeLlmAction(info.menuItemId as LlmPluginAction, tab);
 
   console.log({ tab, info });
 }
