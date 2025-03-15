@@ -32,7 +32,7 @@ describe("The llmActionClickHandler", () => {
     vi.clearAllMocks();
   });
 
-  test("calls compose", async () => {
+  test("calls compose without signature", async () => {
     mockBrowser({});
     (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
 
@@ -41,7 +41,21 @@ describe("The llmActionClickHandler", () => {
     expectSendToLllmAndIntermittentChanges();
 
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
-      plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n `,
+      plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}`,
+    });
+  });
+
+  test("calls compose with signature", async () => {
+    const mockSignature = "MOCK_SIGNATURE";
+    mockBrowser({ signature: mockSignature });
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
+
+    await llmActionClickHandler(MOCK_TAB, compose);
+
+    expectSendToLllmAndIntermittentChanges();
+
+    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
+      plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n--\n${mockSignature}`,
     });
   });
 

@@ -80,7 +80,11 @@ async function handleComposeSuccessResponse(tabId: number, response: LlmTextComp
 
   const originalContent = await getOriginalTabConversation(tabId);
   const cleanedUpGeneratedEmail = await getCleanedUpGeneratedEmail(response, signature);
-  const fullEmail = `${cleanedUpGeneratedEmail}${originalContent ? `\n\n${originalContent}` : ""}${!originalContent ? `\n\n${signature ?? ""} ` : ""}`;
+  const fullEmail =
+    // biome-ignore lint/style/useTemplate: the new lines are necessary to improve readability
+    cleanedUpGeneratedEmail +
+    `${originalContent ? `\n\n${originalContent}` : ""}` +
+    `${!originalContent && signature ? `\n\n--\n${signature}` : ""}`;
 
   await browser.compose.setComposeDetails(tabId, {
     plainTextBody: fullEmail,
