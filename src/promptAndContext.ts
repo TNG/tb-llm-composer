@@ -3,6 +3,7 @@ import { type LlmApiRequestMessage, LlmRoles } from "./llmConnection";
 import type { Options } from "./optionsParams";
 
 export const DEFAULT_PROMPT = "Schreib den Partnern, dass ich kündige, auf Deutsch.";
+const THIS_IS_THE_CONTENT = "This is what I want the content of my email to be:";
 
 export async function getEmailGenerationContext(
   tabDetails: browser.compose.ComposeDetails,
@@ -59,16 +60,15 @@ function buildEmailPrompt(
   signature: string | undefined,
   previousConversation: string | undefined,
 ): string {
-  const thisIsWhatIWantTheContentToBe = "This is what I want the content of my email to be:";
   const textWithoutSignature = signature ? plainText.replace(signature, "") : plainText;
   if (previousConversation) {
     return (
-      `${thisIsWhatIWantTheContentToBe}\n${textWithoutSignature.replace(previousConversation, "").trim()}\n\n` +
+      `${THIS_IS_THE_CONTENT}\n${textWithoutSignature.replace(previousConversation, "").trim()}\n\n` +
       `This is the conversation I am replying to. Keep its content in mind but do not include it in your suggestion:\n${previousConversation}`
     );
   }
 
-  return `${thisIsWhatIWantTheContentToBe}\n${textWithoutSignature.trim()}`;
+  return `${THIS_IS_THE_CONTENT}\n${textWithoutSignature.trim()}`;
 }
 
 export async function getSummaryPromptAndContext(previousConversation: string): Promise<Array<LlmApiRequestMessage>> {
@@ -84,4 +84,41 @@ export async function getSummaryPromptAndContext(previousConversation: string): 
       role: LlmRoles.USER,
     },
   ];
+}
+
+export async function getSubjectGenerationContext(
+  tabDetails: browser.compose.ComposeDetails,
+  oldMessages: string[],
+  options: Options,
+): Promise<LlmApiRequestMessage> {
+  const writerIdentityId = tabDetails.identityId;
+  if (!writerIdentityId) {
+    // It should never happen, if it does this is a bug
+    throw Error("No Identity ID found for this tab, aborting operation.");
+  }
+
+  const identity = await browser.identities.get(writerIdentityId);
+  if (!identity) {
+    // It should never happen, if it does this is a bug
+    throw Error(`Could not find an identity for ID '${tabDetails.identityId}'`);
+  }
+
+  const oldMessagesContext =
+    options.include_recent_mails && oldMessages.length > 0 ? buildOldMessagesContext(oldMessages) : "";
+  return {
+    content:
+      // biome-ignore lint/style/useTemplate: the new line improves readability
+      "I need a concise subject from an email I am writing. Reply in the format: [subject] \n" +
+      `I am ${identity.name}.${oldMessagesContext}`,
+    role: LlmRoles.SYSTEM,
+  };
+}
+
+export async function getSubjectGenerationPrompt(
+  tabDetails: browser.compose.ComposeDetails,
+): Promise<LlmApiRequestMessage> {
+  return {
+    content: tabDetails.plainTextBody ? `${THIS_IS_THE_CONTENT}\n${tabDetails.plainTextBody}` : DEFAULT_PROMPT,
+    role: LlmRoles.USER,
+  };
 }
