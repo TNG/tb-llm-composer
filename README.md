@@ -28,6 +28,7 @@ Specify the following things:
 By default, the plugin, introduces the following shortcuts:
 - `Ctrl+Alt+L`: to ask the LLM to compose a mail
 - `Ctrl+Alt+K`: to ask the LLM to summarize the existing conversation
+- `Ctrl+Alt+C`: to cancel an ongoing LLM request
 
 Shortcuts can be customized in
 "Add-ons Manger" >> Settings ⚙ >> "Manage Extension Shortcuts"

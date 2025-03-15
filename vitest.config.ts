@@ -8,5 +8,6 @@ export default defineConfig({
     alias: {
       "@/(.*)": "<rootDir>/src/$1",
     },
+    setupFiles: ["./src/__tests__/setupVitest.ts"],
   },
 });
