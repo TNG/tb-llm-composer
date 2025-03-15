@@ -29,6 +29,9 @@ async function searchSentFolder(sentFolder: MailFolder, recipientEmail: string, 
     fromMe: true,
   };
   const messages = await browser.messages.query(query);
+  if (typeof messages === "string") {
+    return [];
+  }
   return messages.messages.sort(compareDates).slice(0, limit);
 }
 

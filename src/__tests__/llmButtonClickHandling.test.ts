@@ -2,7 +2,7 @@ import { compose, llmActionClickHandler, summarize } from "../llmButtonClickHand
 import { LlmRoles, type LlmTextCompletionResponse, type TgiErrorResponse, sendContentToLlm } from "../llmConnection";
 import { mockBrowser } from "./testUtils";
 import Tab = browser.tabs.Tab;
-import clearAllMocks = jest.clearAllMocks;
+import { type MockInstance, afterAll, afterEach, describe, expect, test, vi } from "vitest";
 
 const MOCK_TAB_ID = 99999999;
 const MOCK_TAB: Tab = {
@@ -13,9 +13,9 @@ const MOCK_TAB: Tab = {
 };
 const MOCK_RESPONSE_LLM_TEXT = "MOCK_RESPONSE_LLM_TEXT";
 
-jest.mock("../llmConnection", () => ({
-  ...(jest.requireActual("../llmConnection") as object),
-  sendContentToLlm: jest.fn(),
+vi.mock("../llmConnection", async () => ({
+  ...(await vi.importActual("../llmConnection")),
+  sendContentToLlm: vi.fn(),
 }));
 
 const originalBrowser = global.browser;
@@ -26,12 +26,12 @@ describe("The llmActionClickHandler", () => {
   });
 
   afterEach(() => {
-    clearAllMocks();
+    vi.clearAllMocks();
   });
 
   test("calls compose", async () => {
     mockBrowser({});
-    (sendContentToLlm as jest.Mock).mockResolvedValue(getTestResponse());
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
 
     await llmActionClickHandler(MOCK_TAB, compose);
 
@@ -56,7 +56,7 @@ describe("The llmActionClickHandler", () => {
 
   test("notifies errors", async () => {
     mockBrowser({});
-    (sendContentToLlm as jest.Mock).mockResolvedValue(getErrorResponse());
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getErrorResponse());
 
     await llmActionClickHandler(MOCK_TAB, compose);
 
@@ -70,7 +70,7 @@ describe("The llmActionClickHandler", () => {
 
   test("throws when used with html", async () => {
     mockBrowser({ isPlainText: false });
-    (sendContentToLlm as jest.Mock).mockResolvedValue(getTestResponse());
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
 
     await llmActionClickHandler(MOCK_TAB, compose);
 
@@ -82,9 +82,9 @@ describe("The llmActionClickHandler", () => {
     });
   });
 
-  test("calls summarise ", async () => {
+  test("calls summarize ", async () => {
     mockBrowser({});
-    (sendContentToLlm as jest.Mock).mockResolvedValue(getTestResponse());
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
 
     const mockPreviousConversation = "Test previous conversation";
 

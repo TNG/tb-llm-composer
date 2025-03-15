@@ -5,8 +5,9 @@ import {
   type LlmTextCompletionResponse,
   type TgiErrorResponse,
 } from "../llmConnection";
-import { DEFAULT_OPTIONS, type LlmParameters, type Options } from "../options";
 import ComposeDetails = browser.compose.ComposeDetails;
+import { vi } from "vitest";
+import { DEFAULT_OPTIONS, type LlmParameters, type Options } from "../optionsParams";
 
 interface mockBrowserArgs {
   options?: Partial<Options>;
@@ -24,7 +25,7 @@ export function mockBrowser(args: mockBrowserArgs) {
     storage: {
       // @ts-ignore
       sync: {
-        get: jest.fn().mockReturnValue(
+        get: vi.fn().mockReturnValue(
           args.params || args.options
             ? {
                 options: {
@@ -39,7 +40,7 @@ export function mockBrowser(args: mockBrowserArgs) {
               }
             : {},
         ),
-        set: jest.fn(),
+        set: vi.fn(),
       },
       // @ts-ignore
       local: {
@@ -58,26 +59,26 @@ export function mockBrowser(args: mockBrowserArgs) {
     },
     // @ts-ignore
     identities: {
-      get: jest.fn().mockReturnValue({ signature: args.signature }),
+      get: vi.fn().mockReturnValue({ signature: args.signature }),
     },
     // @ts-ignore
     compose: {
-      getComposeDetails: jest.fn().mockResolvedValue({
+      getComposeDetails: vi.fn().mockResolvedValue({
         isPlainText: args.isPlainText !== false,
         plainTextBody: args.plainTextBody || undefined,
         type: args.composeDetailsType,
       }),
-      setComposeDetails: jest.fn(),
+      setComposeDetails: vi.fn(),
     },
     // @ts-ignore
     composeAction: {
-      disable: jest.fn(),
-      setIcon: jest.fn(),
-      enable: jest.fn(),
+      disable: vi.fn(),
+      setIcon: vi.fn(),
+      enable: vi.fn(),
     },
     // @ts-ignore
     notifications: {
-      create: jest.fn(),
+      create: vi.fn(),
     },
   };
 }
@@ -94,16 +95,16 @@ export function mockBrowserAndFetch(args: mockBrowserAndFetchArgs): void {
       ok: false,
       text: async () => "Error response from LLM API",
     };
-    global.fetch = jest.fn().mockResolvedValue(errorResponse);
+    global.fetch = vi.fn().mockResolvedValue(errorResponse);
 
     return;
   }
 
   const fetchResponse: Partial<Response> = {
     ok: true,
-    json: jest.fn().mockResolvedValue(args.responseBody),
+    json: vi.fn().mockResolvedValue(args.responseBody),
   };
-  global.fetch = jest.fn().mockResolvedValue(fetchResponse);
+  global.fetch = vi.fn().mockResolvedValue(fetchResponse);
 }
 
 export function getMockResponseBody(firstChoiceContent?: string): LlmTextCompletionResponse {

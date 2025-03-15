@@ -1,4 +1,4 @@
-import { type LlmParameters, getPluginOptions } from "./options";
+import { type LlmParameters, getPluginOptions } from "./optionsParams";
 
 export enum LlmRoles {
   SYSTEM = "system",

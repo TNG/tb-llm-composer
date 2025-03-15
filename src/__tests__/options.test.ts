@@ -1,16 +1,20 @@
 /**
- * @jest-environment jsdom
+ * @vi-environment jsdom
  */
 import fs from "node:fs";
 import * as path from "node:path";
 import { TextDecoder, TextEncoder } from "node:util";
+import { beforeEach, describe, expect, test } from "vitest";
 
 Object.assign(global, { TextDecoder, TextEncoder });
 
 import { JSDOM } from "jsdom";
-import type { Options } from "../options";
 import { waitFor } from "./testUtils";
+
+Object.assign(global, { TextDecoder, TextEncoder });
+
 import CreateNotificationOptions = browser.notifications.CreateNotificationOptions;
+import type { Options } from "../optionsParams";
 
 let optionsDom: JSDOM;
 

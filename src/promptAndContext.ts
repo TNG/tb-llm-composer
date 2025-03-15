@@ -1,5 +1,6 @@
 import { type LlmApiRequestMessage, LlmRoles } from "./llmConnection";
-import type { Options } from "./options";
+
+import type { Options } from "./optionsParams";
 
 export const DEFAULT_PROMPT = "Schreib den Partnern, dass ich kündige, auf Deutsch.";
 
@@ -26,6 +27,10 @@ export async function getEmailGenerationPrompt(
   previousConversation?: string,
 ): Promise<LlmApiRequestMessage> {
   const identity = await browser.identities.get(tabDetails.identityId as string);
+  if (!identity) {
+    // It should never happen, if it does this is a bug
+    throw Error(`Could not find an identity for ID '${tabDetails.identityId}'`);
+  }
 
   return {
     content: tabDetails.plainTextBody

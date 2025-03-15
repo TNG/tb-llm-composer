@@ -1,5 +1,6 @@
+import { afterAll, describe, expect, test } from "vitest";
 import { LlmRoles } from "../llmConnection";
-import { DEFAULT_OPTIONS } from "../options";
+import { DEFAULT_OPTIONS } from "../optionsParams";
 import { getEmailGenerationContext, getEmailGenerationPrompt, getSummaryPromptAndContext } from "../promptAndContext";
 import { mockBrowser } from "./testUtils";
 

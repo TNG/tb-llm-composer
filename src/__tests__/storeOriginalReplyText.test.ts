@@ -5,7 +5,8 @@ import {
 } from "../originalTabConversation";
 import { mockBrowser } from "./testUtils";
 import Tab = browser.tabs.Tab;
-import clearAllMocks = jest.clearAllMocks;
+import { vi } from "vitest";
+import { afterAll, afterEach, describe, expect, test } from "vitest";
 
 const originalBrowser = global.browser;
 
@@ -15,7 +16,7 @@ describe("The storeOriginalReplyTextAndSummarize", () => {
   });
 
   afterEach(async () => {
-    clearAllMocks();
+    vi.clearAllMocks();
     await clearOriginalTabCache();
   });
 

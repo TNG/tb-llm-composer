@@ -6,12 +6,12 @@ import {
   sendContentToLlm,
 } from "./llmConnection";
 import { notifyOnError, timedNotification } from "./notifications";
-import { getPluginOptions } from "./options";
 import { getOriginalTabConversation } from "./originalTabConversation";
 import { getEmailGenerationContext, getEmailGenerationPrompt, getSummaryPromptAndContext } from "./promptAndContext";
 import { getSentMessages } from "./retrieveSentContext";
 import Tab = browser.tabs.Tab;
 import IconPath = browser._manifest.IconPath;
+import { getPluginOptions } from "./optionsParams";
 
 const LLM_HTML_NOT_IMPLEMENTED_TEXT: string = "LLM Support for HTML Mails is not yet implemented";
 const DEFAULT_ICONS: IconPath = { 64: "icons/icon-64px.png" };
@@ -69,6 +69,10 @@ export async function compose(tabId: number) {
 async function handleComposeSuccessResponse(tabId: number, response: LlmTextCompletionResponse) {
   const tabDetails = await browser.compose.getComposeDetails(tabId);
   const identity = await browser.identities.get(tabDetails.identityId as string);
+  if (!identity) {
+    // It should never happen, if it does this is a bug
+    throw Error(`Could not find an identity for ID '${tabDetails.identityId}'`);
+  }
   const signature: string | undefined = identity.signature;
 
   const originalContent = await getOriginalTabConversation(tabId);

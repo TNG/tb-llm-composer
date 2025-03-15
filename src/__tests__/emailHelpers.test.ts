@@ -1,10 +1,11 @@
 import ComposeDetails = browser.compose.ComposeDetails;
 import ComposeRecipientList = browser.compose.ComposeRecipientList;
 import MessagePart = browser.messages.MessagePart;
+import { describe, expect, test } from "vitest";
 import { getContentFromEmailParts, getFirstRecipientMailAddress } from "../emailHelpers";
 
 describe("The getFirstRecipientMailAddress", () => {
-  it.each([
+  test.each([
     [undefined, undefined],
     [undefined, []],
     ["michael.mueller@konzern.de", ["michael.mueller@konzern.de"]],
@@ -122,7 +123,7 @@ const emailWithAttachments: MessagePart = {
 };
 
 describe("The getContentFromEmailParts", () => {
-  it.each([
+  test.each([
     ["some text", emailWithCalendar],
     ["some text without html", htmlEmail],
     ["some text in an email with attachments", emailWithAttachments],
