@@ -10,6 +10,12 @@
       "strict_min_version": "110"
     }
   },
+  "applications": {
+    "gecko": {
+      "id": "llm-thunderbird-dev@tngtech.com",
+      "update_url": "https://raw.githubusercontent.com/TNG/tb-llm-composer/refs/heads/main/updates.json"
+    }
+  },
   "permissions": ["menus", "compose", "storage", "notifications", "messagesRead", "accountsRead"],
   "icons": {
     "64": "icons/icon-64px.png",
