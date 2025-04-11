@@ -6,12 +6,18 @@ import {
   sendContentToLlm,
 } from "./llmConnection";
 import { notifyOnError, timedNotification } from "./notifications";
+import { getPluginOptions } from "./optionsParams";
 import { getOriginalTabConversation } from "./originalTabConversation";
-import { getEmailGenerationContext, getEmailGenerationPrompt, getSummaryPromptAndContext } from "./promptAndContext";
+import {
+  getEmailGenerationContext,
+  getEmailGenerationPrompt,
+  getSubjectGenerationContext,
+  getSubjectGenerationPrompt,
+  getSummaryPromptAndContext,
+} from "./promptAndContext";
 import { getSentMessages } from "./retrieveSentContext";
 import Tab = browser.tabs.Tab;
 import IconPath = browser._manifest.IconPath;
-import { getPluginOptions } from "./optionsParams";
 
 const LLM_HTML_NOT_IMPLEMENTED_TEXT: string = "LLM Support for HTML Mails is not yet implemented";
 const DEFAULT_ICONS: IconPath = { 64: "icons/icon-64px.png" };
@@ -56,17 +62,33 @@ export async function compose(tabId: number) {
 
   const oldMessages = await getOldMessagesToFirstRecipient(tabDetails);
   const options = await getPluginOptions();
-  const context = await getEmailGenerationContext(tabDetails, oldMessages, options);
+  const emailContext = await getEmailGenerationContext(tabDetails, oldMessages, options);
 
   const previousConversation = await getOriginalTabConversation(tabId);
-  const prompt = await getEmailGenerationPrompt(tabDetails, previousConversation);
+  const emailPrompt = await getEmailGenerationPrompt(tabDetails, previousConversation);
 
-  const response = await sendContentToLlm([context, prompt]);
-  if (isLlmTextCompletionResponse(response)) {
-    await handleComposeSuccessResponse(tabId, response as LlmTextCompletionResponse);
-  } else {
-    handleLlmErrorResponse(response as TgiErrorResponse);
+  const subject = tabDetails.subject;
+  if (!subject) {
+    const subjectContext = await getSubjectGenerationContext(tabDetails, oldMessages, options);
+    const subjectPrompt = await getSubjectGenerationPrompt(tabDetails);
+    const subjectResponse = await sendContentToLlm([subjectContext, subjectPrompt]);
+    if (isLlmTextCompletionResponse(subjectResponse)) {
+      await handleSubjectSuccessResponse(tabId, subjectResponse);
+    }
   }
+
+  const emailResponse = await sendContentToLlm([emailContext, emailPrompt]);
+  if (isLlmTextCompletionResponse(emailResponse)) {
+    await handleComposeSuccessResponse(tabId, emailResponse as LlmTextCompletionResponse);
+  } else {
+    handleLlmErrorResponse(emailResponse as TgiErrorResponse);
+  }
+}
+
+async function handleSubjectSuccessResponse(tabId: number, subjectResponse: LlmTextCompletionResponse) {
+  await browser.compose.setComposeDetails(tabId, {
+    subject: subjectResponse.choices[0].message.content.trim(),
+  });
 }
 
 async function handleComposeSuccessResponse(tabId: number, response: LlmTextCompletionResponse) {

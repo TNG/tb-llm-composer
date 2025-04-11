@@ -20,6 +20,7 @@ interface mockBrowserArgs {
   isPlainText?: boolean;
   composeDetailsType?: ComposeDetails["type"];
   signature?: string;
+  subject?: string;
 }
 
 const localStore: { [key: string]: unknown } = {};
@@ -72,6 +73,7 @@ export function mockBrowser(args: mockBrowserArgs) {
         isPlainText: args.isPlainText !== false,
         plainTextBody: args.plainTextBody || undefined,
         type: args.composeDetailsType,
+        subject: args.subject,
       }),
       setComposeDetails: vi.fn(),
     },
