@@ -1,7 +1,7 @@
 import _LastError = browser.runtime._LastError;
 import Tab = browser.tabs.Tab;
 import OnClickData = browser.menus.OnClickData;
-import { type LlmPluginAction, allRequestsStatus, executeLlmAction } from "./llmButtonClickHandling";
+import { type LlmPluginAction, executeLlmAction } from "./llmButtonClickHandling";
 
 export const defaultMenuEntries: browser.menus._CreateCreateProperties[] = [
   {
@@ -18,10 +18,8 @@ export const defaultMenuEntries: browser.menus._CreateCreateProperties[] = [
   },
 ];
 
-const CANCEL_REQUEST = "cancel";
-
 export const cancelRequestMenuEntry: browser.menus._CreateCreateProperties = {
-  id: CANCEL_REQUEST,
+  id: "cancel",
   contexts: ["compose_action_menu"],
   title: "Cancel Request",
   enabled: true,
@@ -36,17 +34,26 @@ export async function addLlmActionsToMenu() {
 
 export async function addMenuEntry(createData: browser.menus._CreateCreateProperties) {
   console.log(`MENU: add '${createData.title}' option`);
+  const shortcut = (await browser.commands.getAll())
+    .filter((cmd) => cmd.name === createData.id)
+    .map((cmd) => cmd.shortcut)[0];
   // biome-ignore lint/suspicious/noExplicitAny: <explanation>
   const { promise, resolve, reject } = (Promise as any).withResolvers();
   let error: _LastError | undefined;
-  const id = browser.menus.create(createData, () => {
-    error = browser.runtime.lastError; // Either null or an Error object.
-    if (error) {
-      reject(error);
-    } else {
-      resolve();
-    }
-  });
+  const id = browser.menus.create(
+    {
+      ...createData,
+      title: shortcut ? `${createData.title} (${shortcut})` : createData.title,
+    },
+    () => {
+      error = browser.runtime.lastError; // Either null or an Error object.
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    },
+  );
 
   try {
     await promise;
@@ -67,12 +74,7 @@ export async function handleMenuClickListener(info: OnClickData, tab?: Tab): Pro
     console.error(`No tab id found, ignoring "${info.menuItemId}" menu click`);
     return;
   }
-  if (info.menuItemId === CANCEL_REQUEST) {
-    console.info(`MENU: Aborting LLM requests running in tab ${tab.id}`);
-    allRequestsStatus.abort(tab.id);
-  } else {
-    await executeLlmAction(info.menuItemId as LlmPluginAction, tab);
-  }
+  await executeLlmAction(info.menuItemId as LlmPluginAction, tab);
 }
 
 export async function enableSummarizeMenuEntryIfReply(tab: Tab): Promise<void> {
