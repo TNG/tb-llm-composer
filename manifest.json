@@ -46,6 +46,12 @@
         "default": "Ctrl+Alt+K"
       },
       "description": "Instructs the LLM to summarize the current state of a conversation"
+    },
+    "cancel": {
+      "suggested_key": {
+        "default": "Ctrl+Alt+C"
+      },
+      "description": "Cancels LLM requests currently running"
     }
   }
 }
