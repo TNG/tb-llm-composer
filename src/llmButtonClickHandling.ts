@@ -215,5 +215,10 @@ export async function executeLlmAction(actionId: LlmPluginAction, tab: Tab) {
     case "compose":
       await llmActionClickHandler(tab, compose);
       break;
+    case "cancel":
+      if (tab?.id) {
+        allRequestsStatus.abort(tab.id);
+      }
+      break;
   }
 }

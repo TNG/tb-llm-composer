@@ -28,6 +28,21 @@ interface mockBrowserArgs {
 const localStore: { [key: string]: unknown } = {};
 export let mockBrowserMenus: string[] = [];
 
+const allShortcuts: { name: LlmPluginAction; shortcut: string }[] = [
+  {
+    name: "compose",
+    shortcut: "Ctrl+Alt+L",
+  },
+  {
+    name: "summarize",
+    shortcut: "Ctrl+Alt+K",
+  },
+  {
+    name: "cancel",
+    shortcut: "Ctrl+Alt+C",
+  },
+];
+
 export function mockBrowser(args: mockBrowserArgs) {
   mockBrowserMenus = [];
   // noinspection JSUnusedGlobalSymbols
@@ -113,6 +128,10 @@ export function mockBrowser(args: mockBrowserArgs) {
         mockBrowserMenus = [];
       },
       create: mockMenuCreate,
+    },
+    // @ts-ignore
+    commands: {
+      getAll: async () => allShortcuts,
     },
   };
 }
