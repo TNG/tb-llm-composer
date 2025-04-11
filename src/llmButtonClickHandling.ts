@@ -5,7 +5,7 @@ import {
   isLlmTextCompletionResponse,
   sendContentToLlm,
 } from "./llmConnection";
-import { addCancelRequestMenuEntry, addLlmActionsToMenu } from "./menu";
+import { USER_ABORT_MESSAGE, addCancelRequestMenuEntry, addLlmActionsToMenu } from "./menu";
 import { notifyOnError, timedNotification } from "./notifications";
 import { getPluginOptions } from "./optionsParams";
 import { getOriginalTabConversation } from "./originalTabConversation";
@@ -60,7 +60,7 @@ export class AllRequestsStatus {
 
 export const allRequestsStatus = new AllRequestsStatus();
 
-export type LlmPluginAction = "compose" | "summarize";
+export type LlmPluginAction = "compose" | "summarize" | "cancel";
 
 export async function llmActionClickHandler(tab: Tab, communicateWithLlm: (tabID: number) => Promise<void>) {
   const openTabId = tab.id;
@@ -191,6 +191,11 @@ export async function executeLlmAction(actionId: LlmPluginAction, tab: Tab) {
       break;
     case "compose":
       await llmActionClickHandler(tab, compose);
+      break;
+    case "cancel":
+      if (tab?.id) {
+        allRequestsStatus.abort(tab.id, USER_ABORT_MESSAGE);
+      }
       break;
   }
 }

@@ -134,7 +134,7 @@ describe("The llmActionClickHandler", () => {
       expectMenuEntriesToBe("cancel");
     });
     // @ts-ignore
-    await handleMenuClickListener({ menuItemId: "cancelRequest" }, MOCK_TAB);
+    await handleMenuClickListener({ menuItemId: "cancel" }, MOCK_TAB);
 
     await waitFor(() => {
       expect(fakeCommunicationAborted).toBeTruthy();
@@ -151,7 +151,7 @@ describe("The LlmPluginAction type", () => {
     const manifestJson = JSON.parse(fs.readFileSync(manifestFile, "utf-8")) as WebExtensionManifest;
     const shortcuts = manifestJson.commands;
 
-    const existingActions: LlmPluginAction[] = ["compose", "summarize"];
+    const existingActions: LlmPluginAction[] = ["compose", "summarize", "cancel"];
 
     for (const shortcut in shortcuts) {
       expect(existingActions).toContain(shortcut);
