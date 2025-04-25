@@ -1,5 +1,5 @@
 import { type LlmPluginAction, executeLlmAction } from "./llmButtonClickHandling";
-import { addMenuEntry, enableSummarizeMenuEntryIfReply, handleMenuClickListener, menuEntries } from "./menu";
+import { addLlmActionsToMenu, enableSummarizeMenuEntryIfReply, handleMenuClickListener } from "./menu";
 import { deleteFromOriginalTabCache, storeOriginalReplyText } from "./originalTabConversation";
 import Tab = browser.tabs.Tab;
 
@@ -15,6 +15,5 @@ browser.tabs.onCreated.addListener(async (tab: Tab) => {
 browser.tabs.onRemoved.addListener(deleteFromOriginalTabCache);
 
 browser.menus.onClicked.addListener(handleMenuClickListener);
-for (const menuEntry of menuEntries) {
-  await addMenuEntry(menuEntry);
-}
+
+await addLlmActionsToMenu();
