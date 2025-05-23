@@ -7,12 +7,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "llm-thunderbird-dev@tngtech.com",
-      "strict_min_version": "110"
-    }
-  },
-  "applications": {
-    "gecko": {
-      "id": "llm-thunderbird-dev@tngtech.com",
+      "strict_min_version": "110",
       "update_url": "https://raw.githubusercontent.com/TNG/tb-llm-composer/refs/heads/main/updates.json"
     }
   },
