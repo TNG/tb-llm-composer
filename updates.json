@@ -1,6 +1,6 @@
 {
   "addons": {
-    "llm-thunderbird-dev@tngtech.com": {
+    "llm-thunderbird@tngtech.com": {
       "updates": [
         {
           "version": "0.2.0",
