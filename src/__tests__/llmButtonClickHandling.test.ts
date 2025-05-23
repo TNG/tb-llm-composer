@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
+import { type MockInstance, afterAll, afterEach, describe, expect, test, vi } from "vitest";
 import { type LlmPluginAction, compose, llmActionClickHandler, summarize } from "../llmButtonClickHandling";
 import { LlmRoles, type LlmTextCompletionResponse, type TgiErrorResponse, sendContentToLlm } from "../llmConnection";
 import { mockBrowser } from "./testUtils";
 import Tab = browser.tabs.Tab;
-import { type MockInstance, afterAll, afterEach, describe, expect, test, vi } from "vitest";
 import WebExtensionManifest = browser._manifest.WebExtensionManifest;
 
 const MOCK_TAB_ID = 99999999;
@@ -38,7 +38,8 @@ describe("The llmActionClickHandler", () => {
 
     await llmActionClickHandler(MOCK_TAB, compose);
 
-    expectSendToLllmAndIntermittentChanges();
+    expect(sendContentToLlm).toHaveBeenCalledTimes(2);
+    expectIntermittentChanges();
 
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
       plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}`,
@@ -52,10 +53,25 @@ describe("The llmActionClickHandler", () => {
 
     await llmActionClickHandler(MOCK_TAB, compose);
 
-    expectSendToLllmAndIntermittentChanges();
+    expect(sendContentToLlm).toHaveBeenCalledTimes(2);
+    expectIntermittentChanges();
 
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
       plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n--\n${mockSignature}`,
+    });
+  });
+
+  test("does not generate a subject when one is already present", async () => {
+    mockBrowser({ subject: "MUCK_SUBJECT" });
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
+
+    await llmActionClickHandler(MOCK_TAB, compose);
+
+    expect(sendContentToLlm).toHaveBeenCalledTimes(1);
+    expectIntermittentChanges();
+
+    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
+      plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}`,
     });
   });
 
@@ -95,7 +111,8 @@ describe("The llmActionClickHandler", () => {
 
     await llmActionClickHandler(MOCK_TAB, async (tabId: number) => summarize(tabId, mockPreviousConversation));
 
-    expectSendToLllmAndIntermittentChanges();
+    expect(sendContentToLlm).toHaveBeenCalledTimes(1);
+    expectIntermittentChanges();
 
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
       plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n\n\n${mockPreviousConversation}`,
@@ -146,9 +163,7 @@ function getErrorResponse(): TgiErrorResponse {
   };
 }
 
-function expectSendToLllmAndIntermittentChanges(): void {
-  expect(sendContentToLlm).toHaveBeenCalledTimes(1);
-
+function expectIntermittentChanges(): void {
   expect(global.browser.composeAction.disable).toHaveBeenCalledTimes(1);
   expect(global.browser.composeAction.disable).toHaveBeenCalledWith(MOCK_TAB_ID);
   expect(global.browser.composeAction.enable).toHaveBeenCalledTimes(1);
