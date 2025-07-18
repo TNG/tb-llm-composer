@@ -11,8 +11,9 @@ import {
 import { MOCK_TAB_DETAILS, MOCK_USER_NAME, mockBrowser } from "./testUtils";
 
 const EMAIL_BASIC_PROMPT = `${DEFAULT_OPTIONS.llmContext}\nI am ${MOCK_USER_NAME}.`;
-const SUBJECT_BASIC_PROMPT =
-  "I need a concise subject from an email I am writing. Reply in the format: [subject] \nI am MOCK_USER_NAME.";
+const SUBJECT_BASIC_PROMPT = `I need a concise subject for an email I am writing, in the same language as the email. 
+      Reply in the format: [subject] 
+      I am MOCK_USER_NAME.`;
 
 const originalBrowser = global.browser;
 
