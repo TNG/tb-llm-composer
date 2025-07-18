@@ -106,10 +106,9 @@ export async function getSubjectGenerationContext(
   const oldMessagesContext =
     options.include_recent_mails && oldMessages.length > 0 ? buildOldMessagesContext(oldMessages) : "";
   return {
-    content:
-      // biome-ignore lint/style/useTemplate: the new line improves readability
-      "I need a concise subject from an email I am writing. Reply in the format: [subject] \n" +
-      `I am ${identity.name}.${oldMessagesContext}`,
+    content: `I need a concise subject for an email I am writing, in the same language as the email. 
+      Reply in the format: [subject] 
+      I am ${identity.name}.${oldMessagesContext}`,
     role: LlmRoles.SYSTEM,
   };
 }
