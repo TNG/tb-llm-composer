@@ -23,11 +23,6 @@ const MOCK_TAB: Tab = {
 };
 const MOCK_RESPONSE_LLM_TEXT = "MOCK_RESPONSE_LLM_TEXT";
 
-vi.mock("../llmConnection", async () => ({
-  ...(await vi.importActual("../llmConnection")),
-  sendContentToLlm: vi.fn(),
-}));
-
 const originalBrowser = global.browser;
 
 // @ts-ignore

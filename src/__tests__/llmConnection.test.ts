@@ -3,7 +3,6 @@ import { type LlmApiRequestMessage, LlmRoles, sendContentToLlm } from "../llmCon
 import { getExpectedRequestContent, getMockResponseBody, mockBrowserAndFetch } from "./testUtils";
 
 const originalBrowser = global.browser;
-const originalFetch = global.fetch;
 
 const MOCK_CONTEXT: LlmApiRequestMessage = {
   content: "Test content",
@@ -19,7 +18,6 @@ const abortSignal = new AbortController().signal;
 describe("Testing sentContentToLlm", () => {
   afterAll(() => {
     global.browser = originalBrowser;
-    global.fetch = originalFetch;
   });
 
   test.each([[undefined], [""]])("throws if the model is %s", async (model) => {
