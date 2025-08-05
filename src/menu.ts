@@ -1,7 +1,8 @@
 import _LastError = browser.runtime._LastError;
 import Tab = browser.tabs.Tab;
 import OnClickData = browser.menus.OnClickData;
-import { type LlmPluginAction, executeLlmAction } from "./llmButtonClickHandling";
+
+import { executeLlmAction, type LlmPluginAction } from "./llmButtonClickHandling";
 
 export const defaultMenuEntries: browser.menus._CreateCreateProperties[] = [
   {
@@ -37,7 +38,7 @@ export async function addMenuEntry(createData: browser.menus._CreateCreateProper
   const shortcut = (await browser.commands.getAll())
     .filter((cmd) => cmd.name === createData.id)
     .map((cmd) => cmd.shortcut)[0];
-  // biome-ignore lint/suspicious/noExplicitAny: <explanation>
+  // biome-ignore lint/suspicious/noExplicitAny: workaround for missing type definitions
   const { promise, resolve, reject } = (Promise as any).withResolvers();
   let error: _LastError | undefined;
   const id = browser.menus.create(

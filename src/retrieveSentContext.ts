@@ -2,6 +2,7 @@ import MailFolder = browser.folders.MailFolder;
 import MailAccount = browser.accounts.MailAccount;
 import _QueryQueryInfo = browser.messages._QueryQueryInfo;
 import MessageHeader = browser.messages.MessageHeader;
+
 import { getContentFromEmailParts } from "./emailHelpers";
 
 export async function getSentMessages(recipientEmail: string) {

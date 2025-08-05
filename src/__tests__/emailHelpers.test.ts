@@ -1,6 +1,7 @@
 import ComposeDetails = browser.compose.ComposeDetails;
 import ComposeRecipientList = browser.compose.ComposeRecipientList;
 import MessagePart = browser.messages.MessagePart;
+
 import { describe, expect, test } from "vitest";
 import { getContentFromEmailParts, getFirstRecipientMailAddress } from "../emailHelpers";
 

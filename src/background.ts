@@ -1,6 +1,7 @@
-import { type LlmPluginAction, executeLlmAction } from "./llmButtonClickHandling";
+import { executeLlmAction, type LlmPluginAction } from "./llmButtonClickHandling";
 import { addLlmActionsToMenu, enableSummarizeMenuEntryIfReply, handleMenuClickListener } from "./menu";
 import { deleteFromOriginalTabCache, storeOriginalReplyText } from "./originalTabConversation";
+
 import Tab = browser.tabs.Tab;
 
 // it is VERY important that this is the first line of the file.

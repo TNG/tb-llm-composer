@@ -4,9 +4,10 @@ import {
   storeOriginalReplyText,
 } from "../originalTabConversation";
 import { mockBrowser } from "./testUtils";
+
 import Tab = browser.tabs.Tab;
-import { vi } from "vitest";
-import { afterAll, afterEach, describe, expect, test } from "vitest";
+
+import { afterAll, afterEach, describe, expect, test, vi } from "vitest";
 
 const originalBrowser = global.browser;
 

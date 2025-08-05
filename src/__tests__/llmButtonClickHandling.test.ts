@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { type MockInstance, afterAll, afterEach, describe, expect, test, vi } from "vitest";
-import { type LlmPluginAction, compose, llmActionClickHandler, summarize } from "../llmButtonClickHandling";
+import { afterAll, afterEach, describe, expect, type MockInstance, test, vi } from "vitest";
+import { compose, type LlmPluginAction, llmActionClickHandler, summarize } from "../llmButtonClickHandling";
 import {
   type LlmApiRequestMessage,
   LlmRoles,
   type LlmTextCompletionResponse,
-  type TgiErrorResponse,
   sendContentToLlm,
+  type TgiErrorResponse,
 } from "../llmConnection";
 import { handleMenuClickListener } from "../menu";
 import { mockBrowser, mockBrowserMenus, waitFor } from "./testUtils";
@@ -30,7 +30,6 @@ vi.mock("../llmConnection", async () => ({
 
 const originalBrowser = global.browser;
 
-// @ts-ignore
 describe("The llmActionClickHandler", () => {
   afterAll(() => {
     global.browser = originalBrowser;
