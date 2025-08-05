@@ -14,6 +14,7 @@ import { waitFor } from "./testUtils";
 Object.assign(global, { TextDecoder, TextEncoder });
 
 import CreateNotificationOptions = browser.notifications.CreateNotificationOptions;
+
 import type { Options } from "../optionsParams";
 
 let optionsDom: JSDOM;

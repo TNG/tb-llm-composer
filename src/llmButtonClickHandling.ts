@@ -1,9 +1,9 @@
 import { getFirstRecipientMailAddress } from "./emailHelpers";
 import {
-  type LlmTextCompletionResponse,
-  type TgiErrorResponse,
   isLlmTextCompletionResponse,
+  type LlmTextCompletionResponse,
   sendContentToLlm,
+  type TgiErrorResponse,
 } from "./llmConnection";
 import { addCancelRequestMenuEntry, addLlmActionsToMenu } from "./menu";
 import { notifyOnError, timedNotification } from "./notifications";
@@ -17,6 +17,7 @@ import {
   getSummaryPromptAndContext,
 } from "./promptAndContext";
 import { getSentMessages } from "./retrieveSentContext";
+
 import Tab = browser.tabs.Tab;
 
 const LLM_HTML_NOT_IMPLEMENTED_TEXT: string = "LLM Support for HTML Mails is not yet implemented";
@@ -166,7 +167,6 @@ async function handleComposeSuccessResponse(tabId: number, response: LlmTextComp
   const originalContent = await getOriginalTabConversation(tabId);
   const cleanedUpGeneratedEmail = await getCleanedUpGeneratedEmail(response, signature);
   const fullEmail =
-    // biome-ignore lint/style/useTemplate: the new lines are necessary to improve readability
     cleanedUpGeneratedEmail +
     `${originalContent ? `\n\n${originalContent}` : ""}` +
     `${!originalContent && signature ? `\n\n--\n${signature}` : ""}`;
