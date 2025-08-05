@@ -7,8 +7,10 @@ import {
   type TgiErrorResponse,
 } from "../llmConnection";
 import { DEFAULT_OPTIONS, type LlmParameters, type Options } from "../optionsParams";
+
 import ComposeDetails = browser.compose.ComposeDetails;
 import _CreateCreateProperties = browser.menus._CreateCreateProperties;
+
 import type { LlmPluginAction } from "../llmButtonClickHandling";
 
 const MOCK_IDENTITY_ID = "MOCK_IDENTITY_ID";
