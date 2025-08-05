@@ -11,6 +11,7 @@ import {
 } from "../llmConnection";
 import { handleMenuClickListener } from "../menu";
 import { mockBrowser, mockBrowserMenus, waitFor } from "./testUtils";
+
 import Tab = browser.tabs.Tab;
 import WebExtensionManifest = browser._manifest.WebExtensionManifest;
 
