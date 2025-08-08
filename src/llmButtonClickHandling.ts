@@ -62,7 +62,7 @@ export class AllRequestsStatus {
 
   abort(tabId: number) {
     const message = `User cancelled request in tab ${tabId}`;
-    this.getRequestStatus(tabId).abortController.abort(message);
+    this.getRequestStatus(tabId).abortController.abort(new DOMException(message, "AbortError"));
   }
 }
 
@@ -89,7 +89,6 @@ export async function llmActionClickHandler(tab: Tab, communicateWithLlm: (tabID
 async function withButtonRequestInProgress<T>(tabId: number, callback: () => Promise<T>) {
   const requestStatus = allRequestsStatus.getRequestStatus(tabId);
   requestStatus.isRunning = true;
-  await browser.composeAction.disable(tabId);
   await browser.composeAction.setIcon({
     tabId: tabId,
     path: { 32: "icons/loader-32px.gif" },
@@ -103,7 +102,6 @@ async function withButtonRequestInProgress<T>(tabId: number, callback: () => Pro
 }
 
 async function resetComposerAction(tabId: number) {
-  await browser.composeAction.enable(tabId);
   const actionDefaultIcon = getActionDefaultIcon();
   await browser.composeAction.setIcon({ path: actionDefaultIcon, tabId: tabId });
   await browser.composeAction.setTitle({ title: getActionDefaultTitle(), tabId: tabId });

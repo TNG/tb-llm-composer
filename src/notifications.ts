@@ -9,6 +9,7 @@ export async function timedNotification(title: string, message: string, ms = 300
 
 export function notifyOnError<T>(callback: () => Promise<T>) {
   return callback().catch((e) => {
+    console.debug("Error occurred", e);
     if (e.name === "AbortError") {
       console.debug("User cancelled request, do not notify", e);
       return;

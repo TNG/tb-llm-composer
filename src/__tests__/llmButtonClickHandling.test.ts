@@ -209,10 +209,7 @@ function getErrorResponse(): TgiErrorResponse {
 }
 
 function expectComposerButtonSetAndReset() {
-  expect(global.browser.composeAction.disable).toHaveBeenCalledTimes(1);
-  expect(global.browser.composeAction.disable).toHaveBeenCalledWith(MOCK_TAB_ID);
-  expect(global.browser.composeAction.enable).toHaveBeenCalledTimes(1);
-  expect(global.browser.composeAction.enable).toHaveBeenCalledWith(MOCK_TAB_ID);
+  expect(global.browser.composeAction.disable).not.toHaveBeenCalled();
   expect(global.browser.composeAction.setIcon).toHaveBeenCalledTimes(2);
   expect(global.browser.composeAction.setTitle).toHaveBeenCalledTimes(2);
   expect(global.browser.composeAction.setIcon).toHaveBeenNthCalledWith(1, {
