@@ -35,7 +35,7 @@ Shortcuts can be customized in
 
 ## Contributing
 
-See [Contributing](./CONTRIBUTING.md)
+See [Contributing](docs/CONTRIBUTING.md)
 
 ## License
 
