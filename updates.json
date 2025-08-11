@@ -3,6 +3,10 @@
     "llm-thunderbird@tngtech.com": {
       "updates": [
         {
+          "version": "0.3.0",
+          "update_link": "https://github.com/TNG/tb-llm-composer/releases/download/v0.3.0/llm-thunderbird.xpi"
+        },
+        {
           "version": "0.2.0",
           "update_link": "https://github.com/TNG/tb-llm-composer/releases/download/v0.2.0/llm-thunderbird.xpi"
         },
