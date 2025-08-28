@@ -25,17 +25,7 @@ export interface Options {
   llmContext: string;
 }
 
-export const DEFAULT_PARAMS: LlmParameters = {
-  best_of: 1,
-  decoder_input_details: true,
-  max_new_tokens: 2000,
-  repetition_penalty: 1.03,
-  return_full_text: false,
-  temperature: 0.2,
-  typical_p: 0.95,
-  use_cache: true,
-  watermark: true,
-};
+export const DEFAULT_PARAMS: LlmParameters = {};
 
 export const DEFAULT_OPTIONS: Options = {
   model: "",
