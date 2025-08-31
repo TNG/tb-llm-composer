@@ -20,8 +20,11 @@ Open the preference window of the plugin.
 Specify the following things:
 
 - URL: The URL to the endpoint of the LLM.
-  If you don't have access to an LLM, try https://github.com/cheahjs/free-llm-api-resource
+  If you don't have access to an LLM, try https://github.com/cheahjs/free-llm-api-resources
 - Api token: Leave empty if public, otherwise obtain one.
+- Optionally: Set a model in "Other options" if the api allows it
+
+![Thunderbird LLM Plugin Preferences Example](./docs/img/tb-llm-preferences.png)
 
 ### Shortcuts
 
