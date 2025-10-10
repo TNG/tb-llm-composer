@@ -164,7 +164,7 @@ export function mockBrowserAndFetch(args: mockBrowserAndFetchArgs): void {
 
   const fetchResponse: Partial<Response> = {
     ok: true,
-    json: vi.fn().mockResolvedValue(args.responseBody),
+    text: vi.fn().mockResolvedValue(JSON.stringify(args.responseBody)),
   };
   global.fetch = vi.fn().mockResolvedValue(fetchResponse);
 }

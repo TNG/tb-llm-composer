@@ -22,6 +22,7 @@
   "javascript": {
     "formatter": {
       "quoteStyle": "double"
-    }
+    },
+    "globals": ["__HTTP_LOGGING_ENABLED__"]
   }
 }

@@ -66,7 +66,7 @@ describe("Testing sentContentToLlm", () => {
     mockBrowserAndFetch({ responseBody: "NOT_OK_RESPONSE", options: { model: MOCK_MODEL_URL } });
 
     await expect(sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal)).rejects.toThrow(
-      `LLM-CONNECTION: Error response from ${MOCK_MODEL_URL}: Error response from LLM API`,
+      `LLM-CONNECTION: Error response from ${MOCK_MODEL_URL}: "Error response from LLM API"`,
     );
   });
 });

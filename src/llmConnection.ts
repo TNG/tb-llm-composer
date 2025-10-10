@@ -1,3 +1,4 @@
+import { logRequestResponseToFile } from "./logRequestResponseToFile";
 import { getPluginOptions, type LlmParameters } from "./optionsParams";
 
 export enum LlmRoles {
@@ -84,6 +85,8 @@ export async function sendContentToLlm(
   return callLlmApi(options.model, requestBody, abortSignal, options.api_token);
 }
 
+export type LlmResponseBodyType = string | LlmTextCompletionResponse | TgiErrorResponse;
+
 async function callLlmApi(
   url: string,
   requestBody: LlmApiRequestBody,
@@ -98,20 +101,32 @@ async function callLlmApi(
   }
 
   console.log(`LLM-CONNECTION: Sending request to LLM: POST ${url} with body:\n`, JSON.stringify(requestBody));
-  const response = await fetch(url, {
+  const fetchOptions = {
     signal: signal,
     method: "POST",
     headers: headers,
     body: JSON.stringify(requestBody),
-  });
-  if (!response.ok) {
-    const errorResponseBody = await response.text();
-    throw Error(`LLM-CONNECTION: Error response from ${url}: ${errorResponseBody}`);
+  };
+  const response = await fetch(url, fetchOptions);
+  const responseBody = await safeParseBody(response);
+  if (process.env.NODE_ENV === "development" && __HTTP_LOGGING_ENABLED__) {
+    logRequestResponseToFile(url, fetchOptions, requestBody, response, responseBody);
   }
-  const responseBody = (await response.json()) as LlmTextCompletionResponse | TgiErrorResponse;
+  if (!response.ok) {
+    throw Error(`LLM-CONNECTION: Error response from ${url}: ${JSON.stringify(responseBody)}`);
+  }
   console.log("LLM-CONNECTION: LLM responded with:", response.status, responseBody);
+  return responseBody as LlmTextCompletionResponse | TgiErrorResponse;
+}
 
-  return responseBody;
+async function safeParseBody(response: Response): Promise<LlmResponseBodyType> {
+  const responseBody = await response.text();
+  try {
+    return JSON.parse(responseBody);
+  } catch (e) {
+    console.warn("Could not parse response body", responseBody, e);
+    return responseBody;
+  }
 }
 
 export function isLlmTextCompletionResponse(response: LlmTextCompletionResponse | TgiErrorResponse) {

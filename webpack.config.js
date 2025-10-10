@@ -1,3 +1,4 @@
+const { DefinePlugin } = require("webpack");
 const CopyWebpackPlugin = require("copy-webpack-plugin");
 const path = require("node:path");
 const TerserPlugin = require("terser-webpack-plugin");
@@ -61,6 +62,9 @@ module.exports = (_env, argv) => {
             },
           },
         ],
+      }),
+      new DefinePlugin({
+        __HTTP_LOGGING_ENABLED__: _env.HTTP_LOGGING === "true",
       }),
     ],
     optimization: {

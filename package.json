@@ -5,6 +5,7 @@
   "main": "background.js",
   "scripts": {
     "start": "webpack --watch",
+    "with-http-logging": "webpack --env HTTP_LOGGING=true --watch",
     "build": "webpack --mode production",
     "zip": "run-script-os",
     "zip:darwin:linux": "cd build && zip -r ../llm-thunderbird.xpi ./*",

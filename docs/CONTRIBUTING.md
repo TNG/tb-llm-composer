@@ -43,6 +43,23 @@ Please ensure that the dev-production separation still works when adding new fun
 In particular, when adding new top-level buttons, make them distinguishable for dev and production versions
 (see [webpack-config](../webpack.config.js) to see how this is currently handled for the manifest.json).
 
+### Log request-response pairs
+
+For tests it might be useful to have the full request-response interaction with an LLM.
+For this we added an extra development mode which can be enabled by runing
+```shell
+npm run with-http-logging
+```
+instead of `npm start`.
+
+With this, each request that is made to an LLM will open a download modal in Thunderbird where you download a json
+file which contains the request you made (minus the Authorization header) and the response by the backend.
+
+This request-response json can be reused in tests to mock the backend.
+See also [mockResponses](../src/__tests__/mockResponses).
+
+Make sure that the content of these examples is save for publication (See also: Test mails down below).
+
 ### Build the plugin locally
 
 - Build the addon package:
