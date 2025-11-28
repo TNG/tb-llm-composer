@@ -1,0 +1,43 @@
+{
+  "request": {
+    "url": "/v1/chat/completions",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer testToken"
+    },
+    "body": {
+      "messages": [
+        {
+          "content": "I need to write an email.\nThe email should be concise.\nRespond in the following format:\n[initial salutation and/or Recipient's Name, this part can be omitted]\n\n[Body of the email]\n\n[Salutation]\n[Writer's name, without the mail signature]\nI am MOCK_USER_NAME.",
+          "role": "system"
+        },
+        { "content": "Schreib den Partnern, dass ich kündige, auf Deutsch.", "role": "user" }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "statusText": "Ok",
+    "headers": {},
+    "body": {
+      "status": 200,
+      "id": "testId",
+      "created": 123,
+      "model": "testModel",
+      "choices": [
+        {
+          "message": {
+            "content": "MOCK_RESPONSE_LLM_TEXT",
+            "role": "user"
+          },
+          "index": 0,
+          "prefill": ["Test prefill"],
+          "logprobs": [0.1],
+          "finish_reason": "length"
+        }
+      ],
+      "finish_reason": "length"
+    }
+  }
+}

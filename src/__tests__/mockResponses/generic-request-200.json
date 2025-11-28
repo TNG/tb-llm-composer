@@ -1,0 +1,34 @@
+{
+  "request": {
+    "url": "/v1/chat/completions",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer testToken"
+    },
+    "body": {
+      "messages": [{ "content": "Test content", "role": "system" }, { "content": "Test prompt", "role": "user" }]
+    }
+  },
+  "response": {
+    "status": 200,
+    "statusText": "Ok",
+    "headers": {},
+    "body": {
+      "status": 1,
+      "id": "1",
+      "created": 1,
+      "model": "test_model",
+      "choices": [
+        {
+          "message": { "content": "Test response", "role": "system" },
+          "finish_reason": "stop_sequence",
+          "index": 0,
+          "logprobs": [0],
+          "prefill": [""]
+        }
+      ],
+      "finish_reason": "stop_sequence"
+    }
+  }
+}

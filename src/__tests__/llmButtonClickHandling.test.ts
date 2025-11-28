@@ -1,16 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterAll, afterEach, describe, expect, type MockInstance, test, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, test, vi } from "vitest";
 import { compose, type LlmPluginAction, llmActionClickHandler, summarize } from "../llmButtonClickHandling";
-import {
-  type LlmApiRequestMessage,
-  LlmRoles,
-  type LlmTextCompletionResponse,
-  sendContentToLlm,
-  type TgiErrorResponse,
-} from "../llmConnection";
 import { handleMenuClickListener } from "../menu";
-import { mockBrowser, mockBrowserMenus, waitFor } from "./testUtils";
+import { mockBrowser, mockBrowserAndFetch, mockBrowserMenus, waitFor } from "./testUtils";
+
+import { MOCK_MODEL_URL, MOCK_TOKEN, useFetchWithAbort } from "./useFetchMock";
 
 import Tab = browser.tabs.Tab;
 import WebExtensionManifest = browser._manifest.WebExtensionManifest;
@@ -24,11 +19,6 @@ const MOCK_TAB: Tab = {
 };
 const MOCK_RESPONSE_LLM_TEXT = "MOCK_RESPONSE_LLM_TEXT";
 
-vi.mock("../llmConnection", async () => ({
-  ...(await vi.importActual("../llmConnection")),
-  sendContentToLlm: vi.fn(),
-}));
-
 const originalBrowser = global.browser;
 
 describe("The llmActionClickHandler", () => {
@@ -41,51 +31,50 @@ describe("The llmActionClickHandler", () => {
   });
 
   test("calls compose without signature", async () => {
-    mockBrowser({});
-    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
+    mockBrowserAndFetch({}, "subject-request-200.json", "compose-request-200.json");
 
     await llmActionClickHandler(MOCK_TAB, compose);
 
-    expect(sendContentToLlm).toHaveBeenCalledTimes(2);
     expectComposerButtonSetAndReset();
-
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
-      plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}`,
+      subject: MOCK_RESPONSE_LLM_TEXT,
+    });
+    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
+      plainTextBody: MOCK_RESPONSE_LLM_TEXT,
     });
   });
 
   test("calls compose with signature", async () => {
     const mockSignature = "MOCK_SIGNATURE";
-    mockBrowser({ signature: mockSignature });
-    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
+    mockBrowserAndFetch({ signature: mockSignature }, "subject-request-200.json", "compose-request-200.json");
 
     await llmActionClickHandler(MOCK_TAB, compose);
 
-    expect(sendContentToLlm).toHaveBeenCalledTimes(2);
     expectComposerButtonSetAndReset();
-
+    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
+      subject: MOCK_RESPONSE_LLM_TEXT,
+    });
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
       plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n--\n${mockSignature}`,
     });
   });
 
   test("does not generate a subject when one is already present", async () => {
-    mockBrowser({ subject: "MUCK_SUBJECT" });
-    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
+    mockBrowserAndFetch({ subject: "MUCK_SUBJECT" }, "compose-request-200.json");
 
     await llmActionClickHandler(MOCK_TAB, compose);
 
-    expect(sendContentToLlm).toHaveBeenCalledTimes(1);
     expectComposerButtonSetAndReset();
 
+    // check that it hasn't been called with "{ subject: ...}"
+    expect(browser.compose.setComposeDetails).toHaveBeenCalledOnce();
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
       plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}`,
     });
   });
 
   test("notifies errors", async () => {
-    mockBrowser({});
-    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getErrorResponse());
+    mockBrowserAndFetch({ subject: "MUCK_SUBJECT" }, "compose-request-200-error.json");
 
     await llmActionClickHandler(MOCK_TAB, compose);
 
@@ -100,7 +89,6 @@ describe("The llmActionClickHandler", () => {
 
   test("throws when used with html", async () => {
     mockBrowser({ isPlainText: false });
-    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
 
     await llmActionClickHandler(MOCK_TAB, compose);
 
@@ -113,52 +101,27 @@ describe("The llmActionClickHandler", () => {
   });
 
   test("calls summarize ", async () => {
-    mockBrowser({});
-    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
+    mockBrowserAndFetch({}, "summarize-request-200.json");
 
     const mockPreviousConversation = "Test previous conversation";
 
     await llmActionClickHandler(MOCK_TAB, async (tabId: number) => summarize(tabId, mockPreviousConversation));
 
-    expect(sendContentToLlm).toHaveBeenCalledTimes(1);
     expectComposerButtonSetAndReset();
-
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
       plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n\n\n${mockPreviousConversation}`,
     });
   });
 
   test("Cancel request aborts request", async () => {
-    mockBrowser({});
-    fetchMock.mockOnce(() => {
-      console.log("fetch was mocked, stalling for 500 ms");
-      return new Promise((resolve) => {
-        setTimeout(resolve, 500);
-        const response: TgiErrorResponse = {
-          error: {
-            type: "TestError",
-            message: "test error, should never be returned, this request should be aborted",
-          },
-        };
-        return response;
-      });
-    });
+    mockBrowser({ options: { api_token: MOCK_TOKEN, model: MOCK_MODEL_URL } });
+    useFetchWithAbort(500);
     // noinspection ES6MissingAwait
-    (sendContentToLlm as unknown as MockInstance).mockImplementation(
-      async (messages: Array<LlmApiRequestMessage>, abortSignal: AbortSignal) => {
-        console.log("run with message", messages);
-        await fetch("https://fake-url.com/llm", { signal: abortSignal });
-      },
-    );
     llmActionClickHandler(MOCK_TAB, compose);
-    await waitFor(() => {
-      expectMenuEntriesToBe("cancel");
-    });
+    await waitFor(() => expectMenuEntriesToBe("cancel"));
     // @ts-ignore
     await handleMenuClickListener({ menuItemId: "cancel" }, MOCK_TAB);
-    await waitFor(() => {
-      expectMenuEntriesToBe("compose", "summarize");
-    });
+    await waitFor(() => expectMenuEntriesToBe("compose", "summarize"));
     expectComposerButtonSetAndReset();
     // user should not be notified if they canceled the request themselves
     expect(global.browser.notifications.create).not.toHaveBeenCalled();
@@ -178,35 +141,6 @@ describe("The LlmPluginAction type", () => {
     }
   });
 });
-
-function getTestResponse(): LlmTextCompletionResponse {
-  return {
-    status: 200,
-    id: "testId",
-    created: 123,
-    model: "testModel",
-    choices: [
-      {
-        message: { content: MOCK_RESPONSE_LLM_TEXT, role: LlmRoles.USER },
-        index: 0,
-        prefill: ["Test prefill"],
-        logprobs: [0.1],
-        finish_reason: "length",
-      },
-    ],
-    finish_reason: "length",
-  };
-}
-
-function getErrorResponse(): TgiErrorResponse {
-  return {
-    error: {
-      message: "Test Error",
-      type: "Test Type",
-      code: "Test Code",
-    },
-  };
-}
 
 function expectComposerButtonSetAndReset() {
   expect(global.browser.composeAction.disable).not.toHaveBeenCalled();

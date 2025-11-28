@@ -27,6 +27,7 @@
     /* Module Resolution Options */
     "moduleResolution": "node", // Choose the module resolution strategy
     "esModuleInterop": true, // Enables emit interoperability between CommonJS and ES Modules
+    "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true // Disallow inconsistently-cased references to the same file
   },
   "include": [

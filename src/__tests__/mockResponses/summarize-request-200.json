@@ -1,0 +1,43 @@
+{
+  "request": {
+    "url": "/v1/chat/completions",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer testToken"
+    },
+    "body": {
+      "messages": [
+        {
+          "content": "I want to reply to an email. Give me a short summary of the previous conversation, highlighting the open points I needs to cover in my answer.",
+          "role": "system"
+        },
+        { "content": "Previous conversation:\nTest previous conversation", "role": "user" }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "statusText": "Ok",
+    "headers": {},
+    "body": {
+      "status": 200,
+      "id": "testId",
+      "created": 123,
+      "model": "testModel",
+      "choices": [
+        {
+          "message": {
+            "content": "MOCK_RESPONSE_LLM_TEXT",
+            "role": "user"
+          },
+          "index": 0,
+          "prefill": ["Test prefill"],
+          "logprobs": [0.1],
+          "finish_reason": "length"
+        }
+      ],
+      "finish_reason": "length"
+    }
+  }
+}
