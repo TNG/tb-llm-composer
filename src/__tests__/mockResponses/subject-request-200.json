@@ -1,0 +1,43 @@
+{
+  "request": {
+    "url": "/v1/chat/completions",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer testToken"
+    },
+    "body": {
+      "messages": [
+        {
+          "content": "I need a concise subject for an email I am writing, in the same language as the email. \n      Reply in the format: [subject] \n      I am MOCK_USER_NAME.",
+          "role": "system"
+        },
+        { "content": "Schreib den Partnern, dass ich kündige, auf Deutsch.", "role": "user" }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "statusText": "Ok",
+    "headers": {},
+    "body": {
+      "status": 200,
+      "id": "testId",
+      "created": 123,
+      "model": "testModel",
+      "choices": [
+        {
+          "message": {
+            "content": "MOCK_RESPONSE_LLM_TEXT",
+            "role": "user"
+          },
+          "index": 0,
+          "prefill": ["Test prefill"],
+          "logprobs": [0.1],
+          "finish_reason": "length"
+        }
+      ],
+      "finish_reason": "length"
+    }
+  }
+}

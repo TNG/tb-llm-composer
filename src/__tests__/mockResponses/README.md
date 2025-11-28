@@ -7,6 +7,7 @@ the request matching should mostly be done based on the request body since the p
 This enables easy copy-pasting examples from wherever you get your examples from.
 
 A very basic example of a json in this folder looks like this:
+
 ```json
 {
     "httpRequest": {

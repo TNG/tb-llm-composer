@@ -1,17 +1,11 @@
 import { vi } from "vitest";
-import {
-  type LlmApiRequestMessage,
-  type LlmChoice,
-  LlmRoles,
-  type LlmTextCompletionResponse,
-  type TgiErrorResponse,
-} from "../llmConnection";
+import type { LlmPluginAction } from "../llmButtonClickHandling";
 import { DEFAULT_OPTIONS, type LlmParameters, type Options } from "../optionsParams";
+
+import { MOCK_MODEL_URL, MOCK_TOKEN, useFetchMock } from "./useFetchMock";
 
 import ComposeDetails = browser.compose.ComposeDetails;
 import _CreateCreateProperties = browser.menus._CreateCreateProperties;
-
-import type { LlmPluginAction } from "../llmButtonClickHandling";
 
 const MOCK_IDENTITY_ID = "MOCK_IDENTITY_ID";
 export const MOCK_TAB_DETAILS: browser.compose.ComposeDetails = { identityId: MOCK_IDENTITY_ID };
@@ -44,6 +38,26 @@ const allShortcuts: { name: LlmPluginAction; shortcut: string }[] = [
     shortcut: "Ctrl+Alt+C",
   },
 ];
+
+/**
+ * Mock the browser global variable and the fetch function using {@link useFetchMock}.
+ *
+ * @param args Customize/overwrite specific browser attributes. By default, the plugins model and token options are set
+ * to {@link MOCK_MODEL_URL} and {@link MOCK_TOKEN} in order to automatically match the requests specified in the
+ * mockResponses folder
+ * @param mockNames The names of the mock request/response pairs maintained in the mcokResponses folder.
+ */
+export function mockBrowserAndFetch(args: mockBrowserArgs, ...mockNames: string[]) {
+  useFetchMock(...mockNames);
+  mockBrowser({
+    ...args,
+    options: {
+      model: MOCK_MODEL_URL,
+      api_token: MOCK_TOKEN,
+      ...args.options,
+    },
+  });
+}
 
 export function mockBrowser(args: mockBrowserArgs) {
   mockBrowserMenus = [];
@@ -143,75 +157,6 @@ function mockMenuCreate(createProperties: _CreateCreateProperties, callback?: ()
   createProperties.id && mockBrowserMenus.push(createProperties.id);
   callback?.();
   return `mocked-menu-id-${createProperties.title}`;
-}
-
-interface mockBrowserAndFetchArgs extends mockBrowserArgs {
-  responseBody: LlmTextCompletionResponse | TgiErrorResponse | "NOT_OK_RESPONSE";
-}
-
-export function mockBrowserAndFetch(args: mockBrowserAndFetchArgs): void {
-  mockBrowser(args);
-
-  if (args.responseBody === "NOT_OK_RESPONSE") {
-    const errorResponse: Partial<Response> = {
-      ok: false,
-      text: async () => "Error response from LLM API",
-    };
-    global.fetch = vi.fn().mockResolvedValue(errorResponse);
-
-    return;
-  }
-
-  const fetchResponse: Partial<Response> = {
-    ok: true,
-    text: vi.fn().mockResolvedValue(JSON.stringify(args.responseBody)),
-  };
-  global.fetch = vi.fn().mockResolvedValue(fetchResponse);
-}
-
-export function getMockResponseBody(firstChoiceContent?: string): LlmTextCompletionResponse {
-  const firstChoice: LlmChoice = getMockLLMChoice(firstChoiceContent || "Test response", LlmRoles.SYSTEM);
-  return {
-    status: 1,
-    id: "1",
-    created: 1,
-    model: "test_model",
-    choices: [firstChoice],
-    finish_reason: "stop_sequence",
-  };
-}
-
-function getMockLLMChoice(content: string, role: LlmRoles): LlmChoice {
-  return {
-    message: { content, role },
-    finish_reason: "stop_sequence",
-    index: 0,
-    logprobs: [0],
-    prefill: [""],
-  };
-}
-
-export function getExpectedRequestContent(
-  messages: Array<LlmApiRequestMessage>,
-  signal: AbortSignal,
-  api_token?: string,
-  params: Partial<LlmParameters> = {},
-): unknown {
-  const expectedRequestBody = {
-    messages,
-    ...DEFAULT_OPTIONS.params,
-    ...params,
-  };
-
-  return {
-    body: JSON.stringify(expectedRequestBody),
-    signal,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: api_token ? `Bearer ${api_token}` : undefined,
-    },
-    method: "POST",
-  };
 }
 
 export async function waitFor(

@@ -1,0 +1,19 @@
+{
+  "request": {
+    "url": "/v1/chat/completions",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer testToken"
+    },
+    "body": {
+      "messages": [{ "content": "Test content", "role": "system" }, { "content": "Test prompt", "role": "user" }]
+    }
+  },
+  "response": {
+    "status": 500,
+    "statusText": "Internal Server Error",
+    "headers": {},
+    "body": "Error response from LLM API"
+  }
+}
