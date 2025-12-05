@@ -3,9 +3,27 @@ import MessagePart = browser.messages.MessagePart;
 const emailRegex = /<([^<>]+)>/;
 
 export function getContentFromEmailParts(messageParts?: MessagePart[]) {
-  return (messageParts || [])
+  const parts = messageParts || [];
+
+  // First try to get plain text content
+  const plainTextContent = parts
     .map((part): string => {
       if (part.contentType === "text/plain") {
+        return part.body || "";
+      }
+      return getContentFromEmailParts(part.parts);
+    })
+    .join("");
+
+  // If we found plain text content, return it
+  if (plainTextContent.trim()) {
+    return plainTextContent;
+  }
+
+  // Otherwise, return HTML content directly for LLM processing
+  return parts
+    .map((part): string => {
+      if (part.contentType === "text/html") {
         return part.body || "";
       }
       return getContentFromEmailParts(part.parts);

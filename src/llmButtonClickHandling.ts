@@ -6,7 +6,7 @@ import {
   type TgiErrorResponse,
 } from "./llmConnection";
 import { addCancelRequestMenuEntry, addLlmActionsToMenu } from "./menu";
-import { notifyOnError, timedNotification } from "./notifications";
+import { notifyOnError } from "./notifications";
 import { getPluginOptions } from "./optionsParams";
 import { getOriginalTabConversation } from "./originalTabConversation";
 import {
@@ -20,7 +20,6 @@ import { getSentMessages } from "./retrieveSentContext";
 
 import Tab = browser.tabs.Tab;
 
-const LLM_HTML_NOT_IMPLEMENTED_TEXT: string = "LLM Support for HTML Mails is not yet implemented";
 function getActionDefaultIcon() {
   return {
     "64": "icons/icon-64px.png",
@@ -71,19 +70,14 @@ export const allRequestsStatus = new AllRequestsStatus();
 export type LlmPluginAction = "compose" | "summarize" | "cancel";
 
 export async function llmActionClickHandler(tab: Tab, communicateWithLlm: (tabID: number) => Promise<void>) {
-  const openTabId = tab.id;
-  if (openTabId === undefined) {
-    //This should NOT happen and should be a thunderbird bug.
-    console.error("No tabId found for detail request");
-    throw Error("no tabId");
+  const tabId = tab.id;
+  if (!tabId) {
+    throw Error("No tab id found");
   }
+  const openTabId = tabId;
 
-  const tabDetails = await browser.compose.getComposeDetails(openTabId);
-  if (tabDetails.isPlainText) {
-    await withButtonRequestInProgress(openTabId, () => communicateWithLlm(openTabId));
-  } else {
-    await timedNotification("Thunderbird LLM Extension", LLM_HTML_NOT_IMPLEMENTED_TEXT);
-  }
+  // Remove HTML restriction - process both plain text and HTML content
+  await withButtonRequestInProgress(openTabId, () => communicateWithLlm(openTabId));
 }
 
 async function withButtonRequestInProgress<T>(tabId: number, callback: () => Promise<T>) {
@@ -169,9 +163,31 @@ async function handleComposeSuccessResponse(tabId: number, response: LlmTextComp
     `${originalContent ? `\n\n${originalContent}` : ""}` +
     `${!originalContent && signature ? `\n\n--\n${signature}` : ""}`;
 
-  await browser.compose.setComposeDetails(tabId, {
-    plainTextBody: fullEmail,
-  });
+  // Set the appropriate body type based on the original email format
+  if (tabDetails.isPlainText) {
+    await browser.compose.setComposeDetails(tabId, {
+      plainTextBody: fullEmail,
+    });
+  } else {
+    // For HTML emails, convert the plain text response to basic HTML
+    const htmlEmail = convertTextToHtml(fullEmail);
+    await browser.compose.setComposeDetails(tabId, {
+      body: htmlEmail,
+    });
+  }
+}
+
+function convertTextToHtml(textContent: string): string {
+  // Convert plain text to basic HTML formatting
+  return textContent
+    .replace(/&/g, "&amp;") // Escape ampersands first
+    .replace(/</g, "&lt;") // Escape less than
+    .replace(/>/g, "&gt;") // Escape greater than
+    .replace(/"/g, "&quot;") // Escape quotes
+    .replace(/\n\n/g, "</p><p>") // Convert double newlines to paragraphs
+    .replace(/\n/g, "<br>") // Convert single newlines to line breaks
+    .replace(/^/, "<p>") // Add opening paragraph tag
+    .replace(/$/, "</p>"); // Add closing paragraph tag
 }
 
 async function getCleanedUpGeneratedEmail(response: LlmTextCompletionResponse, signature: string | undefined) {

@@ -98,17 +98,15 @@ describe("The llmActionClickHandler", () => {
     expectMenuEntriesToBe("compose", "summarize");
   });
 
-  test("throws when used with html", async () => {
-    mockBrowser({ isPlainText: false });
+  test("works with html content", async () => {
+    mockBrowser({ isPlainText: false, body: "<p>Some HTML content</p>" });
     (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
 
     await llmActionClickHandler(MOCK_TAB, compose);
 
-    expect(global.browser.notifications.create).toHaveBeenCalledTimes(1);
-    expect(global.browser.notifications.create).toHaveBeenCalledWith({
-      message: "LLM Support for HTML Mails is not yet implemented",
-      title: "Thunderbird LLM Extension",
-      type: "basic",
+    expectComposerButtonSetAndReset();
+    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
+      body: expect.stringContaining(MOCK_RESPONSE_LLM_TEXT),
     });
   });
 
