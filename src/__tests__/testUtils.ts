@@ -49,9 +49,8 @@ export function mockBrowser(args: mockBrowserArgs) {
   mockBrowserMenus = [];
   // noinspection JSUnusedGlobalSymbols
   global.browser = {
-    // @ts-ignore
     runtime: {
-      // @ts-ignore
+      // @ts-expect-error
       getManifest: () => ({
         compose_action: {
           default_title: "To LLM (dev)",
@@ -64,7 +63,7 @@ export function mockBrowser(args: mockBrowserArgs) {
       lastError: undefined,
     },
     storage: {
-      // @ts-ignore
+      // @ts-expect-error
       sync: {
         get: vi.fn().mockReturnValue(
           args.params || args.options
@@ -83,26 +82,25 @@ export function mockBrowser(args: mockBrowserArgs) {
         ),
         set: vi.fn(),
       },
-      // @ts-ignore
+      // @ts-expect-error
       local: {
-        // @ts-ignore
+        // @ts-expect-error
         get: async (key) => ({ [key]: localStore[key] }),
         set: async (items: { [key: string]: unknown }) => {
           for (const [k, v] of Object.entries(items)) {
             localStore[k] = v;
           }
         },
-        // @ts-ignore
         remove: async (k: string) => {
           delete localStore[k];
         },
       },
     },
-    // @ts-ignore
+    // @ts-expect-error
     identities: {
       get: vi.fn().mockReturnValue({ name: MOCK_USER_NAME, signature: args.signature }),
     },
-    // @ts-ignore
+    // @ts-expect-error
     compose: {
       getComposeDetails: vi.fn().mockResolvedValue({
         identityId: MOCK_IDENTITY_ID,
@@ -113,25 +111,25 @@ export function mockBrowser(args: mockBrowserArgs) {
       }),
       setComposeDetails: vi.fn(),
     },
-    // @ts-ignore
+    // @ts-expect-error
     composeAction: {
       disable: vi.fn(),
       setIcon: vi.fn(),
       enable: vi.fn(),
       setTitle: vi.fn(),
     },
-    // @ts-ignore
+    // @ts-expect-error
     notifications: {
       create: vi.fn(),
     },
-    // @ts-ignore
+    // @ts-expect-error
     menus: {
       removeAll: async () => {
         mockBrowserMenus = [];
       },
       create: mockMenuCreate,
     },
-    // @ts-ignore
+    // @ts-expect-error
     commands: {
       getAll: async () => allShortcuts,
     },
