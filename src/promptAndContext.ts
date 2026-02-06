@@ -47,10 +47,17 @@ export async function getEmailGenerationPrompt(
     throw Error(`Could not find an identity for ID '${tabDetails.identityId}'`);
   }
 
+  // Get body content - handle both plain text and HTML
+  let bodyContent = "";
+  if (tabDetails.isPlainText && tabDetails.plainTextBody) {
+    bodyContent = tabDetails.plainTextBody;
+  } else if (!tabDetails.isPlainText && tabDetails.body) {
+    // For HTML content, pass it directly to the LLM
+    bodyContent = tabDetails.body;
+  }
+
   return {
-    content: tabDetails.plainTextBody
-      ? buildEmailPrompt(tabDetails.plainTextBody, identity.signature, previousConversation)
-      : DEFAULT_PROMPT,
+    content: bodyContent ? buildEmailPrompt(bodyContent, identity.signature, previousConversation) : DEFAULT_PROMPT,
     role: LlmRoles.USER,
   };
 }
@@ -116,8 +123,17 @@ export async function getSubjectGenerationContext(
 export async function getSubjectGenerationPrompt(
   tabDetails: browser.compose.ComposeDetails,
 ): Promise<LlmApiRequestMessage> {
+  // Get body content - handle both plain text and HTML
+  let bodyContent = "";
+  if (tabDetails.isPlainText && tabDetails.plainTextBody) {
+    bodyContent = tabDetails.plainTextBody;
+  } else if (!tabDetails.isPlainText && tabDetails.body) {
+    // For HTML content, pass it directly to the LLM
+    bodyContent = tabDetails.body;
+  }
+
   return {
-    content: tabDetails.plainTextBody ? `${THIS_IS_THE_CONTENT}\n${tabDetails.plainTextBody}` : DEFAULT_PROMPT,
+    content: bodyContent ? `${THIS_IS_THE_CONTENT}\n${bodyContent}` : DEFAULT_PROMPT,
     role: LlmRoles.USER,
   };
 }

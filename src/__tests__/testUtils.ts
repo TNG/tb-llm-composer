@@ -21,6 +21,7 @@ interface mockBrowserArgs {
   options?: Partial<Options>;
   params?: Partial<LlmParameters>;
   plainTextBody?: string;
+  body?: string; // Add body property for HTML content
   isPlainText?: boolean;
   composeDetailsType?: ComposeDetails["type"];
   signature?: string;
@@ -106,6 +107,7 @@ export function mockBrowser(args: mockBrowserArgs) {
         identityId: MOCK_IDENTITY_ID,
         isPlainText: args.isPlainText !== false,
         plainTextBody: args.plainTextBody || undefined,
+        body: args.body || undefined, // Add body property for HTML content
         type: args.composeDetailsType,
         subject: args.subject,
       }),
