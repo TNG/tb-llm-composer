@@ -154,7 +154,7 @@ describe("The llmActionClickHandler", () => {
     await waitFor(() => {
       expectMenuEntriesToBe("cancel");
     });
-    // @ts-ignore
+    // @ts-expect-error
     await handleMenuClickListener({ menuItemId: "cancel" }, MOCK_TAB);
     await waitFor(() => {
       expectMenuEntriesToBe("compose", "summarize");
