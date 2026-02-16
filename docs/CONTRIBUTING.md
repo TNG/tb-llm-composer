@@ -4,7 +4,7 @@
 
 ### Requirements
 
-- npm
+- pnpm (see [pnpm installation guide](https://pnpm.io/installation))
 - (Windows): 7zip (its installation folder, usually "C:\Program Files\7-Zip", needs to be added to the PATH environment variable)
 
 ### Install dependencies
@@ -12,14 +12,14 @@
 In the project root run
 
 ```shell
-npm ci
+pnpm install
 ```
 
 ## Test the Plugin
 
 - "Start" the addon:
   ```shell
-  npm start
+  pnpm start
   ```
   this will recompile the typescript files automatically if they change.
 - Start Thunderbird.
@@ -47,7 +47,7 @@ In particular, when adding new top-level buttons, make them distinguishable for 
 
 - Build the addon package:
   ```shell
-  npm ship
+  pnpm ship
   ```
 - Start Thunderbird.
 - Go to Hamburger Menu -> Add-ons and Themes.

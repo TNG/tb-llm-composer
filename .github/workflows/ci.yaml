@@ -2,7 +2,7 @@ name: Build and run tests
 on: [push]
 
 env:
-  node_version: 22
+  node_version: 24
 
 jobs:
   build:
@@ -12,20 +12,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.node_version }}
+          cache: 'pnpm'
 
       - name: Build
         run: |
-          npm ci
-          npm run build
+          pnpm install --frozen-lockfile
+          pnpm run build
 
       - name: Lint
         run: |
-          npm run lint
+          pnpm run lint
 
       - name: Test
         run: |
-          npm test
+          pnpm test
