@@ -4,8 +4,8 @@
 
 - Update versions in [package.json](../package.json) and [manifest.json](../manifest.json)
   (Typically, you just do this on main as long as we don't have another workflow)
-- Run `npm install` in order to update the package.json version in package-lock.json as well
-- Create the *.xpi file: `npm run ship`
+- Run `pnpm install` in order to update the package.json version in pnpm-lock.yaml as well
+- Create the *.xpi file: `pnpm run ship`
 
 ## Test Release Version
 
