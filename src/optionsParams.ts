@@ -23,6 +23,7 @@ export interface Options {
   include_recent_mails: boolean;
   params: LlmParameters;
   llmContext: string;
+  timeout?: number; // Timeout in milliseconds, undefined means no timeout
 }
 
 export const DEFAULT_PARAMS: LlmParameters = {};

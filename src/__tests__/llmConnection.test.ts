@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "vitest";
 import { type LlmApiRequestMessage, LlmRoles, sendContentToLlm } from "../llmConnection";
-import { getExpectedRequestContent, getMockResponseBody, mockBrowserAndFetch } from "./testUtils";
+import { getMockResponseBody, mockBrowserAndFetch } from "./testUtils";
 
 const originalBrowser = global.browser;
 const originalFetch = global.fetch;
@@ -39,7 +39,12 @@ describe("Testing sentContentToLlm", () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith(
       MOCK_MODEL_URL,
-      getExpectedRequestContent([MOCK_CONTEXT, MOCK_PROMPT], abortSignal),
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [MOCK_CONTEXT, MOCK_PROMPT] }),
+        signal: expect.any(AbortSignal),
+      }),
     );
     expect(result).toEqual(mockResponseBody);
   });
@@ -57,7 +62,12 @@ describe("Testing sentContentToLlm", () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith(
       MOCK_MODEL_URL,
-      getExpectedRequestContent([MOCK_CONTEXT, MOCK_PROMPT], abortSignal, mockToken),
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${mockToken}` },
+        body: JSON.stringify({ messages: [MOCK_CONTEXT, MOCK_PROMPT] }),
+        signal: expect.any(AbortSignal),
+      }),
     );
     expect(result).toEqual(mockResponseBody);
   });

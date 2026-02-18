@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import type { LlmPluginAction } from "../llmButtonClickHandling";
 import {
   type LlmApiRequestMessage,
   type LlmChoice,
@@ -10,8 +11,6 @@ import { DEFAULT_OPTIONS, type LlmParameters, type Options } from "../optionsPar
 
 import ComposeDetails = browser.compose.ComposeDetails;
 import _CreateCreateProperties = browser.menus._CreateCreateProperties;
-
-import type { LlmPluginAction } from "../llmButtonClickHandling";
 
 const MOCK_IDENTITY_ID = "MOCK_IDENTITY_ID";
 export const MOCK_TAB_DETAILS: browser.compose.ComposeDetails = { identityId: MOCK_IDENTITY_ID };
@@ -135,6 +134,16 @@ export function mockBrowser(args: mockBrowserArgs) {
     commands: {
       getAll: async () => allShortcuts,
     },
+    // @ts-ignore
+    alarms: {
+      create: vi.fn(),
+      clear: vi.fn(),
+      onAlarm: {
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        hasListener: vi.fn(),
+      },
+    },
   };
 }
 
@@ -203,13 +212,17 @@ export function getExpectedRequestContent(
     ...params,
   };
 
+  const headers: { [key: string]: string } = {
+    "Content-Type": "application/json",
+  };
+  if (api_token) {
+    headers.Authorization = `Bearer ${api_token}`;
+  }
+
   return {
     body: JSON.stringify(expectedRequestBody),
     signal,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: api_token ? `Bearer ${api_token}` : undefined,
-    },
+    headers,
     method: "POST",
   };
 }

@@ -11,7 +11,7 @@
       "update_url": "https://raw.githubusercontent.com/TNG/tb-llm-composer/refs/heads/main/updates.json"
     }
   },
-  "permissions": ["menus", "compose", "storage", "notifications", "messagesRead", "accountsRead"],
+  "permissions": ["menus", "compose", "storage", "notifications", "messagesRead", "accountsRead", "alarms"],
   "icons": {
     "64": "icons/icon-64px.png",
     "32": "icons/icon-32px.png",
