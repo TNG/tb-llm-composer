@@ -1,3 +1,4 @@
+import { startKeepAlive, stopKeepAlive } from "./keepAlive";
 import { getPluginOptions, type LlmParameters } from "./optionsParams";
 
 export enum LlmRoles {
@@ -81,7 +82,7 @@ export async function sendContentToLlm(
     ...options.params,
   };
 
-  return callLlmApi(options.model, requestBody, abortSignal, options.api_token);
+  return callLlmApi(options.model, requestBody, abortSignal, options.api_token, options.timeout);
 }
 
 async function callLlmApi(
@@ -89,6 +90,7 @@ async function callLlmApi(
   requestBody: LlmApiRequestBody,
   signal: AbortSignal,
   token?: string,
+  timeout?: number,
 ): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
   const headers: { [key: string]: string } = {
     "Content-Type": "application/json",
@@ -97,21 +99,51 @@ async function callLlmApi(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  console.log(`LLM-CONNECTION: Sending request to LLM: POST ${url} with body:\n`, JSON.stringify(requestBody));
-  const response = await fetch(url, {
-    signal: signal,
-    method: "POST",
-    headers: headers,
-    body: JSON.stringify(requestBody),
-  });
-  if (!response.ok) {
-    const errorResponseBody = await response.text();
-    throw Error(`LLM-CONNECTION: Error response from ${url}: ${errorResponseBody}`);
-  }
-  const responseBody = (await response.json()) as LlmTextCompletionResponse | TgiErrorResponse;
-  console.log("LLM-CONNECTION: LLM responded with:", response.status, responseBody);
+  // Create a combined abort controller for both user cancellation and timeout
+  const combinedAbortController = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-  return responseBody;
+  // Listen to the user's abort signal
+  const abortHandler = () => combinedAbortController.abort(signal.reason);
+  signal.addEventListener("abort", abortHandler);
+
+  // Set up timeout if specified
+  if (timeout !== undefined && timeout > 0) {
+    timeoutId = setTimeout(() => {
+      combinedAbortController.abort(
+        new DOMException(
+          `LLM request timed out after ${timeout / 1000} seconds. You can increase or disable the timeout in the extension settings.`,
+          "TimeoutError",
+        ),
+      );
+    }, timeout);
+  }
+
+  await startKeepAlive();
+  try {
+    console.log(`LLM-CONNECTION: Sending request to LLM: POST ${url} with body:\n`, JSON.stringify(requestBody));
+    const response = await fetch(url, {
+      signal: combinedAbortController.signal,
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify(requestBody),
+    });
+    if (!response.ok) {
+      const errorResponseBody = await response.text();
+      throw Error(`LLM-CONNECTION: Error response from ${url}: ${errorResponseBody}`);
+    }
+    const responseBody = (await response.json()) as LlmTextCompletionResponse | TgiErrorResponse;
+    console.log("LLM-CONNECTION: LLM responded with:", response.status, responseBody);
+
+    return responseBody;
+  } finally {
+    await stopKeepAlive();
+    // Clean up
+    signal.removeEventListener("abort", abortHandler);
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 export function isLlmTextCompletionResponse(response: LlmTextCompletionResponse | TgiErrorResponse) {

@@ -5,6 +5,7 @@ import { getInputElement } from "./utils";
 document.addEventListener("DOMContentLoaded", restoreOptions);
 document.querySelector("#url")?.addEventListener("change", updateUrl);
 document.querySelector("#api_token")?.addEventListener("change", updateApiToken);
+document.querySelector("#timeout")?.addEventListener("change", updateTimeout);
 document.querySelector("#llm_context")?.addEventListener("change", updateLlmContext);
 document.querySelector("#use_last_mails")?.addEventListener("change", updateUseLastMails);
 document.querySelector("#context_window")?.addEventListener("change", updateContextWindow);
@@ -26,6 +27,15 @@ async function updateApiToken(event: Event) {
   const apiTokenInput = event.target as HTMLInputElement;
   const options = await getPluginOptions();
   options.api_token = apiTokenInput.value;
+  await browser.storage.sync.set({ options });
+}
+
+async function updateTimeout(event: Event) {
+  const timeoutInput = event.target as HTMLInputElement;
+  const options = await getPluginOptions();
+  const timeoutSeconds = timeoutInput.valueAsNumber;
+  // Convert seconds to milliseconds, or set to undefined if 0 or empty
+  options.timeout = timeoutSeconds > 0 ? timeoutSeconds * 1000 : undefined;
   await browser.storage.sync.set({ options });
 }
 
@@ -64,6 +74,7 @@ export async function restoreOptions(): Promise<void> {
 
   getInputElement("#url").value = options.model;
   getInputElement("#api_token").value = options.api_token || "";
+  getInputElement("#timeout").value = options.timeout ? `${options.timeout / 1000}` : "";
   getInputElement("#context_window").value = `${options.context_window}`;
   getInputElement("#use_last_mails").checked = options.include_recent_mails;
   getInputElement("#other_options").value = JSON.stringify(options.params, null, 2);

@@ -14,6 +14,14 @@ export function notifyOnError<T>(callback: () => Promise<T>) {
       console.debug("User cancelled request, do not notify", e);
       return;
     }
+    if (e.name === "TimeoutError") {
+      timedNotification(
+        "LLM Request Timeout",
+        e.message || "The LLM request timed out. You can increase the timeout in the extension settings.",
+        15000,
+      );
+      return;
+    }
     const message = e?.message || e.toString();
     timedNotification("Thunderbird LLM Extension Error", message);
   });
