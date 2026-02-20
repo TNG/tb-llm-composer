@@ -70,11 +70,10 @@ export const allRequestsStatus = new AllRequestsStatus();
 export type LlmPluginAction = "compose" | "summarize" | "cancel";
 
 export async function llmActionClickHandler(tab: Tab, communicateWithLlm: (tabID: number) => Promise<void>) {
-  const tabId = tab.id;
-  if (!tabId) {
-    throw Error("No tab id found");
+  const openTabId = tab.id;
+  if (!openTabId) {
+    throw Error("No tab id found for LLM action click handler");
   }
-  const openTabId = tabId;
 
   // Remove HTML restriction - process both plain text and HTML content
   await withButtonRequestInProgress(openTabId, () => communicateWithLlm(openTabId));
@@ -163,31 +162,9 @@ async function handleComposeSuccessResponse(tabId: number, response: LlmTextComp
     `${originalContent ? `\n\n${originalContent}` : ""}` +
     `${!originalContent && signature ? `\n\n--\n${signature}` : ""}`;
 
-  // Set the appropriate body type based on the original email format
-  if (tabDetails.isPlainText) {
-    await browser.compose.setComposeDetails(tabId, {
-      plainTextBody: fullEmail,
-    });
-  } else {
-    // For HTML emails, convert the plain text response to basic HTML
-    const htmlEmail = convertTextToHtml(fullEmail);
-    await browser.compose.setComposeDetails(tabId, {
-      body: htmlEmail,
-    });
-  }
-}
-
-function convertTextToHtml(textContent: string): string {
-  // Convert plain text to basic HTML formatting
-  return textContent
-    .replace(/&/g, "&amp;") // Escape ampersands first
-    .replace(/</g, "&lt;") // Escape less than
-    .replace(/>/g, "&gt;") // Escape greater than
-    .replace(/"/g, "&quot;") // Escape quotes
-    .replace(/\n\n/g, "</p><p>") // Convert double newlines to paragraphs
-    .replace(/\n/g, "<br>") // Convert single newlines to line breaks
-    .replace(/^/, "<p>") // Add opening paragraph tag
-    .replace(/$/, "</p>"); // Add closing paragraph tag
+  await browser.compose.setComposeDetails(tabId, {
+    plainTextBody: fullEmail,
+  });
 }
 
 async function getCleanedUpGeneratedEmail(response: LlmTextCompletionResponse, signature: string | undefined) {
