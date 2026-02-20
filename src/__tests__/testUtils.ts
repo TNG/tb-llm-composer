@@ -134,7 +134,6 @@ export function mockBrowser(args: mockBrowserArgs) {
     commands: {
       getAll: async () => allShortcuts,
     },
-    // @ts-ignore
     alarms: {
       create: vi.fn(),
       clear: vi.fn(),

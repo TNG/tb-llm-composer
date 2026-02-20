@@ -106,6 +106,10 @@ async function callLlmApi(
   // Listen to the user's abort signal
   const abortHandler = () => combinedAbortController.abort(signal.reason);
   signal.addEventListener("abort", abortHandler);
+  // Handle signals that were already aborted before the listener was registered
+  if (signal.aborted) {
+    combinedAbortController.abort(signal.reason);
+  }
 
   // Set up timeout if specified
   if (timeout !== undefined && timeout > 0) {
@@ -119,9 +123,9 @@ async function callLlmApi(
     }, timeout);
   }
 
-  await startKeepAlive();
   try {
-    console.log(`LLM-CONNECTION: Sending request to LLM: POST ${url} with body:\n`, JSON.stringify(requestBody));
+    await startKeepAlive();
+    console.log(`LLM-CONNECTION: Sending request to LLM: POST ${url} (body redacted)`);
     const response = await fetch(url, {
       signal: combinedAbortController.signal,
       method: "POST",
@@ -137,11 +141,15 @@ async function callLlmApi(
 
     return responseBody;
   } finally {
-    await stopKeepAlive();
-    // Clean up
+    // Synchronous cleanup first to guarantee it always runs
     signal.removeEventListener("abort", abortHandler);
     if (timeoutId !== undefined) {
       clearTimeout(timeoutId);
+    }
+    try {
+      await stopKeepAlive();
+    } catch (err) {
+      console.error("LLM-CONNECTION: Error stopping keep-alive:", err);
     }
   }
 }
