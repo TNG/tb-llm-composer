@@ -7,7 +7,7 @@ import {
 } from "./llmConnection";
 import { addCancelRequestMenuEntry, addLlmActionsToMenu } from "./menu";
 import { notifyOnError } from "./notifications";
-import { getPluginOptions } from "./optionsParams";
+import { getPluginOptions, type Options } from "./optionsParams";
 import { getOriginalTabConversation } from "./originalTabConversation";
 import {
   getEmailGenerationContext,
@@ -134,7 +134,7 @@ export async function compose(tabId: number) {
 
   const emailResponse = await sendContentToLlm([emailContext, emailPrompt], allRequestsStatus.getAbortSignal(tabId));
   if (isLlmTextCompletionResponse(emailResponse)) {
-    await handleComposeSuccessResponse(tabId, emailResponse as LlmTextCompletionResponse);
+    await handleComposeSuccessResponse(tabId, emailResponse as LlmTextCompletionResponse, options);
   } else {
     handleLlmErrorResponse(emailResponse as TgiErrorResponse);
   }
@@ -146,7 +146,7 @@ async function handleSubjectSuccessResponse(tabId: number, subjectResponse: LlmT
   });
 }
 
-async function handleComposeSuccessResponse(tabId: number, response: LlmTextCompletionResponse) {
+async function handleComposeSuccessResponse(tabId: number, response: LlmTextCompletionResponse, options: Options) {
   const tabDetails = await browser.compose.getComposeDetails(tabId);
   const identity = await browser.identities.get(tabDetails.identityId as string);
   if (!identity) {
@@ -156,7 +156,7 @@ async function handleComposeSuccessResponse(tabId: number, response: LlmTextComp
   const signature: string | undefined = identity.signature;
 
   const originalContent = await getOriginalTabConversation(tabId);
-  const cleanedUpGeneratedEmail = await getCleanedUpGeneratedEmail(response, signature);
+  const cleanedUpGeneratedEmail = await getCleanedUpGeneratedEmail(response, signature, options);
   const fullEmail =
     cleanedUpGeneratedEmail +
     `${originalContent ? `\n\n${originalContent}` : ""}` +
@@ -167,12 +167,22 @@ async function handleComposeSuccessResponse(tabId: number, response: LlmTextComp
   });
 }
 
-async function getCleanedUpGeneratedEmail(response: LlmTextCompletionResponse, signature: string | undefined) {
-  const responseWithoutSignature = signature
-    ? response.choices[0].message.content.replace(signature, "")
-    : response.choices[0].message.content;
+function maybeStripThinkTag(content: string, options: Options): string {
+  return (options.strip_think_tag ?? true) ? stripThinkTag(content) : content;
+}
 
+async function getCleanedUpGeneratedEmail(
+  response: LlmTextCompletionResponse,
+  signature: string | undefined,
+  options: Options,
+) {
+  const content = maybeStripThinkTag(response.choices[0].message.content, options);
+  const responseWithoutSignature = signature ? content.replace(signature, "") : content;
   return responseWithoutSignature.replace(/^\s*/, "");
+}
+
+export function stripThinkTag(text: string): string {
+  return text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
 }
 
 function handleLlmErrorResponse(response: TgiErrorResponse) {
@@ -185,14 +195,18 @@ export async function summarize(tabId: number, originalConversation?: string): P
     throw Error("No conversation found to summarize. Aborting.");
   }
   const messages = await getSummaryPromptAndContext(originalConversation);
+  const options = await getPluginOptions();
   const requestStatus = allRequestsStatus.getRequestStatus(tabId);
   const response = await sendContentToLlm(messages, requestStatus.abortController.signal);
   if (isLlmTextCompletionResponse(response)) {
+    const content = maybeStripThinkTag((response as LlmTextCompletionResponse).choices[0].message.content, options);
     await browser.compose.setComposeDetails(tabId, {
-      plainTextBody: `${response.choices[0].message.content}\n\n\n\n${originalConversation}`,
+      plainTextBody: `${content}\n\n\n\n${originalConversation}`,
     });
   } else {
-    throw Error(`LLM while attempting to summarize responded with an error: ${response.error.message}`);
+    throw Error(
+      `LLM while attempting to summarize responded with an error: ${(response as TgiErrorResponse).error.message}`,
+    );
   }
 }
 

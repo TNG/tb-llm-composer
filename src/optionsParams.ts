@@ -21,6 +21,7 @@ export interface Options {
   api_token?: string;
   context_window: number;
   include_recent_mails: boolean;
+  strip_think_tag: boolean;
   params: LlmParameters;
   llmContext: string;
   timeout?: number; // Timeout in milliseconds, undefined means no timeout
@@ -32,6 +33,7 @@ export const DEFAULT_OPTIONS: Options = {
   model: "",
   context_window: 4096,
   params: DEFAULT_PARAMS,
+  strip_think_tag: true,
   llmContext:
     "I need to write an email.\n" +
     "The email should be concise.\n" +
@@ -44,5 +46,6 @@ export const DEFAULT_OPTIONS: Options = {
 };
 
 export async function getPluginOptions(): Promise<Options> {
-  return (await browser.storage.sync.get("options"))?.options || DEFAULT_OPTIONS;
+  const stored = (await browser.storage.sync.get("options"))?.options;
+  return stored ? { ...DEFAULT_OPTIONS, ...stored } : DEFAULT_OPTIONS;
 }
