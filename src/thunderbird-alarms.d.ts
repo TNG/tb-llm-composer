@@ -10,7 +10,10 @@ declare namespace browser {
       scheduledTime: number;
       periodInMinutes?: number;
     }
-    function create(name: string, alarmInfo: { periodInMinutes: number }): void;
+    function create(
+      name: string,
+      alarmInfo: { when?: number; delayInMinutes?: number; periodInMinutes?: number },
+    ): void;
     function clear(name: string): Promise<boolean>;
     const onAlarm: WebExtEvent<(alarm: Alarm) => void>;
   }
@@ -23,7 +26,10 @@ declare namespace messenger {
       scheduledTime: number;
       periodInMinutes?: number;
     }
-    function create(name: string, alarmInfo: { periodInMinutes: number }): void;
+    function create(
+      name: string,
+      alarmInfo: { when?: number; delayInMinutes?: number; periodInMinutes?: number },
+    ): void;
     function clear(name: string): Promise<boolean>;
     const onAlarm: WebExtEvent<(alarm: Alarm) => void>;
   }
