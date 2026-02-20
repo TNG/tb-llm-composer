@@ -8,6 +8,7 @@ document.querySelector("#api_token")?.addEventListener("change", updateApiToken)
 document.querySelector("#timeout")?.addEventListener("change", updateTimeout);
 document.querySelector("#llm_context")?.addEventListener("change", updateLlmContext);
 document.querySelector("#use_last_mails")?.addEventListener("change", updateUseLastMails);
+document.querySelector("#strip_think_tag")?.addEventListener("change", updateStripThinkTag);
 document.querySelector("#context_window")?.addEventListener("change", updateContextWindow);
 document.querySelector("#other_options")?.addEventListener("change", updateOtherOptions);
 
@@ -53,6 +54,13 @@ async function updateUseLastMails(event: Event) {
   await browser.storage.sync.set({ options });
 }
 
+async function updateStripThinkTag(event: Event) {
+  const stripThinkTagInput = event.target as HTMLInputElement;
+  const options = await getPluginOptions();
+  options.strip_think_tag = stripThinkTagInput.checked;
+  await browser.storage.sync.set({ options });
+}
+
 async function updateContextWindow(event: Event) {
   const contextWindowInput = event.target as HTMLInputElement;
   const options = await getPluginOptions();
@@ -77,6 +85,7 @@ export async function restoreOptions(): Promise<void> {
   getInputElement("#timeout").value = options.timeout ? `${options.timeout / 1000}` : "";
   getInputElement("#context_window").value = `${options.context_window}`;
   getInputElement("#use_last_mails").checked = options.include_recent_mails;
+  getInputElement("#strip_think_tag").checked = options.strip_think_tag ?? true;
   getInputElement("#other_options").value = JSON.stringify(options.params, null, 2);
   getInputElement("#llm_context").value = options.llmContext;
 }
