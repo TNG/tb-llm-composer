@@ -5,8 +5,16 @@
 ### Requirements
 
 - pnpm (see [pnpm installation guide](https://pnpm.io/installation))
-- (Windows): 7zip (its installation folder, usually "C:\Program Files\7-Zip", needs to be added to the PATH environment variable)
+- (Windows): 7‑Zip (its installation folder, usually "C:\Program Files\7-Zip", needs to be added to the PATH environment variable)
 
+#### Why pnpm?
+
+We use `pnpm` instead of `npm`/`yarn` for security and consistency:
+- **Better isolation between dependencies**: `pnpm` uses a non-flattened `node_modules` structure backed by a content-addressable store, which reduces unexpected cross-project dependency sharing.
+- **Stricter, deterministic dependency resolution**: the lockfile is strictly enforced, preventing unintended upgrades and making it easier to reason about and audit the exact dependency tree.
+- **Protection against phantom dependencies**: `pnpm` fails when code uses a package that is not explicitly listed in `package.json`, helping to prevent hidden or undeclared dependencies from creeping in.
+
+Please use `pnpm` for all Node-related commands in this repository to ensure everyone is developing and testing against the same, audited dependency set.
 ### Install dependencies
 
 In the project root run
@@ -17,11 +25,11 @@ pnpm install
 
 ## Test the Plugin
 
-- "Start" the addon:
+- "Start" the add-on:
   ```shell
   pnpm start
   ```
-  this will recompile the typescript files automatically if they change.
+  this will recompile the TypeScript files automatically if they change.
 - Start Thunderbird.
 - Go to Hamburger Menu -> Add-ons and Themes.
 - Click on the settings symbol -> Debug Add-ons -> Load Temporary Add-on...
@@ -45,7 +53,7 @@ In particular, when adding new top-level buttons, make them distinguishable for 
 
 ### Build the plugin locally
 
-- Build the addon package:
+- Build the add-on package:
   ```shell
   pnpm ship
   ```
