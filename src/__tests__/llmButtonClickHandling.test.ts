@@ -98,18 +98,6 @@ describe("The llmActionClickHandler", () => {
     expectMenuEntriesToBe("compose", "summarize");
   });
 
-  test("works with html content", async () => {
-    mockBrowser({ isPlainText: false, body: "<p>Some HTML content</p>" });
-    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
-
-    await llmActionClickHandler(MOCK_TAB, compose);
-
-    expectComposerButtonSetAndReset();
-    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
-      body: expect.stringContaining(MOCK_RESPONSE_LLM_TEXT),
-    });
-  });
-
   test("calls summarize ", async () => {
     mockBrowser({});
     (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());

@@ -1,6 +1,7 @@
 import { type LlmApiRequestMessage, LlmRoles } from "./llmConnection";
 
 import type { Options } from "./optionsParams";
+import { stripHtml } from "./utils";
 
 export const DEFAULT_PROMPT = "Schreib den Partnern, dass ich kündige, auf Deutsch.";
 const THIS_IS_THE_CONTENT = "This is what I want the content of my email to be:";
@@ -37,6 +38,18 @@ Furthermore, here are some older messages to give you an idea of the style I'm w
 ${oldMessages.map((value, index) => `Message ${index}:\n${value}`).join("\n\n")}`;
 }
 
+function getBodyContent(tabDetails: browser.compose.ComposeDetails): string {
+  if (tabDetails.isPlainText && tabDetails.plainTextBody) {
+    return tabDetails.plainTextBody;
+  }
+  if (!tabDetails.isPlainText && tabDetails.body) {
+    // Normalise to plain text so buildEmailPrompt can reliably strip
+    // previousConversation (which is always stored as plain text).
+    return stripHtml(tabDetails.body);
+  }
+  return "";
+}
+
 export async function getEmailGenerationPrompt(
   tabDetails: browser.compose.ComposeDetails,
   previousConversation?: string,
@@ -47,14 +60,7 @@ export async function getEmailGenerationPrompt(
     throw Error(`Could not find an identity for ID '${tabDetails.identityId}'`);
   }
 
-  // Get body content - handle both plain text and HTML
-  let bodyContent = "";
-  if (tabDetails.isPlainText && tabDetails.plainTextBody) {
-    bodyContent = tabDetails.plainTextBody;
-  } else if (!tabDetails.isPlainText && tabDetails.body) {
-    // For HTML content, pass it directly to the LLM
-    bodyContent = tabDetails.body;
-  }
+  const bodyContent = getBodyContent(tabDetails);
 
   return {
     content: bodyContent ? buildEmailPrompt(bodyContent, identity.signature, previousConversation) : DEFAULT_PROMPT,
@@ -63,19 +69,19 @@ export async function getEmailGenerationPrompt(
 }
 
 function buildEmailPrompt(
-  plainText: string,
+  emailContent: string,
   signature: string | undefined,
   previousConversation: string | undefined,
 ): string {
-  const textWithoutSignature = signature ? plainText.replace(signature, "") : plainText;
+  const contentWithoutSignature = signature ? emailContent.replace(signature, "") : emailContent;
   if (previousConversation) {
     return (
-      `${THIS_IS_THE_CONTENT}\n${textWithoutSignature.replace(previousConversation, "").trim()}\n\n` +
+      `${THIS_IS_THE_CONTENT}\n${contentWithoutSignature.replace(previousConversation, "").trim()}\n\n` +
       `This is the conversation I am replying to. Keep its content in mind but do not include it in your suggestion:\n${previousConversation}`
     );
   }
 
-  return `${THIS_IS_THE_CONTENT}\n${textWithoutSignature.trim()}`;
+  return `${THIS_IS_THE_CONTENT}\n${contentWithoutSignature.trim()}`;
 }
 
 export async function getSummaryPromptAndContext(previousConversation: string): Promise<Array<LlmApiRequestMessage>> {
@@ -123,14 +129,7 @@ export async function getSubjectGenerationContext(
 export async function getSubjectGenerationPrompt(
   tabDetails: browser.compose.ComposeDetails,
 ): Promise<LlmApiRequestMessage> {
-  // Get body content - handle both plain text and HTML
-  let bodyContent = "";
-  if (tabDetails.isPlainText && tabDetails.plainTextBody) {
-    bodyContent = tabDetails.plainTextBody;
-  } else if (!tabDetails.isPlainText && tabDetails.body) {
-    // For HTML content, pass it directly to the LLM
-    bodyContent = tabDetails.body;
-  }
+  const bodyContent = getBodyContent(tabDetails);
 
   return {
     content: bodyContent ? `${THIS_IS_THE_CONTENT}\n${bodyContent}` : DEFAULT_PROMPT,
