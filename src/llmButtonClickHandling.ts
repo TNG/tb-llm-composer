@@ -128,7 +128,7 @@ export async function compose(tabId: number) {
     );
     console.log("subject", subjectResponse);
     if (isLlmTextCompletionResponse(subjectResponse)) {
-      await handleSubjectSuccessResponse(tabId, subjectResponse as LlmTextCompletionResponse);
+      await handleSubjectSuccessResponse(tabId, subjectResponse as LlmTextCompletionResponse, options);
     }
   }
 
@@ -140,9 +140,13 @@ export async function compose(tabId: number) {
   }
 }
 
-async function handleSubjectSuccessResponse(tabId: number, subjectResponse: LlmTextCompletionResponse) {
+async function handleSubjectSuccessResponse(
+  tabId: number,
+  subjectResponse: LlmTextCompletionResponse,
+  options: Options,
+) {
   await browser.compose.setComposeDetails(tabId, {
-    subject: subjectResponse.choices[0].message.content.trim(),
+    subject: maybeStripThinkTag(subjectResponse.choices[0].message.content, options).trim(),
   });
 }
 
@@ -182,7 +186,7 @@ async function getCleanedUpGeneratedEmail(
 }
 
 export function stripThinkTag(text: string): string {
-  return text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
+  return text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "").replace(/<think\b[^>]*>[\s\S]*$/gi, "");
 }
 
 function handleLlmErrorResponse(response: TgiErrorResponse) {

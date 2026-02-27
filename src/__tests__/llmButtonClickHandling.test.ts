@@ -1,7 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, describe, expect, type MockInstance, test, vi } from "vitest";
-import { compose, type LlmPluginAction, llmActionClickHandler, summarize } from "../llmButtonClickHandling";
+import {
+  compose,
+  type LlmPluginAction,
+  llmActionClickHandler,
+  stripThinkTag,
+  summarize,
+} from "../llmButtonClickHandling";
 import {
   type LlmApiRequestMessage,
   LlmRoles,
@@ -151,6 +157,124 @@ describe("The llmActionClickHandler", () => {
   });
 });
 
+const THINK_TAG_CONTENT = "<think>some internal reasoning</think>";
+const RESPONSE_WITHOUT_THINK = "The actual response text";
+const RESPONSE_WITH_THINK = `${THINK_TAG_CONTENT}${RESPONSE_WITHOUT_THINK}`;
+
+describe("stripThinkTag", () => {
+  test("removes a think tag from the beginning of a string", () => {
+    expect(stripThinkTag(RESPONSE_WITH_THINK)).toBe(RESPONSE_WITHOUT_THINK);
+  });
+
+  test("removes a think tag from the middle of a string", () => {
+    expect(stripThinkTag(`Before${THINK_TAG_CONTENT}After`)).toBe("BeforeAfter");
+  });
+
+  test("removes multiple think tags", () => {
+    expect(stripThinkTag(`${THINK_TAG_CONTENT}middle${THINK_TAG_CONTENT}end`)).toBe("middleend");
+  });
+
+  test("is case-insensitive", () => {
+    expect(stripThinkTag("<THINK>reasoning</THINK>result")).toBe("result");
+  });
+
+  test("handles multiline content inside think tag", () => {
+    expect(stripThinkTag("<think>\nline1\nline2\n</think>result")).toBe("result");
+  });
+
+  test("leaves string unchanged when there is no think tag", () => {
+    expect(stripThinkTag(RESPONSE_WITHOUT_THINK)).toBe(RESPONSE_WITHOUT_THINK);
+  });
+
+  test("removes an unterminated think tag that spans to end of string", () => {
+    expect(stripThinkTag("<think>partial reasoning")).toBe("");
+  });
+
+  test("removes an unterminated trailing think tag leaving preceding text intact", () => {
+    expect(stripThinkTag("text <think>partial")).toBe("text ");
+  });
+});
+
+describe("Think-tag stripping in compose", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("strips think tag from email body when strip_think_tag is true", async () => {
+    mockBrowser({ options: { strip_think_tag: true }, subject: "existing subject" });
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse(RESPONSE_WITH_THINK));
+
+    await llmActionClickHandler(MOCK_TAB, compose);
+
+    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
+      plainTextBody: RESPONSE_WITHOUT_THINK,
+    });
+  });
+
+  test("keeps think tag in email body when strip_think_tag is false", async () => {
+    mockBrowser({ options: { strip_think_tag: false }, subject: "existing subject" });
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse(RESPONSE_WITH_THINK));
+
+    await llmActionClickHandler(MOCK_TAB, compose);
+
+    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
+      plainTextBody: RESPONSE_WITH_THINK,
+    });
+  });
+
+  test("strips think tag from subject when strip_think_tag is true", async () => {
+    mockBrowser({ options: { strip_think_tag: true } });
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse(RESPONSE_WITH_THINK));
+
+    await llmActionClickHandler(MOCK_TAB, compose);
+
+    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
+      subject: RESPONSE_WITHOUT_THINK,
+    });
+  });
+
+  test("keeps think tag in subject when strip_think_tag is false", async () => {
+    mockBrowser({ options: { strip_think_tag: false } });
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse(RESPONSE_WITH_THINK));
+
+    await llmActionClickHandler(MOCK_TAB, compose);
+
+    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
+      subject: RESPONSE_WITH_THINK,
+    });
+  });
+});
+
+describe("Think-tag stripping in summarize", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const mockPreviousConversation = "Test previous conversation";
+
+  test("strips think tag from summary when strip_think_tag is true", async () => {
+    mockBrowser({ options: { strip_think_tag: true } });
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse(RESPONSE_WITH_THINK));
+
+    await llmActionClickHandler(MOCK_TAB, async (tabId: number) => summarize(tabId, mockPreviousConversation));
+
+    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
+      plainTextBody: `${RESPONSE_WITHOUT_THINK}\n\n\n\n${mockPreviousConversation}`,
+    });
+  });
+
+  test("keeps think tag in summary when strip_think_tag is false", async () => {
+    mockBrowser({ options: { strip_think_tag: false } });
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse(RESPONSE_WITH_THINK));
+
+    await llmActionClickHandler(MOCK_TAB, async (tabId: number) => summarize(tabId, mockPreviousConversation));
+
+    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
+      plainTextBody: `${RESPONSE_WITH_THINK}\n\n\n\n${mockPreviousConversation}`,
+    });
+  });
+});
+
 describe("The LlmPluginAction type", () => {
   test("matches the commands defined in the manifest.json config", () => {
     const manifestFile = path.resolve(__dirname, "../../manifest.json");
@@ -165,7 +289,7 @@ describe("The LlmPluginAction type", () => {
   });
 });
 
-function getTestResponse(): LlmTextCompletionResponse {
+function getTestResponse(content: string = MOCK_RESPONSE_LLM_TEXT): LlmTextCompletionResponse {
   return {
     status: 200,
     id: "testId",
@@ -173,7 +297,7 @@ function getTestResponse(): LlmTextCompletionResponse {
     model: "testModel",
     choices: [
       {
-        message: { content: MOCK_RESPONSE_LLM_TEXT, role: LlmRoles.USER },
+        message: { content, role: LlmRoles.USER },
         index: 0,
         prefill: ["Test prefill"],
         logprobs: [0.1],
