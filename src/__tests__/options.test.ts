@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import * as path from "node:path";
 import { TextDecoder, TextEncoder } from "node:util";
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 Object.assign(global, { TextDecoder, TextEncoder });
 
@@ -21,6 +21,9 @@ let optionsDom: JSDOM;
 
 let browserStorage: { [key: string]: object } = {};
 let jsDomNotifications: CreateNotificationOptions[] = [];
+const permissionsContainsMock = vi.fn();
+const permissionsRequestMock = vi.fn();
+const permissionsRemoveMock = vi.fn();
 
 const mockBrowser = {
   storage: {
@@ -42,6 +45,11 @@ const mockBrowser = {
       jsDomNotifications.push(options);
     },
   },
+  permissions: {
+    contains: permissionsContainsMock,
+    request: permissionsRequestMock,
+    remove: permissionsRemoveMock,
+  },
 };
 
 /**
@@ -51,6 +59,9 @@ describe("The options page", () => {
   beforeEach(async () => {
     browserStorage = {};
     jsDomNotifications = [];
+    permissionsContainsMock.mockReset().mockResolvedValue(false);
+    permissionsRequestMock.mockReset().mockResolvedValue(true);
+    permissionsRemoveMock.mockReset().mockResolvedValue(undefined);
     const projectDir = path.resolve(__dirname, "../..");
     const optionsHtmlFile = `${projectDir}/build/public/options.html`;
     const optionsHtmlContent = fs.readFileSync(optionsHtmlFile, "utf-8");
@@ -172,6 +183,37 @@ describe("The options page", () => {
     await waitFor(() => {
       expect(browserStorage).toHaveProperty("options");
       expect((browserStorage.options as Options).llmContext).toEqual(expectedLlmContext);
+    });
+  });
+
+  test("sets allow_local_network to true and requests permission when checkbox is checked", async () => {
+    const checkbox = optionsDom.window.document.getElementById("allow_local_network") as HTMLInputElement;
+    expect(checkbox).not.toBeNull();
+
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new optionsDom.window.Event("change"));
+
+    await waitFor(() => {
+      expect(browserStorage).toHaveProperty("options");
+      expect((browserStorage.options as Options).allow_local_network).toBe(true);
+      expect(permissionsRequestMock).toHaveBeenCalled();
+    });
+  });
+
+  test("sets allow_local_network to false and revokes permission when checkbox is unchecked", async () => {
+    // Start with the permission already granted
+    permissionsContainsMock.mockResolvedValue(true);
+
+    const checkbox = optionsDom.window.document.getElementById("allow_local_network") as HTMLInputElement;
+    expect(checkbox).not.toBeNull();
+
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new optionsDom.window.Event("change"));
+
+    await waitFor(() => {
+      expect(browserStorage).toHaveProperty("options");
+      expect((browserStorage.options as Options).allow_local_network).toBe(false);
+      expect(permissionsRemoveMock).toHaveBeenCalled();
     });
   });
 });

@@ -123,6 +123,15 @@
             <input type="text" id="url" name="URL" />
           </div>
           <div class="form-group">
+            <input type="checkbox" id="allow_local_network" name="allow local network" />
+            <label for="allow_local_network" style="display: inline-block; margin-left: 5px">
+              Allow connections to local network servers
+              <sup title="Enable this only if your LLM server is on the same local network (e.g. another machine at 192.168.x.x or a NAS). Servers running on this machine (localhost, 127.x.x.x) already work without this setting.">
+                &#8505;&#65039;
+              </sup>
+            </label>
+          </div>
+          <div class="form-group">
             <label for="api_token">Api token:</label>
             <input type="text" id="api_token" name="api token" />
           </div>

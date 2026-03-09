@@ -22,6 +22,7 @@ export interface Options {
   context_window: number;
   include_recent_mails: boolean;
   strip_think_tag: boolean;
+  allow_local_network: boolean;
   params: LlmParameters;
   llmContext: string;
   timeout?: number; // Timeout in milliseconds, undefined means no timeout
@@ -34,6 +35,7 @@ export const DEFAULT_OPTIONS: Options = {
   context_window: 4096,
   params: DEFAULT_PARAMS,
   strip_think_tag: true,
+  allow_local_network: false,
   llmContext:
     "I need to write an email.\n" +
     "The email should be concise.\n" +

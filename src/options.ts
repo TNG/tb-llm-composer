@@ -1,10 +1,12 @@
-import { notifyOnError } from "./notifications";
+import { revokeLocalNetworkPermission } from "./localNetworkPermissions";
+import { notifyOnError, timedNotification } from "./notifications";
 import { getPluginOptions } from "./optionsParams";
 import { getInputElement } from "./utils";
 
 document.addEventListener("DOMContentLoaded", restoreOptions);
 document.querySelector("#url")?.addEventListener("change", updateUrl);
 document.querySelector("#api_token")?.addEventListener("change", updateApiToken);
+document.querySelector("#allow_local_network")?.addEventListener("change", updateAllowLocalNetwork);
 document.querySelector("#timeout")?.addEventListener("change", updateTimeout);
 document.querySelector("#llm_context")?.addEventListener("change", updateLlmContext);
 document.querySelector("#use_last_mails")?.addEventListener("change", updateUseLastMails);
@@ -28,6 +30,37 @@ async function updateApiToken(event: Event) {
   const apiTokenInput = event.target as HTMLInputElement;
   const options = await getPluginOptions();
   options.api_token = apiTokenInput.value;
+  await browser.storage.sync.set({ options });
+}
+
+async function updateAllowLocalNetwork(event: Event) {
+  const checkbox = event.target as HTMLInputElement;
+  if (checkbox.checked) {
+    try {
+      // permissions.request must be the very first await in the call chain –
+      // any prior await (including permissions.contains) breaks the browser's
+      // user-gesture tracking and causes "may only be called from a user input
+      // handler". We call it directly here; ensureLocalNetworkPermission then
+      // becomes a no-op because the permission is already granted.
+      const granted = await browser.permissions.request({ origins: ["<all_urls>"] });
+      if (!granted) {
+        throw new Error(
+          "Permission to access local network servers was denied. " +
+            'Please grant the permission when prompted, or uncheck "Allow connections to local network" in the extension settings.',
+        );
+      }
+    } catch (e) {
+      console.debug("Error occurred", e);
+      // Revert the checkbox so the UI stays consistent with the stored value.
+      checkbox.checked = false;
+      await timedNotification("Thunderbird LLM Extension Error", (e as Error)?.message || String(e));
+      return;
+    }
+  } else {
+    await revokeLocalNetworkPermission();
+  }
+  const options = await getPluginOptions();
+  options.allow_local_network = checkbox.checked;
   await browser.storage.sync.set({ options });
 }
 
@@ -82,6 +115,7 @@ export async function restoreOptions(): Promise<void> {
 
   getInputElement("#url").value = options.model;
   getInputElement("#api_token").value = options.api_token || "";
+  getInputElement("#allow_local_network").checked = options.allow_local_network ?? false;
   getInputElement("#timeout").value = options.timeout ? `${options.timeout / 1000}` : "";
   getInputElement("#context_window").value = `${options.context_window}`;
   getInputElement("#use_last_mails").checked = options.include_recent_mails;

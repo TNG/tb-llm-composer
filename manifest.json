@@ -12,6 +12,7 @@
     }
   },
   "permissions": ["menus", "compose", "storage", "notifications", "messagesRead", "accountsRead", "alarms"],
+  "optional_permissions": ["<all_urls>"],
   "icons": {
     "64": "icons/icon-64px.png",
     "32": "icons/icon-32px.png",

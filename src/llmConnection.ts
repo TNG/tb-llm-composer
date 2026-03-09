@@ -1,4 +1,5 @@
 import { startKeepAlive, stopKeepAlive } from "./keepAlive";
+import { ensureLocalNetworkPermission } from "./localNetworkPermissions";
 import { getPluginOptions, type LlmParameters } from "./optionsParams";
 
 export enum LlmRoles {
@@ -82,7 +83,14 @@ export async function sendContentToLlm(
     ...options.params,
   };
 
-  return callLlmApi(options.model, requestBody, abortSignal, options.api_token, options.timeout);
+  return callLlmApi(
+    options.model,
+    requestBody,
+    abortSignal,
+    options.api_token,
+    options.timeout,
+    options.allow_local_network,
+  );
 }
 
 async function callLlmApi(
@@ -91,6 +99,7 @@ async function callLlmApi(
   signal: AbortSignal,
   token?: string,
   timeout?: number,
+  allowLocalNetwork = false,
 ): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
   const headers: { [key: string]: string } = {
     "Content-Type": "application/json",
@@ -124,6 +133,7 @@ async function callLlmApi(
   }
 
   try {
+    await ensureLocalNetworkPermission(allowLocalNetwork);
     await startKeepAlive();
     console.log(`LLM-CONNECTION: Sending request to LLM: POST ${url} (body redacted)`);
     const response = await fetch(url, {

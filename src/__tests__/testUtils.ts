@@ -143,6 +143,12 @@ export function mockBrowser(args: mockBrowserArgs) {
         hasListener: vi.fn(),
       },
     },
+    // @ts-expect-error
+    permissions: {
+      contains: vi.fn().mockResolvedValue(true),
+      request: vi.fn().mockResolvedValue(true),
+      remove: vi.fn().mockResolvedValue(undefined),
+    },
   };
 }
 
