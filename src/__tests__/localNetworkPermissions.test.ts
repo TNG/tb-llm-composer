@@ -36,22 +36,13 @@ describe("ensureLocalNetworkPermission", () => {
     expect(permissionsRequestMock).not.toHaveBeenCalled();
   });
 
-  test("requests permission when not yet granted and user approves", async () => {
+  test("throws when permission is not granted, without requesting it", async () => {
     permissionsContainsMock.mockResolvedValue(false);
-    permissionsRequestMock.mockResolvedValue(true);
-
-    await ensureLocalNetworkPermission(true);
-
-    expect(permissionsRequestMock).toHaveBeenCalledWith({ origins: ["<all_urls>"] });
-  });
-
-  test("throws when user denies the permission request", async () => {
-    permissionsContainsMock.mockResolvedValue(false);
-    permissionsRequestMock.mockResolvedValue(false);
 
     await expect(ensureLocalNetworkPermission(true)).rejects.toThrow(
-      "Permission to access local network servers was denied",
+      "Permission to access local network servers is not granted",
     );
+    expect(permissionsRequestMock).not.toHaveBeenCalled();
   });
 });
 

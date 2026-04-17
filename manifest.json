@@ -13,6 +13,9 @@
   },
   "permissions": ["menus", "compose", "storage", "notifications", "messagesRead", "accountsRead", "alarms"],
   "optional_permissions": ["<all_urls>"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';"
+  },
   "icons": {
     "64": "icons/icon-64px.png",
     "32": "icons/icon-32px.png",

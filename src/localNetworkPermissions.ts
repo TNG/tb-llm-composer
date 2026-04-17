@@ -9,10 +9,15 @@
  */
 
 /**
- * If `allowLocalNetwork` is true, ensures the optional `<all_urls>` permission
- * is granted, prompting the user if needed.
+ * If `allowLocalNetwork` is true, verifies the optional `<all_urls>` permission
+ * is already granted. Does NOT prompt the user – permission requests must come
+ * from a user-gesture context (options page) and calling
+ * `browser.permissions.request()` from the background script silently fails in
+ * Thunderbird MV3, causing a generic network error even though the user has
+ * already granted the permission.
  *
- * Throws if the user denies the permission request.
+ * Throws if `allowLocalNetwork` is true but the permission is not (yet) granted,
+ * directing the user to the options page.
  * Returns immediately (no-op) when `allowLocalNetwork` is false.
  */
 export async function ensureLocalNetworkPermission(allowLocalNetwork: boolean): Promise<void> {
@@ -21,15 +26,10 @@ export async function ensureLocalNetworkPermission(allowLocalNetwork: boolean): 
   }
 
   const alreadyGranted = await browser.permissions.contains({ origins: ["<all_urls>"] });
-  if (alreadyGranted) {
-    return;
-  }
-
-  const granted = await browser.permissions.request({ origins: ["<all_urls>"] });
-  if (!granted) {
+  if (!alreadyGranted) {
     throw new Error(
-      "Permission to access local network servers was denied. " +
-        'Please grant the permission when prompted, or uncheck "Allow connections to local network" in the extension settings.',
+      "Permission to access local network servers is not granted. " +
+        'Please enable "Allow connections to local network" in the extension settings and grant the permission when prompted.',
     );
   }
 }
