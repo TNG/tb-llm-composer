@@ -68,6 +68,63 @@
         height: 150px;
       }
 
+      .folder-path-badge {
+        font-size: 16px;
+        flex: 0 0 auto;
+        cursor: default;
+      }
+
+      .folder-rule-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+        align-items: center;
+      }
+
+      .folder-rule-row input {
+        flex: 1;
+        padding: 6px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+
+      .folder-rule-row .description-input {
+        flex: 2;
+      }
+
+      .remove-rule-btn {
+        padding: 4px 10px;
+        background-color: #dc3545;
+        font-size: 12px;
+        margin-bottom: 0;
+      }
+
+      .remove-rule-btn:hover {
+        background-color: #a71d2a;
+      }
+
+      #add-folder-rule-btn {
+        background-color: #28a745;
+        padding: 6px 12px;
+        font-size: 13px;
+        margin-top: 4px;
+      }
+
+      #add-folder-rule-btn:hover {
+        background-color: #1e7e34;
+      }
+
+      .folder-rule-header {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 4px;
+        font-size: 12px;
+        color: #555;
+      }
+
+      .folder-rule-header span:first-child { flex: 1; }
+      .folder-rule-header span:last-child { flex: 2; }
+
       @-webkit-keyframes fadein {
         from {
           bottom: 0;
@@ -162,6 +219,35 @@
               </sup>
             </label>
           </div>
+        </div>
+
+        <div class="settings-section">
+          <h2>Organise Folder</h2>
+          <p style="font-size:13px;color:#555;margin-bottom:8px;">
+            Define folders and descriptions so the LLM can organise emails and move them automatically.
+            Emails that do not clearly match any folder are kept in place.
+          </p>
+          <div class="folder-rule-header">
+            <span>Folder path</span>
+            <span></span><!-- badge column -->
+            <span>Description for the LLM</span>
+          </div>
+          <div id="folder-rules-list"></div>
+          <button type="button" id="add-folder-rule-btn">+ Add Rule</button>
+
+          <details style="margin-top:12px;">
+            <summary style="cursor:pointer;font-size:13px;color:#333;">
+              Available folder paths
+              <button type="button" id="refresh-folder-paths-btn"
+                style="margin-left:10px;padding:2px 8px;font-size:12px;margin-bottom:0;">
+                ↺ Refresh
+              </button>
+            </summary>
+            <p id="folder-paths-status" style="font-size:12px;color:#555;margin:4px 0;"></p>
+            <pre id="available-folder-paths"
+              style="font-size:12px;background:#f5f5f5;padding:8px;border-radius:4px;
+                     max-height:200px;overflow-y:auto;white-space:pre-wrap;"></pre>
+          </details>
         </div>
 
         <div class="settings-section">
