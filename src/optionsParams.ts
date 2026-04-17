@@ -16,6 +16,11 @@ export interface LlmParameters {
   logprobs?: number;
 }
 
+export interface FolderRule {
+  folderPath: string; // e.g. "/INBOX/Work"
+  description: string; // free-text description for the LLM
+}
+
 export interface Options {
   model: string;
   api_token?: string;
@@ -25,6 +30,7 @@ export interface Options {
   params: LlmParameters;
   llmContext: string;
   timeout?: number; // Timeout in milliseconds, undefined means no timeout
+  folderSortingRules: FolderRule[];
 }
 
 export const DEFAULT_PARAMS: LlmParameters = {};
@@ -43,6 +49,7 @@ export const DEFAULT_OPTIONS: Options = {
     "[Salutation]\n" +
     "[Writer's name, without the mail signature]",
   include_recent_mails: true,
+  folderSortingRules: [],
 };
 
 export async function getPluginOptions(): Promise<Options> {
