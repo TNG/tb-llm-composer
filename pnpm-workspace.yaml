@@ -1,0 +1,9 @@
+
+allowBuilds:
+  esbuild: true # so the correct platform binary is available.
+
+overrides:
+  picomatch: ">=4.0.4"
+  fast-uri: ">=3.1.2"
+  ws: ">=8.20.1"
+  serialize-javascript: ">=7.0.5"

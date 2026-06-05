@@ -2,6 +2,7 @@ import MailFolder = browser.folders.MailFolder;
 import MailAccount = browser.accounts.MailAccount;
 import _QueryQueryInfo = browser.messages._QueryQueryInfo;
 import MessageHeader = browser.messages.MessageHeader;
+import MessagePart = browser.messages.MessagePart;
 
 import { getContentFromEmailParts } from "./emailHelpers";
 
@@ -12,7 +13,8 @@ export async function getSentMessages(recipientEmail: string) {
     if (sentFolder) {
       const messageHeaders = await searchSentFolder(sentFolder, recipientEmail);
       const oldMessages = await Promise.all(messageHeaders.map(getMessageBody));
-      return oldMessages.map((mail) => getContentFromEmailParts(mail.parts)).filter((x) => x);
+      const oldMessageContents: string[] = oldMessages.map((mail: MessagePart) => getContentFromEmailParts(mail.parts));
+      return oldMessageContents.filter((content) => Boolean(content));
     }
   }
   return [];
@@ -20,7 +22,7 @@ export async function getSentMessages(recipientEmail: string) {
 
 function findSentFolder(account: MailAccount) {
   const folders = account.folders || [];
-  return folders.find((folder) => folder.type === "sent");
+  return folders.find((folder: MailFolder) => folder.type === "sent");
 }
 
 async function searchSentFolder(sentFolder: MailFolder, recipientEmail: string, limit = 10) {

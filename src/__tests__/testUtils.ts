@@ -50,7 +50,6 @@ export function mockBrowser(args: mockBrowserArgs) {
   // noinspection JSUnusedGlobalSymbols
   global.browser = {
     runtime: {
-      // @ts-expect-error
       getManifest: () => ({
         compose_action: {
           default_title: "To LLM (dev)",
@@ -63,7 +62,6 @@ export function mockBrowser(args: mockBrowserArgs) {
       lastError: undefined,
     },
     storage: {
-      // @ts-expect-error
       sync: {
         get: vi.fn().mockReturnValue(
           args.params || args.options
@@ -82,10 +80,8 @@ export function mockBrowser(args: mockBrowserArgs) {
         ),
         set: vi.fn(),
       },
-      // @ts-expect-error
       local: {
-        // @ts-expect-error
-        get: async (key) => ({ [key]: localStore[key] }),
+        get: async (key: string) => ({ [key]: localStore[key] }),
         set: async (items: { [key: string]: unknown }) => {
           for (const [k, v] of Object.entries(items)) {
             localStore[k] = v;
@@ -96,11 +92,9 @@ export function mockBrowser(args: mockBrowserArgs) {
         },
       },
     },
-    // @ts-expect-error
     identities: {
       get: vi.fn().mockReturnValue({ name: MOCK_USER_NAME, signature: args.signature }),
     },
-    // @ts-expect-error
     compose: {
       getComposeDetails: vi.fn().mockResolvedValue({
         identityId: MOCK_IDENTITY_ID,
@@ -112,27 +106,37 @@ export function mockBrowser(args: mockBrowserArgs) {
       }),
       setComposeDetails: vi.fn(),
     },
-    // @ts-expect-error
     composeAction: {
       disable: vi.fn(),
       setIcon: vi.fn(),
       enable: vi.fn(),
       setTitle: vi.fn(),
     },
-    // @ts-expect-error
     notifications: {
       create: vi.fn(),
     },
-    // @ts-expect-error
     menus: {
       removeAll: async () => {
         mockBrowserMenus = [];
       },
       create: mockMenuCreate,
     },
-    // @ts-expect-error
     commands: {
       getAll: async () => allShortcuts,
+    },
+    // Minimal stubs required by the global browser type in tests.
+    _manifest: {},
+    accounts: {
+      list: vi.fn().mockResolvedValue([]),
+    },
+    folders: {},
+    messages: {
+      query: vi.fn().mockResolvedValue({ messages: [] }),
+      getFull: vi.fn(),
+    },
+    tabs: {
+      onCreated: { addListener: vi.fn() },
+      onRemoved: { addListener: vi.fn() },
     },
     alarms: {
       create: vi.fn(),
@@ -143,7 +147,7 @@ export function mockBrowser(args: mockBrowserArgs) {
         hasListener: vi.fn(),
       },
     },
-  };
+  } as unknown as typeof browser;
 }
 
 function mockMenuCreate(createProperties: _CreateCreateProperties, callback?: () => void) {

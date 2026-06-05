@@ -4,6 +4,20 @@
  * but is not included in @types/thunderbird-webext-browser.
  */
 declare namespace browser {
+  export import _manifest = messenger._manifest;
+  export import accounts = messenger.accounts;
+  export import commands = messenger.commands;
+  export import compose = messenger.compose;
+  export import composeAction = messenger.composeAction;
+  export import folders = messenger.folders;
+  export import identities = messenger.identities;
+  export import menus = messenger.menus;
+  export import messages = messenger.messages;
+  export import notifications = messenger.notifications;
+  export import runtime = messenger.runtime;
+  export import storage = messenger.storage;
+  export import tabs = messenger.tabs;
+
   export namespace alarms {
     interface Alarm {
       name: string;
