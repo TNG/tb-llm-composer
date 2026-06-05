@@ -7,7 +7,9 @@ import Tab = browser.tabs.Tab;
 
 // it is VERY important that this is the first line of the file.
 // Otherwise, the shortcuts may not work if the background script is not running (which is after 90s of idling or so)
-browser.commands.onCommand.addListener((command, tab) => executeLlmAction(command as LlmPluginAction, tab));
+browser.commands.onCommand.addListener((command: string, tab: Tab) =>
+  executeLlmAction(command as LlmPluginAction, tab),
+);
 
 // Keep the background page alive during long-running LLM requests
 browser.alarms.onAlarm.addListener(handleKeepAliveAlarm);

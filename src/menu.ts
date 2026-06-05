@@ -35,9 +35,10 @@ export async function addLlmActionsToMenu() {
 
 export async function addMenuEntry(createData: browser.menus._CreateCreateProperties) {
   console.log(`MENU: add '${createData.title}' option`);
+  type CommandInfo = { name: string; shortcut?: string };
   const shortcut = (await browser.commands.getAll())
-    .filter((cmd) => cmd.name === createData.id)
-    .map((cmd) => cmd.shortcut)[0];
+    .filter((cmd: CommandInfo) => cmd.name === createData.id)
+    .map((cmd: CommandInfo) => cmd.shortcut)[0];
   // biome-ignore lint/suspicious/noExplicitAny: workaround for missing type definitions
   const { promise, resolve, reject } = (Promise as any).withResolvers();
   let error: _LastError | undefined;

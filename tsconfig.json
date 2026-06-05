@@ -26,6 +26,7 @@
 
     /* Module Resolution Options */
     "moduleResolution": "node", // Choose the module resolution strategy
+    "ignoreDeprecations": "6.0", // Keep TS6 compatibility for deprecated node10 resolution behavior
     "esModuleInterop": true, // Enables emit interoperability between CommonJS and ES Modules
     "forceConsistentCasingInFileNames": true // Disallow inconsistently-cased references to the same file
   },
