@@ -36,7 +36,8 @@
     "browser_style": false
   },
   "action": {
-    "default_title": "Organise Folder with LLM (dev)",
+    "default_title": "LLM Composer (dev)",
+    "default_popup": "build/public/reports-action.html",
     "default_icon": {
       "16": "icons/icon-16px.png",
       "32": "icons/icon-32px.png",

@@ -2,6 +2,14 @@
 
 Quick guide for coding agents in this repo.
 
+## Working efficiently (keep token use low)
+
+- Read only the files you need; prefer targeted `grep`/search over reading whole files. Don't re-read a file already in context.
+- Make focused edits with minimal context; never echo large unchanged regions or full-file dumps back to the user.
+- Don't paste full build/test logs. Run checks, then summarize results in 1-2 lines; show only failing snippets.
+- Keep replies short: a brief plan, the edits, and a concise outcome. Skip restating code you just wrote.
+- Batch independent reads/searches in one step instead of many sequential calls.
+
 ## What this project is
 
 **LLM Composer** is a **Thunderbird MV3 WebExtension** in **TypeScript** that adds LLM help while writing emails.

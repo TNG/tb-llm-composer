@@ -251,6 +251,35 @@
         </div>
 
         <div class="settings-section">
+          <h2>Reports</h2>
+          <p style="font-size:13px;color:#555;margin-bottom:8px;">
+            Settings for the agentic "Create Report" feature (action button → Create Report…).
+          </p>
+          <div class="form-group">
+            <label for="report_default_days">Default days in the past:</label>
+            <input type="number" id="report_default_days" name="report default days" min="1" step="1" />
+          </div>
+          <div class="form-group">
+            <label for="report_max_search_results">
+              Max search results per query:
+              <sup title="Upper bound on messages returned by a single search_messages tool call. Lower values reduce token usage.">
+                &#8505;&#65039;
+              </sup>
+            </label>
+            <input type="number" id="report_max_search_results" name="report max search results" min="1" step="1" />
+          </div>
+          <div class="form-group">
+            <label for="report_max_steps">
+              Max agentic steps:
+              <sup title="Upper bound on tool-calling iterations per report. Bounds cost; raise it for more complex reports.">
+                &#8505;&#65039;
+              </sup>
+            </label>
+            <input type="number" id="report_max_steps" name="report max steps" min="1" step="1" />
+          </div>
+        </div>
+
+        <div class="settings-section">
           <h2>Model settings</h2>
           <div class="form-group">
             <label for="context_window">Context window:</label>

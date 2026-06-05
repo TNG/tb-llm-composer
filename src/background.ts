@@ -1,9 +1,10 @@
-import { getAllFolderPaths, organiseCurrentFolder } from "./emailOrganising";
+import { getActiveMailFolder, getAllFolderPaths, organiseCurrentFolder } from "./emailOrganising";
 import { handleKeepAliveAlarm } from "./keepAlive";
 import { executeLlmAction, type LlmPluginAction } from "./llmButtonClickHandling";
 import { addLlmActionsToMenu, enableSummarizeMenuEntryIfReply, handleMenuClickListener } from "./menu";
 import { notifyOnError, timedNotification } from "./notifications";
 import { deleteFromOriginalTabCache, storeOriginalReplyText } from "./originalTabConversation";
+import { generateReport, type ReportRequest } from "./reportGeneration";
 
 import Tab = browser.tabs.Tab;
 
@@ -24,29 +25,18 @@ browser.tabs.onCreated.addListener(async (tab: Tab) => {
 browser.tabs.onRemoved.addListener(deleteFromOriginalTabCache);
 browser.menus.onClicked.addListener(handleMenuClickListener);
 
-// ── Organise-folder action (shown in mail tabs) ───────────────────────────────
-// Thunderbird MV3 uses browser.action; guard in case the API is not available.
-const organiseAbortControllers = new Map<number, AbortController>();
+// ── Organise-folder action (popup shown in mail tabs) ─────────────────────────
+// Only one organise run happens at a time; a second trigger cancels it.
+let organiseAbortController: AbortController | null = null;
 
-/** Get clicked tab ID, falling back to active tab if none provided. */
-async function resolveClickedTabId(tab?: Tab): Promise<number | undefined> {
-  if (tab?.id !== undefined) {
-    return tab.id;
-  }
-
-  // Thunderbird may invoke action clicks without a tab payload in some contexts.
-  const activeTabs = await browser.tabs.query({ active: true, currentWindow: true });
-  return activeTabs[0]?.id;
-}
-
-/** Update compose action icon and title to reflect loading/idle state. */
+/** Update the action icon/title to reflect organise loading/idle state. */
 async function setOrganiseActionState(loading: boolean) {
   try {
     if (loading) {
-      await browser.action.setTitle({ title: "Cancel Organise Folder (click to stop)" });
+      await browser.action.setTitle({ title: "LLM Composer — organising… (open menu to cancel)" });
       await browser.action.setIcon({ path: { 32: "icons/loader-32px.gif" } });
     } else {
-      await browser.action.setTitle({ title: "Organise Folder with LLM (dev)" });
+      await browser.action.setTitle({ title: "LLM Composer (dev)" });
       await browser.action.setIcon({
         path: { 16: "icons/icon-16px.png", 32: "icons/icon-32px.png", 64: "icons/icon-64px.png" },
       });
@@ -56,47 +46,82 @@ async function setOrganiseActionState(loading: boolean) {
   }
 }
 
-if (browser.action?.onClicked) {
-  console.log("ORGANISE: Registering browser.action.onClicked listener");
-  browser.action.onClicked.addListener(async (tab?: Tab) => {
-    console.log("ORGANISE: Action button clicked, tab:", tab?.id);
-    const tabId = await resolveClickedTabId(tab);
-    if (tabId === undefined) {
-      console.error("ORGANISE: No tabId on click");
-      await timedNotification(
-        "LLM Composer",
-        "Could not detect the active tab for organise folder. Please click the button in a mail tab.",
-        7000,
-      );
-      return;
-    }
+/** Start organising the active folder, or cancel an in-flight run if one exists. */
+async function toggleOrganiseFolder(): Promise<void> {
+  if (organiseAbortController) {
+    console.log("ORGANISE: Aborting existing organise-folder run");
+    organiseAbortController.abort(new DOMException("User cancelled organise folder", "AbortError"));
+    organiseAbortController = null;
+    await setOrganiseActionState(false);
+    return;
+  }
 
-    // Second click = cancel
-    if (organiseAbortControllers.has(tabId)) {
-      console.log("ORGANISE: Aborting existing organise-folder run for tab", tabId);
-      organiseAbortControllers.get(tabId)?.abort(new DOMException("User cancelled organise folder", "AbortError"));
-      organiseAbortControllers.delete(tabId);
-      await setOrganiseActionState(false);
-      return;
-    }
+  const abortController = new AbortController();
+  organiseAbortController = abortController;
+  await setOrganiseActionState(true);
 
-    const abortController = new AbortController();
-    organiseAbortControllers.set(tabId, abortController);
-    await setOrganiseActionState(true);
-
-    await notifyOnError(async () => {
-      try {
-        await organiseCurrentFolder(abortController.signal);
-      } finally {
-        organiseAbortControllers.delete(tabId);
-        await setOrganiseActionState(false);
+  await notifyOnError(async () => {
+    try {
+      await organiseCurrentFolder(abortController.signal);
+    } finally {
+      if (organiseAbortController === abortController) {
+        organiseAbortController = null;
       }
-    });
+      await setOrganiseActionState(false);
+    }
   });
-} else {
-  console.error("ORGANISE: browser.action.onClicked is not available in this Thunderbird version.");
-  timedNotification("LLM Composer", "Organise folder button requires Thunderbird 128 or later.", 10000);
 }
+
+// ── Create-report flow ────────────────────────────────────────────────────────
+// One AbortController per report window, keyed by the window id.
+const reportAbortControllers = new Map<number, AbortController>();
+
+/** Open the report window, seeding it with the active folder context via URL params. */
+async function openReportWindow(): Promise<void> {
+  const folder = await getActiveMailFolder();
+  const params = new URLSearchParams();
+  if (folder?.accountId) params.set("accountId", folder.accountId);
+  if (folder?.path) params.set("path", folder.path);
+  if (folder?.name) params.set("name", folder.name);
+
+  await browser.windows.create({
+    type: "popup",
+    url: `build/public/reports.html?${params.toString()}`,
+    width: 640,
+    height: 720,
+  });
+}
+
+async function runReport(windowId: number, request: ReportRequest): Promise<{ report?: string; error?: string }> {
+  // Cancel any previous run for this window before starting a new one.
+  reportAbortControllers.get(windowId)?.abort(new DOMException("Superseded by a new report", "AbortError"));
+
+  const abortController = new AbortController();
+  reportAbortControllers.set(windowId, abortController);
+  try {
+    const report = await generateReport(request, abortController.signal);
+    return { report };
+  } catch (e) {
+    if ((e as Error).name === "AbortError") {
+      return { error: "Report generation was cancelled." };
+    }
+    console.error("REPORT: generation failed:", e);
+    return { error: (e as Error).message };
+  } finally {
+    if (reportAbortControllers.get(windowId) === abortController) {
+      reportAbortControllers.delete(windowId);
+    }
+  }
+}
+
+// Clean up an in-flight report when its window is closed.
+browser.windows.onRemoved.addListener((windowId: number) => {
+  const controller = reportAbortControllers.get(windowId);
+  if (controller) {
+    controller.abort(new DOMException("Report window closed", "AbortError"));
+    reportAbortControllers.delete(windowId);
+  }
+});
 
 // Register menu entries without blocking listener registration; this keeps
 // click handlers responsive when MV3 wakes the background script on demand.
@@ -104,19 +129,67 @@ void addLlmActionsToMenu().catch((e) => {
   console.error("BACKGROUND: Failed to add LLM actions to menu:", e);
 });
 
-type RuntimeRequestMessage = {
-  type: "get-folder-paths";
-};
+if (!browser.action) {
+  console.error("ORGANISE: browser.action is not available in this Thunderbird version.");
+  timedNotification("LLM Composer", "The action button requires Thunderbird 128 or later.", 10000);
+}
+
+// ── Runtime messages (options page + action popup + report window) ─────────────
+type ReportFolderPayload = { accountId: string; path: string } | null;
+
+type RuntimeRequestMessage =
+  | { type: "get-folder-paths" }
+  | { type: "organise-folder-toggle" }
+  | { type: "open-report-window" }
+  | { type: "get-active-folder" }
+  | { type: "generate-report"; windowId: number; request: ReportRequest }
+  | { type: "cancel-report"; windowId: number };
 
 function isRuntimeRequestMessage(value: unknown): value is RuntimeRequestMessage {
   if (!value || typeof value !== "object") return false;
-  return (value as { type?: unknown }).type === "get-folder-paths";
+  const type = (value as { type?: unknown }).type;
+  return (
+    type === "get-folder-paths" ||
+    type === "organise-folder-toggle" ||
+    type === "open-report-window" ||
+    type === "get-active-folder" ||
+    type === "generate-report" ||
+    type === "cancel-report"
+  );
 }
 
-// Handle options-page requests that need background-context APIs.
+// Handle requests that need background-context APIs.
 browser.runtime.onMessage.addListener((message: unknown) => {
   if (!isRuntimeRequestMessage(message)) {
     return false;
   }
-  return getAllFolderPaths();
+
+  switch (message.type) {
+    case "get-folder-paths":
+      return getAllFolderPaths();
+
+    case "organise-folder-toggle":
+      return toggleOrganiseFolder().then(() => ({ ok: true }));
+
+    case "open-report-window":
+      return openReportWindow().then(() => ({ ok: true }));
+
+    case "get-active-folder":
+      return getActiveMailFolder().then((folder): { folder: ReportFolderPayload } => ({
+        folder: folder?.accountId && folder?.path ? { accountId: folder.accountId, path: folder.path } : null,
+      }));
+
+    case "generate-report":
+      return runReport(message.windowId, message.request);
+
+    case "cancel-report": {
+      const controller = reportAbortControllers.get(message.windowId);
+      controller?.abort(new DOMException("User cancelled report", "AbortError"));
+      reportAbortControllers.delete(message.windowId);
+      return Promise.resolve({ ok: true });
+    }
+
+    default:
+      return false;
+  }
 });

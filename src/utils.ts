@@ -6,6 +6,14 @@ export function getInputElement(selector: string): HTMLInputElement {
   return inputElement;
 }
 
+/** Remove `<think>...</think>` reasoning blocks (including an unterminated trailing one) from LLM output. */
+export function stripThinkTags(text: string): string {
+  return text
+    .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
+    .replace(/<think\b[^>]*>[\s\S]*$/gi, "")
+    .trim();
+}
+
 export function stripHtml(html: string): string {
   return html
     .replace(/<[^>]*>/g, " ") // replace tags with a space to avoid word-merging
