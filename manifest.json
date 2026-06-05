@@ -36,7 +36,7 @@
     "browser_style": false
   },
   "action": {
-    "default_title": "Move E-Mails with LLM (dev)",
+    "default_title": "Organise Folder with LLM (dev)",
     "default_icon": {
       "16": "icons/icon-16px.png",
       "32": "icons/icon-32px.png",

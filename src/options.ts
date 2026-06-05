@@ -132,7 +132,13 @@ async function refreshFolderPaths() {
       dl.id = "folder-paths-datalist";
       document.body.appendChild(dl);
     }
-    dl.innerHTML = paths.map((p) => `<option value="${p}"></option>`).join("");
+    dl.replaceChildren();
+    for (const path of paths) {
+      const option = document.createElement("option");
+      option.value = path;
+      option.textContent = path;
+      dl.appendChild(option);
+    }
 
     if (statusEl) statusEl.textContent = `${paths.length} folder(s) found.`;
     if (availableEl) availableEl.textContent = paths.join("\n");

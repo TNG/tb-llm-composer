@@ -69,6 +69,7 @@ export const allRequestsStatus = new AllRequestsStatus();
 
 export type LlmPluginAction = "compose" | "summarize" | "cancel";
 
+/** Execute LLM action with loading state, cancellation support, and error handling. */
 export async function llmActionClickHandler(tab: Tab, communicateWithLlm: (tabID: number) => Promise<void>) {
   const openTabId = tab.id;
   if (!openTabId) {
@@ -79,6 +80,7 @@ export async function llmActionClickHandler(tab: Tab, communicateWithLlm: (tabID
   await withButtonRequestInProgress(openTabId, () => communicateWithLlm(openTabId));
 }
 
+/** Show loading state while executing callback; restore idle state when done. */
 async function withButtonRequestInProgress<T>(tabId: number, callback: () => Promise<T>) {
   const requestStatus = allRequestsStatus.getRequestStatus(tabId);
   requestStatus.isRunning = true;

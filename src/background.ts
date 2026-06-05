@@ -28,6 +28,7 @@ browser.menus.onClicked.addListener(handleMenuClickListener);
 // Thunderbird MV3 uses browser.action; guard in case the API is not available.
 const organiseAbortControllers = new Map<number, AbortController>();
 
+/** Get clicked tab ID, falling back to active tab if none provided. */
 async function resolveClickedTabId(tab?: Tab): Promise<number | undefined> {
   if (tab?.id !== undefined) {
     return tab.id;
@@ -38,6 +39,7 @@ async function resolveClickedTabId(tab?: Tab): Promise<number | undefined> {
   return activeTabs[0]?.id;
 }
 
+/** Update compose action icon and title to reflect loading/idle state. */
 async function setOrganiseActionState(loading: boolean) {
   try {
     if (loading) {

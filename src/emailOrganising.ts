@@ -48,6 +48,7 @@ function chunk<T>(items: T[], chunkSize: number): T[][] {
   return chunks;
 }
 
+/** Parse LLM classification response and map message IDs to folder indices (0-based, null for unclassified). */
 function parseBatchOrganisingResponse(
   rawResponse: string,
   expectedIds: number[],
@@ -96,6 +97,7 @@ function parseBatchOrganisingResponse(
   return result;
 }
 
+/** Extract JSON object from raw response, stripping think tags and handling markdown code fences. */
 function extractJsonObject(raw: string): string {
   const trimmed = raw.trim();
 
@@ -122,6 +124,7 @@ function extractJsonObject(raw: string): string {
   return withoutThinkTags;
 }
 
+/** Get folder list for account, using folders API if account.folders is unavailable (MV3 quirk). */
 async function getFoldersForAccount(account: browser.accounts.MailAccount): Promise<browser.folders.MailFolder[]> {
   // In MV3, accounts.list() may omit account.folders; fetch folder tree via folders API.
   if (account.folders && account.folders.length > 0) {
@@ -201,6 +204,7 @@ function isIncorrectMessagesMoveArgumentError(error: unknown): boolean {
   return error instanceof Error && error.message.includes("Incorrect argument types for messages.move");
 }
 
+/** List folder messages, trying folder ID first for newer Thunderbird builds, then fallback to MailFolder object. */
 async function listFolderMessages(
   displayedFolder: browser.folders.MailFolder,
 ): Promise<Awaited<ReturnType<typeof browser.messages.list>>> {
@@ -233,6 +237,7 @@ async function listFolderMessages(
   return browser.messages.list(folderObject);
 }
 
+/** Move message to target folder, trying folder ID first, then fallback to MailFolder object. */
 async function moveMessageToFolder(messageId: number, targetFolder: browser.folders.MailFolder): Promise<void> {
   const folderWithId = targetFolder as browser.folders.MailFolder & { id?: string };
   if (folderWithId.id) {
@@ -423,6 +428,7 @@ export async function organiseCurrentFolder(abortSignal: AbortSignal): Promise<v
   );
 }
 
+/** Recursively extract text (plain or stripped HTML) from message part hierarchy. */
 function extractTextFromPart(part: browser.messages.MessagePart): string {
   if (part.contentType === "text/plain" && part.body) {
     return part.body;
