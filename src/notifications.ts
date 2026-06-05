@@ -7,6 +7,7 @@ export async function timedNotification(title: string, message: string, ms = 300
   setTimeout(() => browser.notifications.clear(notificationId), ms);
 }
 
+/** Execute callback, suppressing AbortError silently and showing timed notifications for other errors. */
 export function notifyOnError<T>(callback: () => Promise<T>) {
   return callback().catch((e) => {
     console.debug("Error occurred", e);

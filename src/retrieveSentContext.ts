@@ -25,6 +25,7 @@ function findSentFolder(account: MailAccount) {
   return folders.find((folder: MailFolder) => folder.type === "sent");
 }
 
+/** Query sent folder for messages to recipient, returning up to limit most recent messages. */
 async function searchSentFolder(sentFolder: MailFolder, recipientEmail: string, limit = 10) {
   const query: _QueryQueryInfo = {
     recipients: recipientEmail,

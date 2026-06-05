@@ -6,11 +6,13 @@
 declare namespace browser {
   export import _manifest = messenger._manifest;
   export import accounts = messenger.accounts;
+  export import action = messenger.action;
   export import commands = messenger.commands;
   export import compose = messenger.compose;
   export import composeAction = messenger.composeAction;
   export import folders = messenger.folders;
   export import identities = messenger.identities;
+  export import mailTabs = messenger.mailTabs;
   export import menus = messenger.menus;
   export import messages = messenger.messages;
   export import notifications = messenger.notifications;

@@ -86,6 +86,7 @@ build/                       Generated webpack output (do not edit manually).
 - Use Promise-based `browser.*`, never `chrome.*`.
 - Persisted settings: `browser.storage.sync` under `options`; per-tab cache: `browser.storage.local`. Always read options via `getPluginOptions()` (merges with `DEFAULT_OPTIONS`).
 - TypeScript is strict: no unused locals/params, no implicit `any`, no fallthrough; prefer narrow typing and `LlmRoles` for message roles.
+- Add really concise docstrings to functions whose behavior is not obvious from the prototype.
 - Log prefixes are namespaced (`SORT:`, `MENU:`, `LLM-CONNECTION:`, `KEEP-ALIVE:`, `LLM-CONVO-CACHE:`). Production build drops `console.log`/`console.info` via Terser `drop_console`; keep user-visible failures on `console.error` + notifications.
 - Preserve dev/prod split: new top-level buttons/titles should include `" (dev)"` in `manifest.json` so dev installs do not clash with production (`webpack.config.js` transform strips it for prod).
 - Tests run in node with `globals: true`; fetch/network is mocked by `vitest-fetch-mock` (`src/__tests__/setupVitest.ts`).
@@ -96,4 +97,3 @@ build/                       Generated webpack output (do not edit manually).
 - Thunderbird WebExtension API: https://webextension-api.thunderbird.net/en/stable/
 - Thunderbird add-on docs: https://developer.thunderbird.net/add-ons/about-add-ons
 - Local dev and temporary add-on loading: `docs/CONTRIBUTING.md`
-

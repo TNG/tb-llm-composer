@@ -36,6 +36,7 @@ export async function addLlmActionsToMenu() {
 export async function addMenuEntry(createData: browser.menus._CreateCreateProperties) {
   console.log(`MENU: add '${createData.title}' option`);
   type CommandInfo = { name: string; shortcut?: string };
+  // Append keyboard shortcut to menu title if available
   const shortcut = (await browser.commands.getAll())
     .filter((cmd: CommandInfo) => cmd.name === createData.id)
     .map((cmd: CommandInfo) => cmd.shortcut)[0];
