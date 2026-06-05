@@ -16,6 +16,9 @@ document.querySelector("#use_last_mails")?.addEventListener("change", updateUseL
 document.querySelector("#strip_think_tag")?.addEventListener("change", updateStripThinkTag);
 document.querySelector("#context_window")?.addEventListener("change", updateContextWindow);
 document.querySelector("#other_options")?.addEventListener("change", updateOtherOptions);
+document.querySelector("#report_default_days")?.addEventListener("change", updateReportDefaultDays);
+document.querySelector("#report_max_search_results")?.addEventListener("change", updateReportMaxSearchResults);
+document.querySelector("#report_max_steps")?.addEventListener("change", updateReportMaxSteps);
 document.querySelector("#add-folder-rule-btn")?.addEventListener("click", addFolderRuleRow);
 document.querySelector("#refresh-folder-paths-btn")?.addEventListener("click", refreshFolderPaths);
 
@@ -84,6 +87,33 @@ async function updateOtherOptions(event: Event) {
   });
 }
 
+/** Persist a positive-integer numeric option, ignoring empty/invalid input. */
+async function updatePositiveIntOption(
+  event: Event,
+  key: "reportDefaultDays" | "reportMaxSearchResults" | "reportMaxSteps",
+) {
+  const input = event.target as HTMLInputElement;
+  const value = input.valueAsNumber;
+  if (!Number.isFinite(value) || value < 1) {
+    return;
+  }
+  const options = await getPluginOptions();
+  options[key] = Math.floor(value);
+  await browser.storage.sync.set({ options });
+}
+
+async function updateReportDefaultDays(event: Event) {
+  await updatePositiveIntOption(event, "reportDefaultDays");
+}
+
+async function updateReportMaxSearchResults(event: Event) {
+  await updatePositiveIntOption(event, "reportMaxSearchResults");
+}
+
+async function updateReportMaxSteps(event: Event) {
+  await updatePositiveIntOption(event, "reportMaxSteps");
+}
+
 export async function restoreOptions(): Promise<void> {
   const options = await getPluginOptions();
 
@@ -95,6 +125,9 @@ export async function restoreOptions(): Promise<void> {
   getInputElement("#strip_think_tag").checked = options.strip_think_tag ?? true;
   getInputElement("#other_options").value = JSON.stringify(options.params, null, 2);
   getInputElement("#llm_context").value = options.llmContext;
+  getInputElement("#report_default_days").value = `${options.reportDefaultDays}`;
+  getInputElement("#report_max_search_results").value = `${options.reportMaxSearchResults}`;
+  getInputElement("#report_max_steps").value = `${options.reportMaxSteps}`;
 
   const rules = options.folderSortingRules ?? [];
   const list = document.querySelector("#folder-rules-list");

@@ -148,7 +148,7 @@ async function handleSubjectSuccessResponse(
   options: Options,
 ) {
   await browser.compose.setComposeDetails(tabId, {
-    subject: maybeStripThinkTag(subjectResponse.choices[0].message.content, options).trim(),
+    subject: maybeStripThinkTag(subjectResponse.choices[0].message.content ?? "", options).trim(),
   });
 }
 
@@ -182,7 +182,7 @@ async function getCleanedUpGeneratedEmail(
   signature: string | undefined,
   options: Options,
 ) {
-  const content = maybeStripThinkTag(response.choices[0].message.content, options);
+  const content = maybeStripThinkTag(response.choices[0].message.content ?? "", options);
   const responseWithoutSignature = signature ? content.replace(signature, "") : content;
   return responseWithoutSignature.replace(/^\s*/, "");
 }
@@ -205,7 +205,10 @@ export async function summarize(tabId: number, originalConversation?: string): P
   const requestStatus = allRequestsStatus.getRequestStatus(tabId);
   const response = await sendContentToLlm(messages, requestStatus.abortController.signal);
   if (isLlmTextCompletionResponse(response)) {
-    const content = maybeStripThinkTag((response as LlmTextCompletionResponse).choices[0].message.content, options);
+    const content = maybeStripThinkTag(
+      (response as LlmTextCompletionResponse).choices[0].message.content ?? "",
+      options,
+    );
     await browser.compose.setComposeDetails(tabId, {
       plainTextBody: `${content}\n\n\n\n${originalConversation}`,
     });

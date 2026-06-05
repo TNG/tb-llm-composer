@@ -31,6 +31,9 @@ export interface Options {
   llmContext: string;
   timeout?: number; // Timeout in milliseconds, undefined means no timeout
   folderSortingRules: FolderRule[];
+  reportMaxSteps: number; // upper bound on agentic tool-calling iterations
+  reportMaxSearchResults: number; // cap on messages returned by a single search_messages call
+  reportDefaultDays: number; // prefilled "days in the past" value in the report window
 }
 
 export const DEFAULT_PARAMS: LlmParameters = {};
@@ -50,6 +53,9 @@ export const DEFAULT_OPTIONS: Options = {
     "[Writer's name, without the mail signature]",
   include_recent_mails: true,
   folderSortingRules: [],
+  reportMaxSteps: 8,
+  reportMaxSearchResults: 50,
+  reportDefaultDays: 30,
 };
 
 export async function getPluginOptions(): Promise<Options> {

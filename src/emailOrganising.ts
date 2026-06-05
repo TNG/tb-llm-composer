@@ -152,7 +152,7 @@ async function getFoldersForAccount(account: browser.accounts.MailAccount): Prom
 }
 
 /** Resolve a folderPath string like "/INBOX/Work" to a MailFolder object. */
-async function resolveFolderPath(folderPath: string): Promise<browser.folders.MailFolder | null> {
+export async function resolveFolderPath(folderPath: string): Promise<browser.folders.MailFolder | null> {
   const accounts = await browser.accounts.list(true);
   for (const account of accounts) {
     const foundInRoot = account.rootFolder?.path === folderPath ? account.rootFolder : null;
@@ -194,6 +194,21 @@ function collectPaths(folders: browser.folders.MailFolder[], out: Set<string>) {
     out.add(f.path);
     collectPaths(f.subFolders ?? [], out);
   }
+}
+
+/**
+ * Return the active mail tab's displayed folder across normal mail windows. Unlike a
+ * `currentWindow` query this ignores extension popup windows, so it keeps working when the
+ * caller was triggered from the action popup or a report window.
+ */
+export async function getActiveMailFolder(): Promise<browser.folders.MailFolder | undefined> {
+  const mailTabs = await browser.mailTabs.query({ active: true });
+  for (const mailTab of mailTabs) {
+    if (mailTab.displayedFolder) {
+      return mailTab.displayedFolder;
+    }
+  }
+  return undefined;
 }
 
 function isIncorrectMessagesListArgumentError(error: unknown): boolean {
@@ -288,13 +303,11 @@ export async function organiseCurrentFolder(abortSignal: AbortSignal): Promise<v
   }
 
   // Get active mail tab and its current folder.
-  const mailTabs = await browser.mailTabs.query({ active: true, currentWindow: true });
-  const mailTab = mailTabs[0];
-  if (!mailTab?.displayedFolder) {
+  const sourceFolder = await getActiveMailFolder();
+  if (!sourceFolder) {
     throw new Error("No folder is currently displayed. Open a mail folder first.");
   }
 
-  const sourceFolder = mailTab.displayedFolder;
   console.log("ORGANISE: displayedFolder raw:", JSON.stringify(sourceFolder));
 
   // Collect all messages (the API pages results).
@@ -429,7 +442,7 @@ export async function organiseCurrentFolder(abortSignal: AbortSignal): Promise<v
 }
 
 /** Recursively extract text (plain or stripped HTML) from message part hierarchy. */
-function extractTextFromPart(part: browser.messages.MessagePart): string {
+export function extractTextFromPart(part: browser.messages.MessagePart): string {
   if (part.contentType === "text/plain" && part.body) {
     return part.body;
   }

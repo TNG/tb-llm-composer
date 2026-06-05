@@ -19,6 +19,7 @@ declare namespace browser {
   export import runtime = messenger.runtime;
   export import storage = messenger.storage;
   export import tabs = messenger.tabs;
+  export import windows = messenger.windows;
 
   export namespace alarms {
     interface Alarm {

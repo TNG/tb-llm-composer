@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LLM Composer</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 0;
+        min-width: 220px;
+      }
+      .menu {
+        padding: 4px 0;
+      }
+      .menu-item {
+        appearance: none;
+        display: block;
+        width: 100%;
+        padding: 7px 12px;
+        margin: 0;
+        background: transparent;
+        color: #1f1f1f;
+        border: none;
+        border-radius: 0;
+        cursor: pointer;
+        font-size: 14px;
+        text-align: left;
+      }
+      .menu-item:hover {
+        background: #e9e9ed;
+      }
+      .menu-item:focus-visible {
+        outline: 2px solid #0a84ff;
+        outline-offset: -2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="menu" role="menu" aria-label="LLM Composer actions">
+      <button type="button" id="organise-btn" class="menu-item" role="menuitem">Organise Folder</button>
+      <button type="button" id="report-btn" class="menu-item" role="menuitem">Create Report...</button>
+    </div>
+    <script src="../reports-action.js"></script>
+  </body>
+</html>
+

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Create Report</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 16px;
+        color: #222;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 12px;
+      }
+      .form-group {
+        margin-bottom: 12px;
+      }
+      .form-group label {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 13px;
+      }
+      input[type="number"],
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-family: inherit;
+        font-size: 13px;
+      }
+      #prompt {
+        height: 90px;
+        resize: vertical;
+      }
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+      }
+      .scope-note {
+        font-size: 12px;
+        color: #666;
+        margin: 2px 0 0;
+      }
+      .buttons {
+        display: flex;
+        gap: 8px;
+        margin: 8px 0 12px;
+      }
+      button {
+        padding: 9px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      #create-btn {
+        background-color: #28a745;
+        color: white;
+      }
+      #create-btn:hover {
+        background-color: #1e7e34;
+      }
+      #create-btn:disabled {
+        background-color: #9bd3a9;
+        cursor: default;
+      }
+      #cancel-btn {
+        background-color: #dc3545;
+        color: white;
+      }
+      #cancel-btn:hover {
+        background-color: #a71d2a;
+      }
+      #copy-btn {
+        background-color: #007bff;
+        color: white;
+      }
+      #copy-btn:hover {
+        background-color: #0056b3;
+      }
+      .output-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 4px;
+      }
+      .output-header h2 {
+        font-size: 15px;
+        margin: 0;
+      }
+      #report-output {
+        width: 100%;
+        box-sizing: border-box;
+        height: 240px;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background: #f8f8f8;
+        font-family: inherit;
+        font-size: 13px;
+        white-space: pre-wrap;
+        overflow-y: auto;
+      }
+      #status {
+        font-size: 13px;
+        color: #555;
+        min-height: 18px;
+      }
+      .busy {
+        display: none;
+        vertical-align: middle;
+        height: 16px;
+        margin-right: 6px;
+      }
+      .busy.show {
+        display: inline-block;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Create Report</h1>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="folder-only" checked />
+      <label for="folder-only">Search in this folder only</label>
+    </div>
+    <p class="scope-note" id="scope-note"></p>
+
+    <div class="form-group" style="margin-top: 12px">
+      <label for="days">How many days in the past to look into emails:</label>
+      <input type="number" id="days" min="1" step="1" value="30" />
+    </div>
+
+    <div class="form-group">
+      <label for="prompt">What report do you want?</label>
+      <textarea
+        id="prompt"
+        placeholder="e.g. A to-do list of open items addressed to me, or how long Alice took to reply over the last 120 days."
+      ></textarea>
+    </div>
+
+    <div class="buttons">
+      <button type="button" id="create-btn">Create</button>
+      <button type="button" id="cancel-btn">Cancel</button>
+    </div>
+
+    <p id="status"><img class="busy" id="busy" src="../icons/loader-32px.gif" alt="" />Ready.</p>
+
+    <div class="output-header">
+      <h2>Report</h2>
+      <button type="button" id="copy-btn">Copy</button>
+    </div>
+    <textarea id="report-output" readonly placeholder="The generated report will appear here."></textarea>
+
+    <script src="../reports.js"></script>
+  </body>
+</html>
+
