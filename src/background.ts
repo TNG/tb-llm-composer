@@ -84,9 +84,15 @@ async function openReportWindow(): Promise<void> {
   if (folder?.path) params.set("path", folder.path);
   if (folder?.name) params.set("name", folder.name);
 
+  // reports.html sits next to the options page in public/. Resolve it relative to the options
+  // page URL so the path is correct whether the extension root is the repo (paths prefixed with
+  // build/) or the packaged build/ folder (prefix stripped by the manifest transform).
+  const optionsPage = browser.runtime.getManifest().options_ui?.page ?? "public/options.html";
+  const reportsUrl = new URL(`reports.html?${params.toString()}`, browser.runtime.getURL(optionsPage)).href;
+
   await browser.windows.create({
     type: "popup",
-    url: `build/public/reports.html?${params.toString()}`,
+    url: reportsUrl,
     width: 640,
     height: 720,
   });

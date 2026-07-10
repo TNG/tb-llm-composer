@@ -115,6 +115,10 @@ export function mockBrowser(args: mockBrowserArgs) {
     notifications: {
       create: vi.fn(),
     },
+    permissions: {
+      contains: vi.fn().mockResolvedValue(true),
+      request: vi.fn().mockResolvedValue(true),
+    },
     menus: {
       removeAll: async () => {
         mockBrowserMenus = [];

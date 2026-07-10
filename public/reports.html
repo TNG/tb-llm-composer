@@ -5,85 +5,118 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Create Report</title>
     <style>
+      html,
+      body {
+        height: 100%;
+      }
       body {
         font-family: Arial, sans-serif;
         margin: 0;
         padding: 16px;
         color: #222;
+        box-sizing: border-box;
+        /* Column layout so the report field can grow into the space left at the bottom. */
+        display: flex;
+        flex-direction: column;
       }
       h1 {
         font-size: 18px;
         margin: 0 0 12px;
       }
-      .form-group {
-        margin-bottom: 12px;
-      }
-      .form-group label {
-        display: block;
-        margin-bottom: 4px;
+      /* Checkbox and day-count share a single row (Copilot-style compact controls). */
+      .controls-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px 16px;
         font-size: 13px;
       }
-      input[type="number"],
-      textarea {
-        width: 100%;
+      .control-inline {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+      }
+      .controls-row input[type="number"] {
+        width: 56px;
         box-sizing: border-box;
-        padding: 8px;
+        padding: 4px 6px;
         border: 1px solid #ddd;
         border-radius: 4px;
         font-family: inherit;
         font-size: 13px;
       }
-      #prompt {
-        height: 90px;
-        resize: vertical;
-      }
-      .checkbox-row {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 13px;
-      }
       .scope-note {
         font-size: 12px;
         color: #666;
-        margin: 2px 0 0;
+        margin: 4px 0 0;
       }
-      .buttons {
-        display: flex;
-        gap: 8px;
-        margin: 8px 0 12px;
+      /* Prompt field with the send/stop icon docked in its bottom-right corner. */
+      .prompt-box {
+        position: relative;
+        margin: 12px 0 4px;
       }
-      button {
-        padding: 9px 16px;
+      #prompt {
+        width: 100%;
+        box-sizing: border-box;
+        height: 90px;
+        padding: 8px 44px 8px 8px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 13px;
+        resize: vertical;
+      }
+      #prompt:focus {
+        outline: none;
+        border-color: #0a84ff;
+      }
+      .icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
         border: none;
-        border-radius: 4px;
+        background: transparent;
+        color: #555;
         cursor: pointer;
-        font-size: 14px;
+        border-radius: 6px;
+      }
+      .icon-btn:hover {
+        background: #e9e9ed;
+        color: #1f1f1f;
+      }
+      .icon-btn:focus-visible {
+        outline: 2px solid #0a84ff;
+        outline-offset: 1px;
+      }
+      .icon-btn svg {
+        width: 20px;
+        height: 20px;
+        display: block;
       }
       #create-btn {
-        background-color: #28a745;
-        color: white;
+        position: absolute;
+        right: 8px;
+        bottom: 8px;
+        width: 32px;
+        height: 32px;
+        background: #0a84ff;
+        color: #fff;
       }
       #create-btn:hover {
-        background-color: #1e7e34;
+        background: #0060df;
+        color: #fff;
       }
-      #create-btn:disabled {
-        background-color: #9bd3a9;
-        cursor: default;
+      /* Toggle between the send and stop glyphs depending on generation state. */
+      #create-btn .icon-stop {
+        display: none;
       }
-      #cancel-btn {
-        background-color: #dc3545;
-        color: white;
+      #create-btn.busy .icon-send {
+        display: none;
       }
-      #cancel-btn:hover {
-        background-color: #a71d2a;
-      }
-      #copy-btn {
-        background-color: #007bff;
-        color: white;
-      }
-      #copy-btn:hover {
-        background-color: #0056b3;
+      #create-btn.busy .icon-stop {
+        display: block;
       }
       .output-header {
         display: flex;
@@ -95,10 +128,28 @@
         font-size: 15px;
         margin: 0;
       }
+      .output-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      #copy-btn {
+        width: 28px;
+        height: 28px;
+      }
+      .text-btn {
+        width: auto;
+        height: 28px;
+        padding: 0 8px;
+        font-size: 12px;
+        font-family: inherit;
+      }
       #report-output {
         width: 100%;
         box-sizing: border-box;
-        height: 240px;
+        /* Fill the remaining vertical space at the bottom of the popup. */
+        flex: 1 1 auto;
+        min-height: 120px;
         padding: 8px;
         border: 1px solid #ccc;
         border-radius: 4px;
@@ -107,11 +158,13 @@
         font-size: 13px;
         white-space: pre-wrap;
         overflow-y: auto;
+        resize: none;
       }
       #status {
         font-size: 13px;
         color: #555;
         min-height: 18px;
+        margin: 4px 0 12px;
       }
       .busy {
         display: none;
@@ -127,39 +180,54 @@
   <body>
     <h1>Create Report</h1>
 
-    <div class="checkbox-row">
-      <input type="checkbox" id="folder-only" checked />
-      <label for="folder-only">Search in this folder only</label>
+    <div class="controls-row">
+      <label class="control-inline">
+        <input type="checkbox" id="folder-only" checked />
+        Search in this folder only
+      </label>
+      <span class="control-inline">
+        Last
+        <input type="number" id="days" min="1" step="1" value="30" />
+        days
+      </span>
     </div>
     <p class="scope-note" id="scope-note"></p>
 
-    <div class="form-group" style="margin-top: 12px">
-      <label for="days">How many days in the past to look into emails:</label>
-      <input type="number" id="days" min="1" step="1" value="30" />
-    </div>
-
-    <div class="form-group">
-      <label for="prompt">What report do you want?</label>
+    <div class="prompt-box">
       <textarea
         id="prompt"
         placeholder="e.g. A to-do list of open items addressed to me, or how long Alice took to reply over the last 120 days."
       ></textarea>
-    </div>
-
-    <div class="buttons">
-      <button type="button" id="create-btn">Create</button>
-      <button type="button" id="cancel-btn">Cancel</button>
+      <button type="button" id="create-btn" title="Create report" aria-label="Create report" class="icon-btn">
+        <!-- Paper-plane send glyph shown while idle -->
+        <svg class="icon-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M22 2 11 13" />
+          <path d="M22 2 15 22l-4-9-9-4 20-7z" />
+        </svg>
+        <!-- Stop glyph shown while generating -->
+        <svg class="icon-stop" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <rect x="7" y="7" width="10" height="10" rx="2" />
+        </svg>
+      </button>
     </div>
 
     <p id="status"><img class="busy" id="busy" src="../icons/loader-32px.gif" alt="" />Ready.</p>
 
     <div class="output-header">
       <h2>Report</h2>
-      <button type="button" id="copy-btn">Copy</button>
+      <div class="output-actions">
+        <button type="button" id="save-txt-btn" title="Save report as .txt" aria-label="Save report as .txt" class="icon-btn text-btn">.txt</button>
+        <button type="button" id="save-md-btn" title="Save report as .md" aria-label="Save report as .md" class="icon-btn text-btn">.md</button>
+        <button type="button" id="copy-btn" title="Copy report" aria-label="Copy report" class="icon-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+        </button>
+      </div>
     </div>
     <textarea id="report-output" readonly placeholder="The generated report will appear here."></textarea>
 
     <script src="../reports.js"></script>
   </body>
 </html>
-

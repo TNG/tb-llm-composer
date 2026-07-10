@@ -1,4 +1,5 @@
 import { getAllFolderPaths } from "./emailOrganising";
+import { hasEndpointPermission, requestEndpointPermission } from "./hostPermissions";
 import { notifyOnError } from "./notifications";
 import { type FolderRule, getPluginOptions } from "./optionsParams";
 import { getInputElement } from "./utils";
@@ -9,6 +10,7 @@ type GetFolderPathsMessage = {
 
 document.addEventListener("DOMContentLoaded", restoreOptions);
 document.querySelector("#url")?.addEventListener("change", updateUrl);
+document.querySelector("#grant-access-btn")?.addEventListener("click", grantEndpointAccess);
 document.querySelector("#api_token")?.addEventListener("change", updateApiToken);
 document.querySelector("#timeout")?.addEventListener("change", updateTimeout);
 document.querySelector("#llm_context")?.addEventListener("change", updateLlmContext);
@@ -32,6 +34,43 @@ async function updateUrl(event: Event) {
     options.model = modelUrlInput.value;
     await browser.storage.sync.set({ options });
   });
+  // Reflect whether this (possibly new) endpoint origin is already permitted.
+  await updateUrlPermissionStatus();
+}
+
+/**
+ * Request the host permission for the current endpoint URL. MV3 host permissions are opt-in and
+ * permissions.request requires a real user-activation event — a button click qualifies (the
+ * input's "change" event does not), so this is wired to the "Grant access" button.
+ */
+async function grantEndpointAccess() {
+  const modelUrl = getInputElement("#url").value;
+  if (!modelUrl) {
+    await notifyOnError(async () => {
+      throw new Error("Enter the LLM endpoint URL first.");
+    });
+    return;
+  }
+  const granted = await requestEndpointPermission(modelUrl);
+  await updateUrlPermissionStatus();
+  if (!granted) {
+    await notifyOnError(async () => {
+      throw new Error("Permission to access this endpoint was not granted. The extension cannot reach the LLM.");
+    });
+  }
+}
+
+/** Show whether the extension currently has host permission for the configured endpoint. */
+async function updateUrlPermissionStatus() {
+  const statusEl = document.querySelector("#url-permission-status");
+  if (!statusEl) return;
+  const modelUrl = getInputElement("#url").value;
+  if (!modelUrl) {
+    statusEl.textContent = "";
+    return;
+  }
+  const granted = await hasEndpointPermission(modelUrl);
+  statusEl.textContent = granted ? "✅ Access granted" : '⚠️ Access not granted — click "Grant access".';
 }
 
 async function updateApiToken(event: Event) {
@@ -118,6 +157,7 @@ export async function restoreOptions(): Promise<void> {
   const options = await getPluginOptions();
 
   getInputElement("#url").value = options.model;
+  await updateUrlPermissionStatus();
   getInputElement("#api_token").value = options.api_token || "";
   getInputElement("#timeout").value = options.timeout ? `${options.timeout / 1000}` : "";
   getInputElement("#context_window").value = `${options.context_window}`;
