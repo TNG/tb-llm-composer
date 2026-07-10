@@ -95,9 +95,6 @@ describe("reportGeneration", () => {
 
   test("keeps <think> tags when strip_think_tag is disabled", async () => {
     vi.mocked(getPluginOptions).mockResolvedValue({
-      // biome-ignore lint/suspicious/noExplicitAny: minimal options stub for the test
-    } as any);
-    vi.mocked(getPluginOptions).mockResolvedValue({
       reportMaxSteps: 8,
       reportMaxSearchResults: 50,
       strip_think_tag: false,
