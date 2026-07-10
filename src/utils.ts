@@ -6,6 +6,14 @@ export function getInputElement(selector: string): HTMLInputElement {
   return inputElement;
 }
 
+export function getButtonElement(selector: string): HTMLButtonElement {
+  const buttonElement = document.querySelector(selector) as HTMLButtonElement | null;
+  if (!buttonElement) {
+    throw Error(`Selector "${selector}" could not be found. Contact devs`);
+  }
+  return buttonElement;
+}
+
 /** Remove `<think>...</think>` reasoning blocks (including an unterminated trailing one) from LLM output. */
 export function stripThinkTags(text: string): string {
   return text

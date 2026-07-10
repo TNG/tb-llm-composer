@@ -2,6 +2,16 @@
 
 A Thunderbird extension enabling LLM support while writing E-Mails.
 
+## Features
+
+- **Compose** an email from a short prompt.
+- **Summarize** the current conversation thread.
+- **Sort a folder** by asking the LLM to classify each message into folders you configure.
+- **Generate a report** over your mailbox: the LLM searches your messages agentically and writes a report you can copy or save as `.txt`/`.md`.
+
+Compose, summarize and cancel are available while writing an email (see [Shortcuts](#shortcuts)).
+Folder sorting and reports are reached from the LLM Composer toolbar button.
+
 ## Requirements
 
 - Thunderbird >= 110.0
@@ -23,6 +33,8 @@ Specify the following things:
   If you don't have access to an LLM, try https://github.com/cheahjs/free-llm-api-resources
 - Api token: Leave empty if public, otherwise obtain one.
 - Optionally: Set a model in "Other options" if the api allows it
+
+When you save the endpoint, Thunderbird asks you to grant access to that host. This permission is required for the plugin to reach the LLM; without it requests are blocked.
 
 ![Thunderbird LLM Plugin Preferences Example](./docs/img/tb-llm-preferences.png)
 

@@ -1,10 +1,6 @@
 import { getPluginOptions } from "./optionsParams";
 import type { ReportRequest } from "./reportGeneration";
-import { getInputElement } from "./utils";
-
-TODO:
-make popup look more like copilot: icnos instead of buttons, no cancel, number of days in same line as checkbox, but keep report field at the bottom
-
+import { getButtonElement, getInputElement } from "./utils";
 
 const params = new URLSearchParams(window.location.search);
 const folderContext =
@@ -23,9 +19,10 @@ const promptInput = document.querySelector<HTMLTextAreaElement>("#prompt");
 const outputArea = document.querySelector<HTMLTextAreaElement>("#report-output");
 const statusEl = document.querySelector<HTMLParagraphElement>("#status");
 const busyImg = document.querySelector<HTMLImageElement>("#busy");
-const createBtn = getInputElement("#create-btn");
-const cancelBtn = getInputElement("#cancel-btn");
-const copyBtn = getInputElement("#copy-btn");
+const createBtn = getButtonElement("#create-btn");
+const copyBtn = getButtonElement("#copy-btn");
+const saveTxtBtn = getButtonElement("#save-txt-btn");
+const saveMdBtn = getButtonElement("#save-md-btn");
 const scopeNote = document.querySelector<HTMLParagraphElement>("#scope-note");
 
 void init();
@@ -46,8 +43,9 @@ async function init(): Promise<void> {
 
   folderOnlyInput.addEventListener("change", updateScopeNote);
   createBtn.addEventListener("click", onCreate);
-  cancelBtn.addEventListener("click", onCancel);
   copyBtn.addEventListener("click", onCopy);
+  saveTxtBtn.addEventListener("click", () => saveReport("txt"));
+  saveMdBtn.addEventListener("click", () => saveReport("md"));
   setStatus("Ready.");
 }
 
@@ -62,7 +60,11 @@ function updateScopeNote(): void {
 
 function setBusy(value: boolean): void {
   busy = value;
-  createBtn.disabled = value;
+  // While generating, the send button turns into a stop control (Copilot-style),
+  // so it must stay enabled to allow cancelling.
+  createBtn.classList.toggle("busy", value);
+  createBtn.title = value ? "Stop generating" : "Create report";
+  createBtn.setAttribute("aria-label", value ? "Stop generating" : "Create report");
   busyImg?.classList.toggle("show", value);
 }
 
@@ -78,7 +80,13 @@ function setStatus(text: string): void {
 }
 
 async function onCreate(): Promise<void> {
-  if (busy) return;
+  if (busy) {
+    // The button acts as a stop control while a report is being generated.
+    await browser.runtime.sendMessage({ type: "cancel-report", windowId });
+    setStatus("Cancelling…");
+    return;
+  }
+
   const prompt = promptInput?.value.trim() ?? "";
   if (!prompt) {
     setStatus("Please enter a report request first.");
@@ -117,13 +125,24 @@ async function onCreate(): Promise<void> {
   }
 }
 
-async function onCancel(): Promise<void> {
-  if (busy) {
-    await browser.runtime.sendMessage({ type: "cancel-report", windowId });
-    setStatus("Cancelling…");
+/** Download the current report as a text or markdown file via a temporary object URL. */
+function saveReport(extension: "txt" | "md"): void {
+  const content = outputArea?.value ?? "";
+  if (!content) {
+    setStatus("Nothing to save yet.");
     return;
   }
-  window.close();
+  const mimeType = extension === "md" ? "text/markdown" : "text/plain";
+  const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `llm-composer-report.${extension}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  setStatus(`Report saved as .${extension}.`);
 }
 
 async function onCopy(): Promise<void> {

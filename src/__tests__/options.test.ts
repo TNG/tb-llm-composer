@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import * as path from "node:path";
 import { TextDecoder, TextEncoder } from "node:util";
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 Object.assign(global, { TextDecoder, TextEncoder });
 
@@ -21,6 +21,9 @@ let optionsDom: JSDOM;
 
 let browserStorage: { [key: string]: object } = {};
 let jsDomNotifications: CreateNotificationOptions[] = [];
+
+const permissionsContainsMock = vi.fn();
+const permissionsRequestMock = vi.fn();
 
 const mockBrowser = {
   storage: {
@@ -42,6 +45,10 @@ const mockBrowser = {
       jsDomNotifications.push(options);
     },
   },
+  permissions: {
+    contains: (...args: unknown[]) => permissionsContainsMock(...args),
+    request: (...args: unknown[]) => permissionsRequestMock(...args),
+  },
 };
 
 /**
@@ -51,6 +58,8 @@ describe("The options page", () => {
   beforeEach(async () => {
     browserStorage = {};
     jsDomNotifications = [];
+    permissionsContainsMock.mockReset().mockResolvedValue(true);
+    permissionsRequestMock.mockReset().mockResolvedValue(true);
     const projectDir = path.resolve(__dirname, "../..");
     const optionsHtmlFile = `${projectDir}/build/public/options.html`;
     const optionsHtmlContent = fs.readFileSync(optionsHtmlFile, "utf-8");
@@ -173,5 +182,46 @@ describe("The options page", () => {
       expect(browserStorage).toHaveProperty("options");
       expect((browserStorage.options as Options).llmContext).toEqual(expectedLlmContext);
     });
+  });
+
+  test("requests host permission for the endpoint when clicking Grant access", async () => {
+    const urlInput = optionsDom.window.document.getElementById("url") as HTMLInputElement;
+    urlInput.value = "https://my-llm.com/v1/chat/completions";
+
+    (optionsDom.window.document.getElementById("grant-access-btn") as HTMLButtonElement).click();
+
+    await waitFor(() => {
+      expect(permissionsRequestMock).toHaveBeenCalledWith({ origins: ["https://my-llm.com/*"] });
+      expect(optionsDom.window.document.getElementById("url-permission-status")?.textContent).toContain(
+        "Access granted",
+      );
+    });
+  });
+
+  test("reports when host permission is denied", async () => {
+    permissionsContainsMock.mockResolvedValue(false);
+    permissionsRequestMock.mockResolvedValue(false);
+    const urlInput = optionsDom.window.document.getElementById("url") as HTMLInputElement;
+    urlInput.value = "https://my-llm.com/v1/chat/completions";
+
+    (optionsDom.window.document.getElementById("grant-access-btn") as HTMLButtonElement).click();
+
+    await waitFor(() => {
+      expect(jsDomNotifications).toHaveLength(1);
+      expect(jsDomNotifications[0].message).toContain("not granted");
+      expect(optionsDom.window.document.getElementById("url-permission-status")?.textContent).toContain("not granted");
+    });
+  });
+
+  test("does not request permission when the URL is empty", async () => {
+    (optionsDom.window.document.getElementById("url") as HTMLInputElement).value = "";
+
+    (optionsDom.window.document.getElementById("grant-access-btn") as HTMLButtonElement).click();
+
+    await waitFor(() => {
+      expect(jsDomNotifications).toHaveLength(1);
+      expect(jsDomNotifications[0].message).toContain("Enter the LLM endpoint URL first");
+    });
+    expect(permissionsRequestMock).not.toHaveBeenCalled();
   });
 });

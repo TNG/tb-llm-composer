@@ -19,7 +19,7 @@ const MOCK_PROMPT: LlmApiRequestMessage = {
   content: "Test prompt",
   role: LlmRoles.USER,
 };
-const MOCK_MODEL_URL = "MOCK_MODEL_URL";
+const MOCK_MODEL_URL = "https://mock.llm.test/v1/chat/completions";
 const abortSignal = new AbortController().signal;
 
 describe("Testing sentContentToLlm", () => {
@@ -84,6 +84,16 @@ describe("Testing sentContentToLlm", () => {
     await expect(sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal)).rejects.toThrow(
       `LLM-CONNECTION: Error response from ${MOCK_MODEL_URL}: Error response from LLM API`,
     );
+  });
+
+  test("throws an actionable error and does not fetch when host permission is missing", async () => {
+    mockBrowserAndFetch({ responseBody: getMockResponseBody(), options: { model: MOCK_MODEL_URL } });
+    vi.mocked(global.browser.permissions.contains).mockResolvedValue(false);
+
+    await expect(sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal)).rejects.toThrow(
+      `Missing permission to access ${MOCK_MODEL_URL}`,
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 

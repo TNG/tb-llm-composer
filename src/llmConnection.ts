@@ -1,3 +1,4 @@
+import { hasEndpointPermission } from "./hostPermissions";
 import { startKeepAlive, stopKeepAlive } from "./keepAlive";
 import { getPluginOptions, type LlmParameters } from "./optionsParams";
 
@@ -154,6 +155,15 @@ async function callLlmApi(
         ),
       );
     }, timeout);
+  }
+
+  // MV3 host permissions are opt-in; without the grant the fetch is CORS-blocked. Fail with an
+  // actionable message instead of an opaque "Access-Control-Allow-Origin missing" console error.
+  if (!(await hasEndpointPermission(url))) {
+    throw Error(
+      `LLM-CONNECTION: Missing permission to access ${url}. Open the extension options and re-save ` +
+        `the endpoint URL to grant access to this host, then try again.`,
+    );
   }
 
   try {

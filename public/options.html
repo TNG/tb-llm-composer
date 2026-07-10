@@ -168,6 +168,16 @@
           opacity: 0;
         }
       }
+
+      .url-permission-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 6px;
+      }
+      #url-permission-status {
+        font-size: 13px;
+      }
     </style>
   </head>
   <body>
@@ -178,6 +188,10 @@
           <div class="form-group">
             <label for="url">URL:</label>
             <input type="text" id="url" name="URL" />
+            <div class="url-permission-row">
+              <button type="button" id="grant-access-btn">Grant access</button>
+              <span id="url-permission-status"></span>
+            </div>
           </div>
           <div class="form-group">
             <label for="api_token">Api token:</label>
