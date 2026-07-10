@@ -11,7 +11,8 @@
 export function endpointOriginPattern(endpointUrl: string): string | null {
   try {
     const url = new URL(endpointUrl);
-    return `${url.protocol}//${url.host}/*`;
+    // Use hostname (never host): WebExtension match patterns don't allow ports.
+    return `${url.protocol}//${url.hostname}/*`;
   } catch {
     return null;
   }

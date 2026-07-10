@@ -28,8 +28,8 @@ describe("endpointOriginPattern", () => {
     );
   });
 
-  test("keeps a non-default port in the pattern", () => {
-    expect(endpointOriginPattern("http://localhost:8080/v1/chat/completions")).toEqual("http://localhost:8080/*");
+  test("drops the port (WebExtension match patterns don't allow ports)", () => {
+    expect(endpointOriginPattern("http://localhost:8080/v1/chat/completions")).toEqual("http://localhost/*");
   });
 
   test("returns null for an unparsable URL", () => {

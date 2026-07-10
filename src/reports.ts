@@ -25,7 +25,7 @@ const saveTxtBtn = getButtonElement("#save-txt-btn");
 const saveMdBtn = getButtonElement("#save-md-btn");
 const scopeNote = document.querySelector<HTMLParagraphElement>("#scope-note");
 
-void init();
+init().catch((e) => console.error("REPORT-WINDOW: initialization failed", e));
 
 async function init(): Promise<void> {
   const current = await browser.windows.getCurrent();

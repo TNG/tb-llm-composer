@@ -187,7 +187,7 @@
       </label>
       <span class="control-inline">
         Last
-        <input type="number" id="days" min="1" step="1" value="30" />
+        <input type="number" id="days" min="1" step="1" value="30" aria-label="Number of days in the past to search" />
         days
       </span>
     </div>
@@ -196,6 +196,7 @@
     <div class="prompt-box">
       <textarea
         id="prompt"
+        aria-label="Report request"
         placeholder="e.g. A to-do list of open items addressed to me, or how long Alice took to reply over the last 120 days."
       ></textarea>
       <button type="button" id="create-btn" title="Create report" aria-label="Create report" class="icon-btn">
@@ -214,7 +215,7 @@
     <p id="status"><img class="busy" id="busy" src="../icons/loader-32px.gif" alt="" />Ready.</p>
 
     <div class="output-header">
-      <h2>Report</h2>
+      <h2 id="report-heading">Report</h2>
       <div class="output-actions">
         <button type="button" id="save-txt-btn" title="Save report as .txt" aria-label="Save report as .txt" class="icon-btn text-btn">.txt</button>
         <button type="button" id="save-md-btn" title="Save report as .md" aria-label="Save report as .md" class="icon-btn text-btn">.md</button>
@@ -226,7 +227,7 @@
         </button>
       </div>
     </div>
-    <textarea id="report-output" readonly placeholder="The generated report will appear here."></textarea>
+    <textarea id="report-output" readonly aria-labelledby="report-heading" placeholder="The generated report will appear here."></textarea>
 
     <script src="../reports.js"></script>
   </body>
