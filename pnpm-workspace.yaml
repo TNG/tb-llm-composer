@@ -1,6 +1,9 @@
-
 allowBuilds:
   esbuild: true # so the correct platform binary is available.
+
+minimumReleaseAgeExclude:
+  - esbuild@0.28.1
+  - undici@7.28.0
 
 overrides:
   picomatch: ">=4.0.4"
