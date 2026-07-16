@@ -313,4 +313,106 @@ describe("emailOrganising", () => {
       10000,
     );
   });
+
+  /** Build a browser mock backed by `messageCount` messages (ids 1..N) in the source folder. */
+  function buildMultiMessageBrowser(messageCount: number, messagesMove: ReturnType<typeof vi.fn>) {
+    const messages = Array.from({ length: messageCount }, (_, i) => ({
+      id: i + 1,
+      author: `sender${i + 1}@example.com`,
+      subject: `Subject ${i + 1}`,
+    }));
+
+    global.browser = {
+      accounts: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: "acc-1",
+            rootFolder: { id: "root-id", accountId: "acc-1", path: "/", name: "root" },
+            folders: [{ id: "target-id", accountId: "acc-1", path: "/target", name: "Target" }],
+          },
+        ]),
+      },
+      mailTabs: {
+        query: vi.fn().mockResolvedValue([
+          {
+            displayedFolder: { id: "folder-id", accountId: "acc-1", path: "/inbox", name: "Inbox" },
+          },
+        ]),
+      },
+      messages: {
+        list: vi.fn().mockResolvedValue({ id: undefined, messages }),
+        continueList: vi.fn(),
+        getFull: vi.fn().mockResolvedValue({ contentType: "text/plain", body: "Message body" }),
+        move: messagesMove,
+      },
+      folders: {
+        getSubFolders: vi.fn(),
+      },
+    } as unknown as typeof browser;
+  }
+
+  test("moves each chunk before classifying the next, not all at the end", async () => {
+    const messagesMove = vi.fn().mockResolvedValue(undefined);
+
+    // 16 messages => two chunks (BATCH_SIZE is 15): ids 1..15, then id 16.
+    sendContentToLlmMock
+      .mockImplementationOnce(async () => ({
+        id: "r1",
+        choices: [{ message: { role: "system", content: '{"classifications":[{"id":1,"folder":1}]}' } }],
+      }))
+      .mockImplementationOnce(async () => {
+        // By the time the second chunk is being classified, the first chunk's
+        // classified message must already have been moved.
+        expect(messagesMove).toHaveBeenCalledWith([1], "target-id");
+        return {
+          id: "r2",
+          choices: [{ message: { role: "system", content: '{"classifications":[{"id":16,"folder":1}]}' } }],
+        };
+      });
+
+    buildMultiMessageBrowser(16, messagesMove);
+
+    await organiseCurrentFolder(new AbortController().signal);
+
+    expect(sendContentToLlmMock).toHaveBeenCalledTimes(2);
+    expect(messagesMove).toHaveBeenCalledWith([1], "target-id");
+    expect(messagesMove).toHaveBeenCalledWith([16], "target-id");
+    expect(timedNotificationMock).toHaveBeenCalledWith(
+      "Organise Folder Complete",
+      "Moved 2 email(s). 14 email(s) kept in place.",
+      10000,
+    );
+  });
+
+  test("shows an abort summary of what was moved so far when cancelled mid-run", async () => {
+    const controller = new AbortController();
+    const messagesMove = vi.fn().mockResolvedValue(undefined);
+
+    sendContentToLlmMock.mockImplementation(async () => ({
+      id: "r1",
+      choices: [{ message: { role: "system", content: '{"classifications":[{"id":1,"folder":1}]}' } }],
+    }));
+
+    buildMultiMessageBrowser(16, messagesMove);
+
+    // Abort once the first chunk has been processed (progress passes 0%), so the
+    // second chunk is never classified or moved.
+    const progress = vi.fn((percent: number) => {
+      if (percent > 0) {
+        controller.abort(new DOMException("cancel", "AbortError"));
+      }
+    });
+
+    await organiseCurrentFolder(controller.signal, progress);
+
+    // Only the first chunk's classification ran; the first chunk's message moved.
+    expect(sendContentToLlmMock).toHaveBeenCalledTimes(1);
+    expect(messagesMove).toHaveBeenCalledTimes(1);
+    expect(messagesMove).toHaveBeenCalledWith([1], "target-id");
+    expect(timedNotificationMock).toHaveBeenCalledWith(
+      "Organise Folder Aborted",
+      "Aborted. Moved 1 email(s) so far. 14 email(s) kept in place.",
+      10000,
+    );
+  });
 });
