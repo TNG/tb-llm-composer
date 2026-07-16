@@ -125,7 +125,9 @@ function extractJsonObject(raw: string): string {
 }
 
 /** Get folder list for account, using folders API if account.folders is unavailable (MV3 quirk). */
-async function getFoldersForAccount(account: browser.accounts.MailAccount): Promise<browser.folders.MailFolder[]> {
+export async function getFoldersForAccount(
+  account: browser.accounts.MailAccount,
+): Promise<browser.folders.MailFolder[]> {
   // In MV3, accounts.list() may omit account.folders; fetch folder tree via folders API.
   if (account.folders && account.folders.length > 0) {
     return account.folders;

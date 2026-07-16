@@ -1,4 +1,4 @@
-import { extractTextFromPart, resolveFolderPath } from "./emailOrganising";
+import { extractTextFromPart, getFoldersForAccount, resolveFolderPath } from "./emailOrganising";
 import type { LlmToolDefinition, LlmToolHandler } from "./llmConnection";
 
 const MAX_EMAIL_BODY_CHARS = 1200;
@@ -8,6 +8,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export interface ReportScope {
   folderOnly: boolean;
   folder: { accountId: string; path: string } | null;
+  /** When folder-only, also search the account's Sent folder(s) so replies stay in scope. */
+  includeSent: boolean;
   defaultDays: number;
   maxSearchResults: number;
 }
@@ -115,44 +117,117 @@ async function handleSearchMessages(args: Record<string, unknown>, scope: Report
     queryInfo.fromDate = new Date(Date.now() - fromDays * DAY_MS);
   }
 
-  if (scope.folderOnly && scope.folder) {
-    console.log(`REPORT: search_messages resolving folder scope '${scope.folder.path}'`);
-    const folder = await resolveFolderPath(scope.folder.path);
-    if (!folder) {
-      throw new Error(`Could not resolve the active folder "${scope.folder.path}" for a folder-only search.`);
-    }
-    const folderWithId = folder as browser.folders.MailFolder & { id?: string };
-    if (folderWithId.id) {
-      queryInfo.folderId = folderWithId.id;
-    } else {
-      queryInfo.folder = folder;
-    }
-  }
+  // A folder-only search runs once per in-scope folder (target folder, plus Sent when the user
+  // opted in). An all-folders search runs a single unrestricted query.
+  const folderRefs = await resolveSearchFolders(scope);
 
   const hits: SearchHit[] = [];
+  const seenIds = new Set<number>();
   let pageCount = 0;
-  let page = await browser.messages.query(queryInfo);
-  pageCount++;
-  collectHits(page.messages, hits, scope.maxSearchResults, subjectFilter);
-  while (page.id && hits.length < scope.maxSearchResults) {
-    page = await browser.messages.continueList(page.id);
+  for (const folderRef of folderRefs) {
+    if (hits.length >= scope.maxSearchResults) {
+      break;
+    }
+    const folderQuery: QueryInfo = { ...queryInfo };
+    if (folderRef?.folderId) {
+      folderQuery.folderId = folderRef.folderId;
+    } else if (folderRef?.folder) {
+      folderQuery.folder = folderRef.folder;
+    }
+
+    let page = await browser.messages.query(folderQuery);
     pageCount++;
-    collectHits(page.messages, hits, scope.maxSearchResults, subjectFilter);
+    collectHits(page.messages, hits, seenIds, scope.maxSearchResults, subjectFilter);
+    while (page.id && hits.length < scope.maxSearchResults) {
+      page = await browser.messages.continueList(page.id);
+      pageCount++;
+      collectHits(page.messages, hits, seenIds, scope.maxSearchResults, subjectFilter);
+    }
   }
 
   const fromDateText = queryInfo.fromDate instanceof Date ? queryInfo.fromDate.toISOString().slice(0, 10) : "(none)";
   console.log(
     "REPORT: search_messages completed " +
       `(query='${query || ""}', author='${author || ""}', subject='${subject || ""}', fromDate=${fromDateText}, ` +
-      `folderOnly=${scope.folderOnly}, pages=${pageCount}, hits=${hits.length}/${scope.maxSearchResults}, ` +
-      `elapsedMs=${Date.now() - startedAt})`,
+      `folderOnly=${scope.folderOnly}, includeSent=${scope.includeSent}, folders=${folderRefs.length}, ` +
+      `pages=${pageCount}, hits=${hits.length}/${scope.maxSearchResults}, elapsedMs=${Date.now() - startedAt})`,
   );
   return hits;
+}
+
+/** A resolved folder to search, expressed as an id (preferred) or a MailFolder object. */
+type FolderRef = { folderId?: string; folder?: browser.folders.MailFolder };
+
+function toFolderRef(folder: browser.folders.MailFolder): FolderRef {
+  const folderWithId = folder as browser.folders.MailFolder & { id?: string };
+  return folderWithId.id ? { folderId: folderWithId.id } : { folder };
+}
+
+/**
+ * Resolve which folders a search should cover. Returns `[null]` (unrestricted) for an
+ * all-folders search, or the target folder — plus the account's Sent folder(s) when
+ * `includeSent` is set — for a folder-only search.
+ */
+async function resolveSearchFolders(scope: ReportScope): Promise<Array<FolderRef | null>> {
+  if (!scope.folderOnly || !scope.folder) {
+    return [null];
+  }
+
+  console.log(`REPORT: search_messages resolving folder scope '${scope.folder.path}'`);
+  const target = await resolveFolderPath(scope.folder.path);
+  if (!target) {
+    throw new Error(`Could not resolve the active folder "${scope.folder.path}" for a folder-only search.`);
+  }
+
+  const refs: FolderRef[] = [toFolderRef(target)];
+  if (scope.includeSent) {
+    const sentFolders = await findSentFolders(scope.folder.accountId);
+    for (const sent of sentFolders) {
+      if (sent.path !== target.path) {
+        refs.push(toFolderRef(sent));
+      }
+    }
+    console.log(`REPORT: search_messages including ${refs.length - 1} Sent folder(s) in scope`);
+  }
+  return refs;
+}
+
+/** Return the Sent folder(s) for an account, matching either the legacy `type` or `specialUse`. */
+async function findSentFolders(accountId: string): Promise<browser.folders.MailFolder[]> {
+  try {
+    const account = await browser.accounts.get(accountId);
+    if (!account) {
+      return [];
+    }
+    const folders = await getFoldersForAccount(account);
+    const sent: browser.folders.MailFolder[] = [];
+    collectSentFolders(folders, sent);
+    return sent;
+  } catch (e) {
+    console.warn("REPORT: could not resolve Sent folder(s) for account", accountId, e);
+    return [];
+  }
+}
+
+function collectSentFolders(folders: browser.folders.MailFolder[], out: browser.folders.MailFolder[]): void {
+  for (const folder of folders) {
+    if (folderIsSent(folder)) {
+      out.push(folder);
+    }
+    collectSentFolders(folder.subFolders ?? [], out);
+  }
+}
+
+function folderIsSent(folder: browser.folders.MailFolder): boolean {
+  // `type` is the legacy field; newer Thunderbird uses the `specialUse` string array.
+  const withUse = folder as browser.folders.MailFolder & { type?: string; specialUse?: string[] };
+  return withUse.type === "sent" || (Array.isArray(withUse.specialUse) && withUse.specialUse.includes("sent"));
 }
 
 function collectHits(
   messages: browser.messages.MessageHeader[],
   out: SearchHit[],
+  seenIds: Set<number>,
   cap: number,
   subjectFilter: string,
 ): void {
@@ -160,12 +235,13 @@ function collectHits(
     if (out.length >= cap) {
       break;
     }
-    if (msg.id === undefined) {
+    if (msg.id === undefined || seenIds.has(msg.id)) {
       continue;
     }
     if (subjectFilter && !(msg.subject ?? "").toLowerCase().includes(subjectFilter)) {
       continue;
     }
+    seenIds.add(msg.id);
     out.push({
       id: msg.id,
       date: msg.date ? new Date(msg.date).toISOString() : "",

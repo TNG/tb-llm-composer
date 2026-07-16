@@ -12,6 +12,8 @@ export interface ReportRequest {
   prompt: string;
   days: number;
   folderOnly: boolean;
+  /** When folder-only, also search the account's Sent folder(s) to follow conversations. */
+  includeSent?: boolean;
   folder: { accountId: string; path: string } | null;
   priorReport?: string;
 }
@@ -66,6 +68,7 @@ export async function generateReport(
   const scope: ReportScope = {
     folderOnly: request.folderOnly,
     folder: request.folder,
+    includeSent: request.includeSent ?? false,
     defaultDays: request.days,
     maxSearchResults: options.reportMaxSearchResults,
   };

@@ -16,6 +16,7 @@ let busy = false;
 let lastReport = "";
 
 const folderOnlyInput = getInputElement("#folder-only");
+const includeSentInput = getInputElement("#include-sent");
 const daysInput = getInputElement("#days");
 const promptInput = document.querySelector<HTMLTextAreaElement>("#prompt");
 const outputArea = document.querySelector<HTMLTextAreaElement>("#report-output");
@@ -47,9 +48,10 @@ async function init(): Promise<void> {
     folderOnlyInput.checked = false;
     folderOnlyInput.disabled = true;
   }
-  updateScopeNote();
+  updateScopeControls();
 
-  folderOnlyInput.addEventListener("change", updateScopeNote);
+  folderOnlyInput.addEventListener("change", updateScopeControls);
+  includeSentInput.addEventListener("change", updateScopeNote);
   createBtn.addEventListener("click", onCreate);
   abortBtn.addEventListener("click", onAbort);
   copyBtn.addEventListener("click", onCopy);
@@ -149,10 +151,18 @@ async function onDeleteSavedPrompt(): Promise<void> {
   setStatus(`Deleted prompt "${name}".`);
 }
 
+/** Keep the "Include Sent" control and scope note consistent with the folder-only toggle. */
+function updateScopeControls(): void {
+  // "Include Sent" only applies to a folder-only search; an all-folders search already covers Sent.
+  includeSentInput.disabled = !folderOnlyInput.checked || !folderContext;
+  updateScopeNote();
+}
+
 function updateScopeNote(): void {
   if (!scopeNote) return;
   if (folderOnlyInput.checked && folderContext) {
-    scopeNote.textContent = `Scope: "${folderName}" only.`;
+    const sentSuffix = includeSentInput.checked ? " + Sent" : "";
+    scopeNote.textContent = `Scope: "${folderName}"${sentSuffix} only.`;
   } else {
     scopeNote.textContent = "Scope: all folders.";
   }
@@ -192,11 +202,14 @@ async function onCreate(): Promise<void> {
 
   const days = daysInput.valueAsNumber > 0 ? daysInput.valueAsNumber : 30;
   const folderOnly = folderOnlyInput.checked && !!folderContext;
+  // Including Sent only makes sense for a folder-only search (all-folders already covers it).
+  const includeSent = folderOnly && includeSentInput.checked;
 
   const request: ReportRequest = {
     prompt,
     days,
     folderOnly,
+    includeSent,
     folder: folderContext,
     priorReport: lastReport || undefined,
   };
