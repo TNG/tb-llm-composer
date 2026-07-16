@@ -37,7 +37,7 @@
   },
   "action": {
     "default_title": "LLM Composer (dev)",
-    "default_popup": "build/public/reports-action.html",
+    "type": "menu",
     "default_icon": {
       "16": "icons/icon-16px.png",
       "32": "icons/icon-32px.png",

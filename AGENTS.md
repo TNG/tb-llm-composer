@@ -66,9 +66,8 @@ src/
   reportGeneration.ts        generateReport(ReportRequest); builds the report system/scope prompt and drives runAgenticLlm.
   reportTools.ts             search_messages/get_message tool definitions + handlers (ReportScope); assertSearchCapabilities() probe.
   reports.ts                 Report window UI logic (public/reports.html): create/cancel, iterate on prior report, copy/save txt|md.
-  reports-action.ts          Toolbar action popup (public/reports-action.html): routes to organise-folder toggle or opens report window.
 
-  menu.ts                    compose_action menu entries + shortcut labels.
+  menu.ts                    Native menu entries for the compose_action (compose/summarize) and toolbar action (organise/report) menus + shortcut labels.
   retrieveSentContext.ts     Gets recent sent mail to a recipient (writing style context).
   originalTabConversation.ts Caches reply quote per tab in browser.storage.local.
   emailHelpers.ts            MIME text extraction; first-recipient address helper.
@@ -79,10 +78,9 @@ src/
   __tests__/                 Vitest specs + setupVitest.ts + testUtils.ts.
 
 manifest.json                MV3 source manifest. Webpack rewrites paths and strips " (dev)" / dev id for production.
-webpack.config.js            Builds background.ts + options.ts + reports.ts + reports-action.ts into build/; copies icons/, public/, and transformed manifest.json.
+webpack.config.js            Builds background.ts + options.ts + reports.ts into build/; copies icons/, public/, and transformed manifest.json.
 public/options.html          Options page markup.
 public/reports.html          Report window markup.
-public/reports-action.html   Toolbar action popup markup.
 icons/                       Extension icons + busy indicator (loader-32px.gif).
 docs/CONTRIBUTING.md         Dev/test/release instructions + sample test emails.
 docs/create_new_release.md   Release process.
@@ -95,7 +93,7 @@ build/                       Generated webpack output (do not edit manually).
 - **Compose flow:** `executeLlmAction` -> `compose()` gathers compose details, recent sent mails, and reply quote; builds prompt/context in `promptAndContext.ts`; optionally generates subject; calls `sendContentToLlm`; writes result back and re-appends signature/quote.
 - **Per-tab request state:** singleton `allRequestsStatus` (`AllRequestsStatus`) holds an `AbortController` by `tabId`; cancel aborts active request; compose-action icon switches to `loader-32px.gif` while running.
 - **LLM HTTP call:** `callLlmApi` POSTs `{ messages, ...params }` to `options.model` (endpoint URL), adds `Authorization: Bearer` if token exists, merges user-abort and timeout signals, and wraps fetch with keep-alive.
-- **Toolbar action popup:** `browser.action` opens `reports-action.html`; buttons send `organise-folder-toggle` (runs `sortCurrentFolder`) or `open-report-window` (opens the report window) via `browser.runtime.sendMessage`. Background message routing lives in `background.ts` `onMessage`.
+- **Toolbar action menu:** `browser.action` is a native menu (`"type": "menu"`) whose entries (`organise-folder`, `create-report`) are registered via `browser.menus` in `menu.ts`, matching the compose_action menu. `background.ts` `menus.onClicked` routes those ids to `toggleOrganiseFolder`/`openReportWindow`; other ids fall through to the LLM action handler.
 - **Folder sort flow:** `sortCurrentFolder` classifies + moves messages; a repeat toggle cancels through a separate `AbortController` map.
 - **Report flow:** report window (`reports.ts`) sends `generate-report` with a `ReportRequest`; `generateReport` probes search capability (`assertSearchCapabilities`), then `runAgenticLlm` loops the model with `search_messages`/`get_message` tools (token-frugal: metadata first, bodies on demand) up to `reportMaxSteps`. `cancel-report` aborts. Iterating re-sends the prior report as context.
 - **Think-tag handling:** `<think>...</think>` is stripped unless `options.strip_think_tag` is `false`.

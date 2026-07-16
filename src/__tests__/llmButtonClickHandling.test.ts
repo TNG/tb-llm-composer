@@ -15,7 +15,7 @@ import {
   sendContentToLlm,
   type TgiErrorResponse,
 } from "../llmConnection";
-import { handleMenuClickListener } from "../menu";
+import { addLlmActionsToMenu, handleMenuClickListener } from "../menu";
 import { mockBrowser, mockBrowserMenus, waitFor } from "./testUtils";
 
 import Tab = browser.tabs.Tab;
@@ -122,6 +122,9 @@ describe("The llmActionClickHandler", () => {
 
   test("Cancel request aborts request", async () => {
     mockBrowser({});
+    // Seed the menus as the background script does on startup, so the toolbar
+    // action entries are present throughout the compose/cancel toggle.
+    await addLlmActionsToMenu();
     fetchMock.mockOnce(() => {
       console.log("fetch was mocked, stalling for 500 ms");
       return new Promise((resolve) => {
@@ -340,5 +343,7 @@ function expectComposerButtonSetAndReset() {
 }
 
 function expectMenuEntriesToBe(...entries: LlmPluginAction[]): void {
-  expect(mockBrowserMenus.sort()).toEqual(entries.sort());
+  // The toolbar action menu entries persist regardless of the compose/cancel
+  // toggle, so they are always expected alongside the compose_action entries.
+  expect(mockBrowserMenus.sort()).toEqual([...entries, "organise-folder", "create-report"].sort());
 }

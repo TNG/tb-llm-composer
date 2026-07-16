@@ -123,6 +123,9 @@ export function mockBrowser(args: mockBrowserArgs) {
       removeAll: async () => {
         mockBrowserMenus = [];
       },
+      remove: async (id: string) => {
+        mockBrowserMenus = mockBrowserMenus.filter((entry) => entry !== id);
+      },
       create: mockMenuCreate,
     },
     commands: {

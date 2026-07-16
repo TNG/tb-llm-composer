@@ -7,6 +7,7 @@ import { deleteFromOriginalTabCache, storeOriginalReplyText } from "./originalTa
 import { generateReport, type ReportRequest } from "./reportGeneration";
 
 import Tab = browser.tabs.Tab;
+import OnClickData = browser.menus.OnClickData;
 
 // it is VERY important that this is the first line of the file.
 // Otherwise, the shortcuts may not work if the background script is not running (which is after 90s of idling or so)
@@ -23,7 +24,19 @@ browser.tabs.onCreated.addListener(async (tab: Tab) => {
 });
 
 browser.tabs.onRemoved.addListener(deleteFromOriginalTabCache);
-browser.menus.onClicked.addListener(handleMenuClickListener);
+
+// The toolbar action menu (organise/report) and the compose_action menu
+// (compose/summarize) share the browser.menus namespace. Route the action-menu
+// entries here; delegate everything else to the LLM action handler.
+browser.menus.onClicked.addListener((info: OnClickData, tab?: Tab) => {
+  if (info.menuItemId === "organise-folder") {
+    return void toggleOrganiseFolder();
+  }
+  if (info.menuItemId === "create-report") {
+    return void openReportWindow();
+  }
+  return handleMenuClickListener(info, tab);
+});
 
 // ── Organise-folder action (popup shown in mail tabs) ─────────────────────────
 // Only one organise run happens at a time; a second trigger cancels it.
@@ -36,7 +49,10 @@ async function setOrganiseActionState(loading: boolean) {
       await browser.action.setTitle({ title: "LLM Composer — organising… (open menu to cancel)" });
       await browser.action.setIcon({ path: { 32: "icons/loader-32px.gif" } });
     } else {
-      await browser.action.setTitle({ title: "LLM Composer (dev)" });
+      // Read the title from the manifest so the " (dev)" suffix is present in dev
+      // builds and stripped in production, matching the compose_action behaviour.
+      const defaultTitle = browser.runtime.getManifest().action?.default_title ?? "LLM Composer";
+      await browser.action.setTitle({ title: defaultTitle });
       await browser.action.setIcon({
         path: { 16: "icons/icon-16px.png", 32: "icons/icon-32px.png", 64: "icons/icon-64px.png" },
       });
@@ -140,13 +156,11 @@ if (!browser.action) {
   timedNotification("LLM Composer", "The action button requires Thunderbird 128 or later.", 10000);
 }
 
-// ── Runtime messages (options page + action popup + report window) ─────────────
+// ── Runtime messages (options page + report window) ────────────────────────────
 type ReportFolderPayload = { accountId: string; path: string } | null;
 
 type RuntimeRequestMessage =
   | { type: "get-folder-paths" }
-  | { type: "organise-folder-toggle" }
-  | { type: "open-report-window" }
   | { type: "get-active-folder" }
   | { type: "generate-report"; windowId: number; request: ReportRequest }
   | { type: "cancel-report"; windowId: number };
@@ -156,8 +170,6 @@ function isRuntimeRequestMessage(value: unknown): value is RuntimeRequestMessage
   const type = (value as { type?: unknown }).type;
   return (
     type === "get-folder-paths" ||
-    type === "organise-folder-toggle" ||
-    type === "open-report-window" ||
     type === "get-active-folder" ||
     type === "generate-report" ||
     type === "cancel-report"
@@ -173,12 +185,6 @@ browser.runtime.onMessage.addListener((message: unknown) => {
   switch (message.type) {
     case "get-folder-paths":
       return getAllFolderPaths();
-
-    case "organise-folder-toggle":
-      return toggleOrganiseFolder().then(() => ({ ok: true }));
-
-    case "open-report-window":
-      return openReportWindow().then(() => ({ ok: true }));
 
     case "get-active-folder":
       return getActiveMailFolder().then((folder): { folder: ReportFolderPayload } => ({
