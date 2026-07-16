@@ -51,6 +51,34 @@
         color: #666;
         margin: 4px 0 0;
       }
+      /* Row for saving/loading reusable report prompts. */
+      .saved-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 10px 0 0;
+        font-size: 13px;
+      }
+      .saved-row select,
+      .saved-row input[type="text"] {
+        box-sizing: border-box;
+        padding: 4px 6px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-family: inherit;
+        font-size: 13px;
+      }
+      #saved-prompts {
+        flex: 1 1 40%;
+        min-width: 0;
+      }
+      #prompt-name {
+        flex: 1 1 60%;
+        min-width: 0;
+      }
+      .saved-row .text-btn {
+        flex: 0 0 auto;
+      }
       /* Prompt field with the send/stop icon docked in its bottom-right corner. */
       .prompt-box {
         position: relative;
@@ -212,6 +240,15 @@
       </span>
     </div>
     <p class="scope-note" id="scope-note"></p>
+
+    <div class="saved-row">
+      <select id="saved-prompts" aria-label="Load a saved prompt">
+        <option value="">Saved prompts…</option>
+      </select>
+      <input type="text" id="prompt-name" placeholder="Name to save as" aria-label="Prompt name" />
+      <button type="button" id="save-prompt-btn" class="icon-btn text-btn">Save</button>
+      <button type="button" id="delete-prompt-btn" class="icon-btn text-btn" disabled>Delete</button>
+    </div>
 
     <div class="prompt-box">
       <textarea
