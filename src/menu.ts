@@ -19,6 +19,24 @@ export const defaultMenuEntries: browser.menus._CreateCreateProperties[] = [
   },
 ];
 
+// Toolbar action menu, shown in the main mail window. Native menu entries so it
+// looks identical to the compose_action menu (Summarize/Compose) above, rather
+// than a custom HTML popup.
+export const actionMenuEntries: browser.menus._CreateCreateProperties[] = [
+  {
+    id: "organise-folder",
+    contexts: ["action_menu"],
+    title: "Organise Folder",
+    enabled: true,
+  },
+  {
+    id: "create-report",
+    contexts: ["action_menu"],
+    title: "Create Report…",
+    enabled: true,
+  },
+];
+
 export const cancelRequestMenuEntry: browser.menus._CreateCreateProperties = {
   id: "cancel",
   contexts: ["compose_action_menu"],
@@ -28,7 +46,7 @@ export const cancelRequestMenuEntry: browser.menus._CreateCreateProperties = {
 
 export async function addLlmActionsToMenu() {
   await browser.menus.removeAll();
-  for (const menuEntry of defaultMenuEntries) {
+  for (const menuEntry of [...defaultMenuEntries, ...actionMenuEntries]) {
     await addMenuEntry(menuEntry);
   }
 }
@@ -96,7 +114,21 @@ export async function enableSummarizeMenuEntryIfReply(tab: Tab): Promise<void> {
 }
 
 export async function addCancelRequestMenuEntry() {
-  console.log("MENU: remove all menu entries and add 'Cancel request' option");
-  await browser.menus.removeAll();
+  console.log("MENU: replace compose_action entries with 'Cancel request' option");
+  // Only swap out the compose_action entries; leave the toolbar action menu
+  // (organise/report) intact so it stays usable while a compose request runs.
+  for (const menuEntry of defaultMenuEntries) {
+    await removeMenuEntry(menuEntry.id);
+  }
   await addMenuEntry(cancelRequestMenuEntry);
+}
+
+async function removeMenuEntry(id: browser.menus._CreateCreateProperties["id"]): Promise<void> {
+  if (id === undefined) return;
+  try {
+    await browser.menus.remove(id);
+  } catch (error) {
+    // The entry may not exist yet (e.g. first run); that is not an error here.
+    console.info(`MENU: could not remove menu entry <${id}>:`, error);
+  }
 }
