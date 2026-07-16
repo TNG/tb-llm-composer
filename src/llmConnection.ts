@@ -42,6 +42,28 @@ export interface LlmToolDefinition {
 /** Executes a tool call and returns a JSON-serialisable result. */
 export type LlmToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
 
+/** Live progress snapshot emitted during an agentic run so callers can surface it in the UI. */
+export interface AgenticProgress {
+  /** Number of completed LLM completions so far. */
+  llmCalls: number;
+  /** Number of completed tool executions so far. */
+  toolCalls: number;
+  /** Human-readable description of the current activity. */
+  phase: string;
+}
+
+/** Map a tool name to a friendly progress phrase. */
+function describeToolPhase(toolName: string): string {
+  switch (toolName) {
+    case "search_messages":
+      return "Searching messages…";
+    case "get_message":
+      return "Reading a message…";
+    default:
+      return `Running ${toolName}…`;
+  }
+}
+
 export interface LlmApiRequestBody extends LlmParameters {
   messages: LlmApiRequestMessage[];
   tools?: LlmToolDefinition[];
@@ -228,6 +250,7 @@ export async function runAgenticLlm(
   toolHandlers: Record<string, LlmToolHandler>,
   abortSignal: AbortSignal,
   maxSteps: number,
+  onProgress?: (progress: AgenticProgress) => void,
 ): Promise<string> {
   const options = await getPluginOptions();
   if (!options.model) {
@@ -236,11 +259,16 @@ export async function runAgenticLlm(
 
   const conversation: LlmApiRequestMessage[] = [...messages];
   let totalTokens = 0;
+  let llmCallCount = 0;
+  let toolCallCount = 0;
+  const reportProgress = (phase: string) => onProgress?.({ llmCalls: llmCallCount, toolCalls: toolCallCount, phase });
 
   for (let step = 1; step <= maxSteps; step++) {
     if (abortSignal.aborted) {
       throw new DOMException("Report generation cancelled", "AbortError");
     }
+
+    reportProgress("Waiting for the model…");
 
     const requestBody: LlmApiRequestBody = {
       messages: conversation,
@@ -276,6 +304,7 @@ export async function runAgenticLlm(
 
     const completion = response as LlmTextCompletionResponse;
     totalTokens = logTokenUsage(completion, totalTokens, step);
+    llmCallCount++;
 
     const choice = Array.isArray(completion.choices) ? completion.choices[0] : undefined;
     if (!choice) {
@@ -288,6 +317,7 @@ export async function runAgenticLlm(
       console.log(
         `REPORT: completed after ${step} step(s), ~${totalTokens} total tokens, finalChars=${choice.message?.content?.length ?? 0}`,
       );
+      reportProgress("Writing the report…");
       return choice.message?.content ?? "";
     }
 
@@ -314,6 +344,7 @@ export async function runAgenticLlm(
           console.log(
             `REPORT: running tool '${toolCall.function.name}' with arg keys: ${Object.keys(parsedArgs).join(",") || "(none)"}`,
           );
+          reportProgress(describeToolPhase(toolCall.function.name));
           const result = await handler(parsedArgs);
           resultContent = JSON.stringify(result ?? null);
           console.log(`REPORT: tool '${toolCall.function.name}' completed (resultChars=${resultContent.length})`);
@@ -329,6 +360,8 @@ export async function runAgenticLlm(
         name: toolCall.function.name,
         content: resultContent,
       });
+      toolCallCount++;
+      reportProgress(describeToolPhase(toolCall.function.name));
     }
   }
 

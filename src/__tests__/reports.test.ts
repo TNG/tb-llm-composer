@@ -20,6 +20,12 @@ const clipboardWriteMock = vi.fn();
 const createObjectUrlMock = vi.fn();
 const revokeObjectUrlMock = vi.fn();
 
+/** Runtime message listeners registered by the popup, plus a helper to dispatch to them. */
+let messageListeners: Array<(message: unknown) => void>;
+function dispatchRuntimeMessage(message: unknown): void {
+  for (const listener of messageListeners) listener(message);
+}
+
 /** Captures the anchors that would have triggered a file download. */
 let triggeredDownloads: Array<{ download: string; href: string }>;
 
@@ -29,6 +35,9 @@ const mockBrowser = {
   },
   runtime: {
     sendMessage: (...args: unknown[]) => sendMessageMock(...args),
+    onMessage: {
+      addListener: (listener: (message: unknown) => void) => messageListeners.push(listener),
+    },
   },
   storage: {
     sync: {
@@ -68,6 +77,7 @@ const FOLDER_SEARCH = "?accountId=acc1&path=/INBOX&name=Inbox";
 
 beforeEach(() => {
   triggeredDownloads = [];
+  messageListeners = [];
   getCurrentMock.mockReset().mockResolvedValue({ id: 123 });
   sendMessageMock.mockReset().mockResolvedValue({});
   clipboardWriteMock.mockReset().mockResolvedValue(undefined);
@@ -154,7 +164,9 @@ describe("The report popup", () => {
     (doc.getElementById("save-txt-btn") as HTMLButtonElement).click();
 
     expect(createObjectUrlMock).toHaveBeenCalledTimes(1);
-    expect(triggeredDownloads).toEqual([{ download: "llm-composer-report.txt", href: "blob:mock-url" }]);
+    expect(triggeredDownloads).toHaveLength(1);
+    expect(triggeredDownloads[0].href).toBe("blob:mock-url");
+    expect(triggeredDownloads[0].download).toMatch(/^llm-composer-report-\d{4}-\d{2}-\d{2}\.txt$/);
   });
 
   test("saves the report as .md with the default filename", async () => {
@@ -164,7 +176,9 @@ describe("The report popup", () => {
     (doc.getElementById("report-output") as HTMLTextAreaElement).value = "# report";
     (doc.getElementById("save-md-btn") as HTMLButtonElement).click();
 
-    expect(triggeredDownloads).toEqual([{ download: "llm-composer-report.md", href: "blob:mock-url" }]);
+    expect(triggeredDownloads).toHaveLength(1);
+    expect(triggeredDownloads[0].href).toBe("blob:mock-url");
+    expect(triggeredDownloads[0].download).toMatch(/^llm-composer-report-\d{4}-\d{2}-\d{2}\.md$/);
   });
 
   test("does not trigger a download when there is nothing to save", async () => {
@@ -188,6 +202,56 @@ describe("The report popup", () => {
     await waitFor(() => {
       expect(clipboardWriteMock).toHaveBeenCalledWith("copy me");
       expect(doc.getElementById("status")?.textContent).toContain("copied");
+    });
+  });
+
+  test("shows live progress and lets the user abort while generating", async () => {
+    // Keep the generate-report request pending so the popup stays in the busy state.
+    let finishGenerate: (value: { report?: string; error?: string }) => void = () => {};
+    sendMessageMock.mockImplementation((message: { type?: string }) => {
+      if (message.type === "generate-report") {
+        return new Promise((resolve) => {
+          finishGenerate = resolve;
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    await loadPopup(FOLDER_SEARCH);
+    const doc = reportsDom.window.document;
+    (doc.getElementById("prompt") as HTMLTextAreaElement).value = "Give me a to-do list";
+    (doc.getElementById("create-btn") as HTMLButtonElement).click();
+
+    // The progress row becomes visible while generating.
+    const progress = doc.getElementById("progress") as HTMLDivElement;
+    await waitFor(() => {
+      expect(progress.hasAttribute("hidden")).toBe(false);
+    });
+
+    // A progress message from the background updates the counters and phase.
+    dispatchRuntimeMessage({
+      type: "report-progress",
+      windowId: 123,
+      progress: { llmCalls: 2, toolCalls: 5, phase: "Searching messages…" },
+    });
+    await waitFor(() => {
+      const text = doc.getElementById("progress-text")?.textContent ?? "";
+      expect(text).toContain("Searching messages…");
+      expect(text).toContain("2 LLM calls");
+      expect(text).toContain("5 tool calls");
+    });
+
+    // Clicking the Stop button aborts the in-flight report.
+    (doc.getElementById("abort-btn") as HTMLButtonElement).click();
+    await waitFor(() => {
+      expect(sendMessageMock).toHaveBeenCalledWith(expect.objectContaining({ type: "cancel-report", windowId: 123 }));
+      expect(doc.getElementById("status")?.textContent).toContain("Cancelling");
+    });
+
+    // Let the (now cancelled) request settle so the popup leaves the busy state.
+    finishGenerate({ error: "Report generation was cancelled." });
+    await waitFor(() => {
+      expect(progress.hasAttribute("hidden")).toBe(true);
     });
   });
 });

@@ -164,16 +164,36 @@
         font-size: 13px;
         color: #555;
         min-height: 18px;
-        margin: 4px 0 12px;
+        margin: 4px 0 4px;
       }
-      .busy {
+      /* Live progress row: spinner + counters/phase, with a docked Stop button. */
+      .progress {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: #555;
+        margin: 0 0 12px;
+      }
+      /* .progress sets display:flex, which overrides the [hidden] default — re-hide explicitly. */
+      .progress[hidden] {
         display: none;
-        vertical-align: middle;
-        height: 16px;
-        margin-right: 6px;
       }
-      .busy.show {
-        display: inline-block;
+      .spinner {
+        height: 16px;
+        flex: 0 0 auto;
+      }
+      #progress-text {
+        flex: 1 1 auto;
+      }
+      .abort-btn {
+        flex: 0 0 auto;
+        border: 1px solid #e0b4b4;
+        color: #b00020;
+      }
+      .abort-btn:hover {
+        background: #fbe9e9;
+        color: #b00020;
       }
     </style>
   </head>
@@ -212,7 +232,12 @@
       </button>
     </div>
 
-    <p id="status"><img class="busy" id="busy" src="../icons/loader-32px.gif" alt="" />Ready.</p>
+    <p id="status">Ready.</p>
+    <div id="progress" class="progress" hidden>
+      <img class="spinner" src="../icons/loader-32px.gif" alt="" />
+      <span id="progress-text">Starting…</span>
+      <button type="button" id="abort-btn" class="icon-btn text-btn abort-btn" title="Stop generating" aria-label="Stop generating">Stop</button>
+    </div>
 
     <div class="output-header">
       <h2 id="report-heading">Report</h2>
