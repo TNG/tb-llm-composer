@@ -137,7 +137,11 @@ async function runReport(windowId: number, request: ReportRequest): Promise<{ re
   const abortController = new AbortController();
   reportAbortControllers.set(windowId, abortController);
   try {
-    const report = await generateReport(request, abortController.signal);
+    const report = await generateReport(request, abortController.signal, (progress) => {
+      // Fire-and-forget progress updates to the originating report window. If the
+      // window is gone there is no receiver; ignore the resulting rejection.
+      void browser.runtime.sendMessage({ type: "report-progress", windowId, progress }).catch(() => {});
+    });
     return { report };
   } catch (e) {
     if ((e as Error).name === "AbortError") {

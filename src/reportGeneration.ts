@@ -1,4 +1,4 @@
-import { LlmRoles, runAgenticLlm } from "./llmConnection";
+import { type AgenticProgress, LlmRoles, runAgenticLlm } from "./llmConnection";
 import { getPluginOptions } from "./optionsParams";
 import {
   assertSearchCapabilities,
@@ -55,7 +55,11 @@ function toLocalDateYmd(date: Date): string {
  * Run an agentic report generation for the given request. Validates search capabilities first,
  * then loops the LLM with email-search tools, and returns the final plain-text report.
  */
-export async function generateReport(request: ReportRequest, abortSignal: AbortSignal): Promise<string> {
+export async function generateReport(
+  request: ReportRequest,
+  abortSignal: AbortSignal,
+  onProgress?: (progress: AgenticProgress) => void,
+): Promise<string> {
   const startedAt = Date.now();
   const options = await getPluginOptions();
 
@@ -104,6 +108,7 @@ export async function generateReport(request: ReportRequest, abortSignal: AbortS
       handlers,
       abortSignal,
       options.reportMaxSteps,
+      onProgress,
     );
     const finalReport = options.strip_think_tag ? stripThinkTags(rawReport) : rawReport;
 

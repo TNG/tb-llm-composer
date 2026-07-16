@@ -1,3 +1,4 @@
+import type { AgenticProgress } from "./llmConnection";
 import { getPluginOptions } from "./optionsParams";
 import type { ReportRequest } from "./reportGeneration";
 import { getButtonElement, getInputElement } from "./utils";
@@ -18,7 +19,9 @@ const daysInput = getInputElement("#days");
 const promptInput = document.querySelector<HTMLTextAreaElement>("#prompt");
 const outputArea = document.querySelector<HTMLTextAreaElement>("#report-output");
 const statusEl = document.querySelector<HTMLParagraphElement>("#status");
-const busyImg = document.querySelector<HTMLImageElement>("#busy");
+const progressEl = document.querySelector<HTMLDivElement>("#progress");
+const progressTextEl = document.querySelector<HTMLSpanElement>("#progress-text");
+const abortBtn = getButtonElement("#abort-btn");
 const createBtn = getButtonElement("#create-btn");
 const copyBtn = getButtonElement("#copy-btn");
 const saveTxtBtn = getButtonElement("#save-txt-btn");
@@ -43,10 +46,34 @@ async function init(): Promise<void> {
 
   folderOnlyInput.addEventListener("change", updateScopeNote);
   createBtn.addEventListener("click", onCreate);
+  abortBtn.addEventListener("click", onAbort);
   copyBtn.addEventListener("click", onCopy);
   saveTxtBtn.addEventListener("click", () => saveReport("txt"));
   saveMdBtn.addEventListener("click", () => saveReport("md"));
+
+  // Live progress updates streamed from the background while a report is generated.
+  browser.runtime.onMessage?.addListener((message: unknown) => {
+    const progressMessage = message as { type?: string; windowId?: number; progress?: AgenticProgress };
+    if (progressMessage?.type === "report-progress" && progressMessage.windowId === windowId) {
+      renderProgress(progressMessage.progress);
+    }
+  });
+
   setStatus("Ready.");
+}
+
+function renderProgress(progress?: AgenticProgress): void {
+  if (!progressTextEl || !progress) return;
+  const { llmCalls, toolCalls, phase } = progress;
+  const llmLabel = `${llmCalls} LLM call${llmCalls === 1 ? "" : "s"}`;
+  const toolLabel = `${toolCalls} tool call${toolCalls === 1 ? "" : "s"}`;
+  progressTextEl.textContent = `${phase} · ${llmLabel} · ${toolLabel}`;
+}
+
+async function onAbort(): Promise<void> {
+  if (!busy) return;
+  await browser.runtime.sendMessage({ type: "cancel-report", windowId });
+  setStatus("Cancelling…");
 }
 
 function updateScopeNote(): void {
@@ -65,18 +92,15 @@ function setBusy(value: boolean): void {
   createBtn.classList.toggle("busy", value);
   createBtn.title = value ? "Stop generating" : "Create report";
   createBtn.setAttribute("aria-label", value ? "Stop generating" : "Create report");
-  busyImg?.classList.toggle("show", value);
+  // Show the progress row (spinner + counters + Stop button) only while generating.
+  progressEl?.toggleAttribute("hidden", !value);
+  if (value) {
+    renderProgress({ llmCalls: 0, toolCalls: 0, phase: "Starting…" });
+  }
 }
 
 function setStatus(text: string): void {
-  if (!statusEl) return;
-  // Keep the busy image; replace only the trailing text node.
-  const tail = statusEl.lastChild;
-  if (tail && tail.nodeType === Node.TEXT_NODE) {
-    tail.textContent = text;
-  } else {
-    statusEl.appendChild(document.createTextNode(text));
-  }
+  if (statusEl) statusEl.textContent = text;
 }
 
 async function onCreate(): Promise<void> {
@@ -125,6 +149,15 @@ async function onCreate(): Promise<void> {
   }
 }
 
+/** Current local date as YYYY-MM-DD, for use in the saved report filename. */
+function localDateYmd(): string {
+  const now = new Date();
+  const yyyy = `${now.getFullYear()}`;
+  const mm = `${now.getMonth() + 1}`.padStart(2, "0");
+  const dd = `${now.getDate()}`.padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 /** Download the current report as a text or markdown file via a temporary object URL. */
 function saveReport(extension: "txt" | "md"): void {
   const content = outputArea?.value ?? "";
@@ -137,7 +170,7 @@ function saveReport(extension: "txt" | "md"): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `llm-composer-report.${extension}`;
+  link.download = `llm-composer-report-${localDateYmd()}.${extension}`;
   document.body.appendChild(link);
   link.click();
   link.remove();
