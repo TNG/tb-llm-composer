@@ -24,6 +24,7 @@ let jsDomNotifications: CreateNotificationOptions[] = [];
 
 const permissionsContainsMock = vi.fn();
 const permissionsRequestMock = vi.fn();
+const fetchMock = vi.fn();
 
 const mockBrowser = {
   storage: {
@@ -49,6 +50,15 @@ const mockBrowser = {
     contains: (...args: unknown[]) => permissionsContainsMock(...args),
     request: (...args: unknown[]) => permissionsRequestMock(...args),
   },
+  accounts: {
+    list: async () => [
+      {
+        id: "a",
+        rootFolder: { accountId: "a", path: "/", name: "root" },
+        folders: [{ accountId: "a", path: "/INBOX", name: "Inbox", subFolders: [] }],
+      },
+    ],
+  },
 };
 
 /**
@@ -60,6 +70,7 @@ describe("The options page", () => {
     jsDomNotifications = [];
     permissionsContainsMock.mockReset().mockResolvedValue(true);
     permissionsRequestMock.mockReset().mockResolvedValue(true);
+    fetchMock.mockReset();
     const projectDir = path.resolve(__dirname, "../..");
     const optionsHtmlFile = `${projectDir}/build/public/options.html`;
     const optionsHtmlContent = fs.readFileSync(optionsHtmlFile, "utf-8");
@@ -70,6 +81,7 @@ describe("The options page", () => {
     });
     const vmContext = optionsDom.getInternalVMContext();
     vmContext.browser = mockBrowser;
+    vmContext.fetch = (...args: unknown[]) => fetchMock(...args);
 
     await new Promise((resolve) => setTimeout(resolve, 100));
   });
@@ -223,5 +235,61 @@ describe("The options page", () => {
       expect(jsDomNotifications[0].message).toContain("Enter the LLM endpoint URL first");
     });
     expect(permissionsRequestMock).not.toHaveBeenCalled();
+  });
+
+  test("lists available folder paths each with a copy button that copies the path", async () => {
+    const win = optionsDom.window;
+    const doc = win.document;
+    const clipboardWriteMock = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(win.navigator, "clipboard", {
+      value: { writeText: clipboardWriteMock },
+      configurable: true,
+    });
+
+    (doc.getElementById("refresh-folder-paths-btn") as HTMLButtonElement).click();
+
+    await waitFor(() => {
+      const rows = doc.querySelectorAll("#available-folder-paths .folder-path-row");
+      expect(rows.length).toBeGreaterThan(0);
+    });
+
+    const firstPath = (doc.querySelector("#available-folder-paths .path-text") as HTMLElement).textContent;
+    const firstCopyBtn = doc.querySelector("#available-folder-paths .copy-path-btn") as HTMLButtonElement;
+    firstCopyBtn.click();
+
+    await waitFor(() => {
+      expect(clipboardWriteMock).toHaveBeenCalledWith(firstPath);
+      expect(firstCopyBtn.textContent).toBe("Copied!");
+    });
+  });
+
+  test("queries available models and applies one to the other-options JSON", async () => {
+    const doc = optionsDom.window.document;
+    (doc.getElementById("url") as HTMLInputElement).value = "https://my-llm.com/v1/chat/completions";
+    const otherOptions = doc.getElementById("other_options") as HTMLTextAreaElement;
+    otherOptions.value = JSON.stringify({ temperature: 0.5 });
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ object: "list", data: [{ id: "model-a" }, { id: "model-b" }] }),
+    });
+
+    (doc.getElementById("query-models-btn") as HTMLButtonElement).click();
+
+    await waitFor(() => {
+      expect(doc.querySelectorAll("#models-list .model-row")).toHaveLength(2);
+    });
+    // The /models endpoint is derived from the chat URL.
+    expect(fetchMock).toHaveBeenCalledWith("https://my-llm.com/v1/models", expect.anything());
+
+    // Applying a model upserts params.model while preserving existing keys.
+    const applyButtons = doc.querySelectorAll("#models-list .apply-model-btn");
+    (applyButtons[1] as HTMLButtonElement).click();
+
+    await waitFor(() => {
+      const params = JSON.parse((doc.getElementById("other_options") as HTMLTextAreaElement).value);
+      expect(params).toEqual({ temperature: 0.5, model: "model-b" });
+      expect((browserStorage.options as Options).params).toMatchObject({ temperature: 0.5, model: "model-b" });
+    });
   });
 });
