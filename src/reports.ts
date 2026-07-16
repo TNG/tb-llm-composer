@@ -1,5 +1,6 @@
 import type { AgenticProgress } from "./llmConnection";
 import { getPluginOptions } from "./optionsParams";
+import { deletePrompt, getSavedPrompts, savePrompt } from "./reportPrompts";
 import type { ReportRequest } from "./reportGeneration";
 import { getButtonElement, getInputElement } from "./utils";
 
@@ -27,6 +28,10 @@ const copyBtn = getButtonElement("#copy-btn");
 const saveTxtBtn = getButtonElement("#save-txt-btn");
 const saveMdBtn = getButtonElement("#save-md-btn");
 const scopeNote = document.querySelector<HTMLParagraphElement>("#scope-note");
+const savedPromptsSelect = document.querySelector<HTMLSelectElement>("#saved-prompts");
+const promptNameInput = getInputElement("#prompt-name");
+const savePromptBtn = getButtonElement("#save-prompt-btn");
+const deletePromptBtn = getButtonElement("#delete-prompt-btn");
 
 init().catch((e) => console.error("REPORT-WINDOW: initialization failed", e));
 
@@ -51,6 +56,11 @@ async function init(): Promise<void> {
   saveTxtBtn.addEventListener("click", () => saveReport("txt"));
   saveMdBtn.addEventListener("click", () => saveReport("md"));
 
+  savedPromptsSelect?.addEventListener("change", onSelectSavedPrompt);
+  savePromptBtn.addEventListener("click", onSavePrompt);
+  deletePromptBtn.addEventListener("click", onDeleteSavedPrompt);
+  await refreshSavedPrompts();
+
   // Live progress updates streamed from the background while a report is generated.
   browser.runtime.onMessage?.addListener((message: unknown) => {
     const progressMessage = message as { type?: string; windowId?: number; progress?: AgenticProgress };
@@ -74,6 +84,69 @@ async function onAbort(): Promise<void> {
   if (!busy) return;
   await browser.runtime.sendMessage({ type: "cancel-report", windowId });
   setStatus("Cancelling…");
+}
+
+/** Rebuild the saved-prompts dropdown from storage, optionally selecting `selectedName`. */
+async function refreshSavedPrompts(selectedName = ""): Promise<void> {
+  if (!savedPromptsSelect) return;
+  const prompts = await getSavedPrompts();
+
+  savedPromptsSelect.textContent = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = prompts.length ? "Saved prompts…" : "No saved prompts";
+  savedPromptsSelect.appendChild(placeholder);
+
+  for (const prompt of prompts) {
+    const option = document.createElement("option");
+    option.value = prompt.name;
+    option.textContent = prompt.name;
+    savedPromptsSelect.appendChild(option);
+  }
+
+  savedPromptsSelect.value = selectedName;
+  deletePromptBtn.disabled = !savedPromptsSelect.value;
+}
+
+/** Load the selected saved prompt into the prompt field. */
+async function onSelectSavedPrompt(): Promise<void> {
+  const name = savedPromptsSelect?.value ?? "";
+  deletePromptBtn.disabled = !name;
+  if (!name) return;
+
+  const prompt = (await getSavedPrompts()).find((p) => p.name === name);
+  if (prompt && promptInput) {
+    promptInput.value = prompt.text;
+    promptNameInput.value = prompt.name;
+    setStatus(`Loaded prompt "${name}".`);
+  }
+}
+
+/** Save the current prompt text under the name in the name field. */
+async function onSavePrompt(): Promise<void> {
+  const name = promptNameInput.value.trim();
+  const text = promptInput?.value ?? "";
+  if (!name) {
+    setStatus("Enter a name to save this prompt.");
+    promptNameInput.focus();
+    return;
+  }
+  if (!text.trim()) {
+    setStatus("Nothing to save — the prompt is empty.");
+    return;
+  }
+  await savePrompt(name, text);
+  await refreshSavedPrompts(name);
+  setStatus(`Saved prompt "${name}".`);
+}
+
+/** Delete the currently selected saved prompt. */
+async function onDeleteSavedPrompt(): Promise<void> {
+  const name = savedPromptsSelect?.value ?? "";
+  if (!name) return;
+  await deletePrompt(name);
+  await refreshSavedPrompts();
+  setStatus(`Deleted prompt "${name}".`);
 }
 
 function updateScopeNote(): void {
@@ -129,7 +202,8 @@ async function onCreate(): Promise<void> {
   };
 
   setBusy(true);
-  setStatus("Generating report… this may take a while.");
+  // Progress row (spinner + live counters) now conveys generation state.
+  setStatus("");
   try {
     const response = (await browser.runtime.sendMessage({ type: "generate-report", windowId, request })) as {
       report?: string;

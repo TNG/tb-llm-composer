@@ -29,6 +29,9 @@ function dispatchRuntimeMessage(message: unknown): void {
 /** Captures the anchors that would have triggered a file download. */
 let triggeredDownloads: Array<{ download: string; href: string }>;
 
+/** In-memory backing store for the mocked browser.storage.sync. */
+let syncStore: Record<string, unknown>;
+
 const mockBrowser = {
   windows: {
     getCurrent: (...args: unknown[]) => getCurrentMock(...args),
@@ -41,7 +44,10 @@ const mockBrowser = {
   },
   storage: {
     sync: {
-      get: async () => ({}),
+      get: async (key: string) => ({ [key]: syncStore[key] }),
+      set: async (items: Record<string, unknown>) => {
+        Object.assign(syncStore, items);
+      },
     },
   },
 };
@@ -78,6 +84,7 @@ const FOLDER_SEARCH = "?accountId=acc1&path=/INBOX&name=Inbox";
 beforeEach(() => {
   triggeredDownloads = [];
   messageListeners = [];
+  syncStore = {};
   getCurrentMock.mockReset().mockResolvedValue({ id: 123 });
   sendMessageMock.mockReset().mockResolvedValue({});
   clipboardWriteMock.mockReset().mockResolvedValue(undefined);
@@ -202,6 +209,65 @@ describe("The report popup", () => {
     await waitFor(() => {
       expect(clipboardWriteMock).toHaveBeenCalledWith("copy me");
       expect(doc.getElementById("status")?.textContent).toContain("copied");
+    });
+  });
+
+  test("saves a prompt and re-loads it from the dropdown", async () => {
+    await loadPopup(FOLDER_SEARCH);
+    const doc = reportsDom.window.document;
+
+    const prompt = doc.getElementById("prompt") as HTMLTextAreaElement;
+    const nameInput = doc.getElementById("prompt-name") as HTMLInputElement;
+    const select = doc.getElementById("saved-prompts") as HTMLSelectElement;
+    const deleteBtn = doc.getElementById("delete-prompt-btn") as HTMLButtonElement;
+
+    // Save the current prompt under a name.
+    prompt.value = "Summarise open action items addressed to me";
+    nameInput.value = "Action items";
+    (doc.getElementById("save-prompt-btn") as HTMLButtonElement).click();
+
+    await waitFor(() => {
+      expect(Array.from(select.options).map((o) => o.value)).toContain("Action items");
+      expect(doc.getElementById("status")?.textContent).toContain('Saved prompt "Action items"');
+    });
+
+    // Clear the field, then re-load the saved prompt via the dropdown.
+    prompt.value = "";
+    select.value = "Action items";
+    select.dispatchEvent(new reportsDom.window.Event("change"));
+
+    await waitFor(() => {
+      expect(prompt.value).toBe("Summarise open action items addressed to me");
+      expect(deleteBtn.disabled).toBe(false);
+    });
+
+    // Delete it; the option disappears and the store is emptied.
+    deleteBtn.click();
+    await waitFor(() => {
+      expect(Array.from(select.options).map((o) => o.value)).not.toContain("Action items");
+      expect(doc.getElementById("status")?.textContent).toContain('Deleted prompt "Action items"');
+    });
+    expect(syncStore.reportPrompts).toEqual([]);
+  });
+
+  test("persists saved prompts across popup reloads", async () => {
+    await loadPopup(FOLDER_SEARCH);
+    let doc = reportsDom.window.document;
+    (doc.getElementById("prompt") as HTMLTextAreaElement).value = "Weekly digest";
+    (doc.getElementById("prompt-name") as HTMLInputElement).value = "Digest";
+    (doc.getElementById("save-prompt-btn") as HTMLButtonElement).click();
+
+    await waitFor(() => {
+      expect(syncStore.reportPrompts).toEqual([{ name: "Digest", text: "Weekly digest" }]);
+    });
+
+    // Reopen the popup: the saved prompt is listed again from storage.
+    reportsDom.window.close();
+    await loadPopup(FOLDER_SEARCH);
+    doc = reportsDom.window.document;
+    const select = doc.getElementById("saved-prompts") as HTMLSelectElement;
+    await waitFor(() => {
+      expect(Array.from(select.options).map((o) => o.value)).toContain("Digest");
     });
   });
 
