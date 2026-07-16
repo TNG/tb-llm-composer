@@ -64,7 +64,7 @@ src/
   hostPermissions.ts         Derive/check/request the opt-in host permission for the configured endpoint origin.
 
   reportGeneration.ts        generateReport(ReportRequest); builds the report system/scope prompt and drives runAgenticLlm.
-  reportTools.ts             search_messages/get_message tool definitions + handlers (ReportScope); assertSearchCapabilities() probe.
+  reportTools.ts             search_messages/get_message tool definitions + handlers (ReportScope); assertSearchCapabilities() probe. Folder-only search runs one query per in-scope folder (target folder, plus the account's Sent folder(s) when scope.includeSent), de-duped by id.
   reports.ts                 Report window UI logic (public/reports.html): create/cancel, iterate on prior report, copy/save txt|md, save/load reusable prompts.
   reportPrompts.ts           Persist reusable report prompts (name + text) in browser.storage.sync: getSavedPrompts/savePrompt/deletePrompt.
 

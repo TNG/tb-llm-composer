@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { resolveFolderPathMock, extractTextFromPartMock } = vi.hoisted(() => ({
+const { resolveFolderPathMock, extractTextFromPartMock, getFoldersForAccountMock } = vi.hoisted(() => ({
   resolveFolderPathMock: vi.fn(),
   extractTextFromPartMock: vi.fn(),
+  getFoldersForAccountMock: vi.fn(),
 }));
 
 vi.mock("../emailOrganising", () => ({
   resolveFolderPath: resolveFolderPathMock,
   extractTextFromPart: extractTextFromPartMock,
+  getFoldersForAccount: getFoldersForAccountMock,
 }));
 
 import {
@@ -22,6 +24,7 @@ const originalBrowser = global.browser;
 const BASE_SCOPE: ReportScope = {
   folderOnly: false,
   folder: null,
+  includeSent: false,
   defaultDays: 30,
   maxSearchResults: 50,
 };
@@ -42,6 +45,7 @@ describe("reportTools", () => {
   beforeEach(() => {
     resolveFolderPathMock.mockReset();
     extractTextFromPartMock.mockReset();
+    getFoldersForAccountMock.mockReset();
   });
 
   afterEach(() => {
@@ -171,6 +175,62 @@ describe("reportTools", () => {
 
       expect(resolveFolderPathMock).toHaveBeenCalledWith("/INBOX");
       expect(query.mock.calls[0][0].folderId).toBe("folder-7");
+    });
+
+    test("also searches the account's Sent folder when includeSent is set", async () => {
+      const query = vi.fn().mockResolvedValue({ id: undefined, messages: [] });
+      setBrowser({ query, accounts: undefined });
+      // Provide an accounts.get + folder tree containing a Sent folder.
+      global.browser.accounts = {
+        get: vi.fn().mockResolvedValue({ id: "a" }),
+      } as unknown as typeof browser.accounts;
+      resolveFolderPathMock.mockResolvedValue({ id: "folder-7", accountId: "a", path: "/INBOX", name: "Inbox" });
+      getFoldersForAccountMock.mockResolvedValue([
+        { id: "inbox-id", path: "/INBOX", name: "Inbox", type: "inbox" },
+        { id: "sent-id", path: "/Sent", name: "Sent", specialUse: ["sent"] },
+      ]);
+
+      const handlers = createReportToolHandlers({
+        ...BASE_SCOPE,
+        folderOnly: true,
+        includeSent: true,
+        folder: { accountId: "a", path: "/INBOX" },
+      });
+      await handlers.search_messages({});
+
+      // One query per in-scope folder: the target folder and the Sent folder.
+      expect(query).toHaveBeenCalledTimes(2);
+      expect(query.mock.calls[0][0].folderId).toBe("folder-7");
+      expect(query.mock.calls[1][0].folderId).toBe("sent-id");
+    });
+
+    test("de-duplicates messages that appear in more than one searched folder", async () => {
+      const query = vi
+        .fn()
+        .mockResolvedValueOnce({ id: undefined, messages: [{ id: 1, subject: "a", author: "x", recipients: [] }] })
+        .mockResolvedValueOnce({
+          id: undefined,
+          messages: [
+            { id: 1, subject: "a", author: "x", recipients: [] },
+            { id: 2, subject: "b", author: "x", recipients: [] },
+          ],
+        });
+      setBrowser({ query });
+      global.browser.accounts = {
+        get: vi.fn().mockResolvedValue({ id: "a" }),
+      } as unknown as typeof browser.accounts;
+      resolveFolderPathMock.mockResolvedValue({ id: "folder-7", accountId: "a", path: "/INBOX", name: "Inbox" });
+      getFoldersForAccountMock.mockResolvedValue([{ id: "sent-id", path: "/Sent", name: "Sent", type: "sent" }]);
+
+      const handlers = createReportToolHandlers({
+        ...BASE_SCOPE,
+        folderOnly: true,
+        includeSent: true,
+        folder: { accountId: "a", path: "/INBOX" },
+      });
+      const result = (await handlers.search_messages({})) as Array<{ id: number }>;
+
+      expect(result.map((r) => r.id)).toEqual([1, 2]);
     });
   });
 
