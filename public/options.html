@@ -74,6 +74,41 @@
         cursor: default;
       }
 
+      /* Available folder paths, each with a copy button. */
+      .folder-path-list {
+        font-size: 12px;
+        background: #f5f5f5;
+        padding: 8px;
+        border-radius: 4px;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+
+      .folder-path-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 2px 0;
+      }
+
+      .folder-path-row .path-text {
+        flex: 1 1 auto;
+        overflow-wrap: anywhere;
+        font-family: monospace;
+      }
+
+      .copy-path-btn {
+        flex: 0 0 auto;
+        padding: 2px 8px;
+        font-size: 12px;
+        margin-bottom: 0;
+        background-color: #6c757d;
+      }
+
+      .copy-path-btn:hover {
+        background-color: #545b62;
+      }
+
       .folder-rule-row {
         display: flex;
         gap: 8px;
@@ -178,6 +213,67 @@
       #url-permission-status {
         font-size: 13px;
       }
+
+      .models-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 6px;
+      }
+
+      #query-models-btn {
+        padding: 6px 12px;
+        font-size: 13px;
+        margin-bottom: 0;
+        background-color: #6c757d;
+      }
+
+      #query-models-btn:hover {
+        background-color: #545b62;
+      }
+
+      .models-status {
+        font-size: 12px;
+        color: #555;
+      }
+
+      /* Discovered models, each with an arrow that applies it to the "other options" JSON. */
+      .model-list {
+        margin-top: 6px;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+
+      .model-list:empty {
+        display: none;
+      }
+
+      .model-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 2px 0;
+        font-size: 12px;
+      }
+
+      .model-row .model-id {
+        flex: 1 1 auto;
+        overflow-wrap: anywhere;
+        font-family: monospace;
+      }
+
+      .apply-model-btn {
+        flex: 0 0 auto;
+        padding: 2px 10px;
+        font-size: 14px;
+        line-height: 1;
+        margin-bottom: 0;
+        background-color: #28a745;
+      }
+
+      .apply-model-btn:hover {
+        background-color: #1e7e34;
+      }
     </style>
   </head>
   <body>
@@ -258,9 +354,7 @@
               </button>
             </summary>
             <p id="folder-paths-status" style="font-size:12px;color:#555;margin:4px 0;"></p>
-            <pre id="available-folder-paths"
-              style="font-size:12px;background:#f5f5f5;padding:8px;border-radius:4px;
-                     max-height:200px;overflow-y:auto;white-space:pre-wrap;"></pre>
+            <div id="available-folder-paths" class="folder-path-list"></div>
           </details>
         </div>
 
@@ -305,6 +399,14 @@
               </sup>
             </label>
             <textarea id="other_options" name="other option window"> </textarea>
+            <div class="models-controls">
+              <button type="button" id="query-models-btn"
+                title="Query the endpoint's available models (GET {base}/models)">
+                Query available models
+              </button>
+              <span id="models-status" class="models-status"></span>
+            </div>
+            <div id="models-list" class="model-list"></div>
           </div>
         </div>
       </form>

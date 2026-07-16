@@ -80,7 +80,7 @@ src/
 
 manifest.json                MV3 source manifest. Webpack rewrites paths and strips " (dev)" / dev id for production.
 webpack.config.js            Builds background.ts + options.ts + reports.ts into build/; copies icons/, public/, and transformed manifest.json.
-public/options.html          Options page markup.
+public/options.html          Options page markup. Includes a "Query available models" control that GETs the OpenAI-style {base}/models (base derived from the chat URL) and, per model, an arrow that upserts params.model into the "Other options" JSON.
 public/reports.html          Report window markup.
 icons/                       Extension icons + busy indicator (loader-32px.gif).
 docs/CONTRIBUTING.md         Dev/test/release instructions + sample test emails.

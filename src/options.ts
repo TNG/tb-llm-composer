@@ -23,6 +23,7 @@ document.querySelector("#report_max_search_results")?.addEventListener("change",
 document.querySelector("#report_max_steps")?.addEventListener("change", updateReportMaxSteps);
 document.querySelector("#add-folder-rule-btn")?.addEventListener("click", addFolderRuleRow);
 document.querySelector("#refresh-folder-paths-btn")?.addEventListener("click", refreshFolderPaths);
+document.querySelector("#query-models-btn")?.addEventListener("click", queryAvailableModels);
 
 async function updateUrl(event: Event) {
   await notifyOnError(async () => {
@@ -126,6 +127,117 @@ async function updateOtherOptions(event: Event) {
   });
 }
 
+// ── Model discovery ────────────────────────────────────────────────────────────
+
+/**
+ * Derive the OpenAI-style `/models` endpoint from the configured chat URL. A standard chat URL
+ * ends in `/chat/completions`; we swap that for `/models`, preserving any prefix (e.g. `/openai/v1`).
+ * Otherwise we treat the URL as the API base and append `/models`.
+ */
+function deriveModelsEndpoint(chatUrl: string): string {
+  const trimmed = chatUrl.trim().replace(/\/+$/, "");
+  if (/\/chat\/completions$/.test(trimmed)) {
+    return trimmed.replace(/\/chat\/completions$/, "/models");
+  }
+  return `${trimmed}/models`;
+}
+
+/** Extract model ids from an OpenAI-style models response (`{data:[{id}]}`), tolerating variants. */
+function extractModelIds(body: unknown): string[] {
+  const list = Array.isArray(body)
+    ? body
+    : body && typeof body === "object" && Array.isArray((body as { data?: unknown }).data)
+      ? ((body as { data: unknown[] }).data as unknown[])
+      : [];
+  const ids = list
+    .map((entry) => (typeof entry === "string" ? entry : ((entry as { id?: unknown })?.id ?? "")))
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  return Array.from(new Set(ids)).sort((a, b) => a.localeCompare(b));
+}
+
+/** Query the endpoint's available models and render them, each with a button to apply it. */
+async function queryAvailableModels(): Promise<void> {
+  const statusEl = document.querySelector("#models-status");
+  const listEl = document.querySelector("#models-list");
+  if (listEl) listEl.textContent = "";
+
+  const chatUrl = getInputElement("#url").value.trim();
+  if (!chatUrl) {
+    if (statusEl) statusEl.textContent = "Enter the LLM endpoint URL first.";
+    return;
+  }
+
+  const modelsUrl = deriveModelsEndpoint(chatUrl);
+  if (!(await hasEndpointPermission(modelsUrl))) {
+    if (statusEl) statusEl.textContent = 'Access not granted — click "Grant access" above, then retry.';
+    return;
+  }
+
+  if (statusEl) statusEl.textContent = "Querying models…";
+  try {
+    const apiToken = getInputElement("#api_token").value.trim();
+    const headers: Record<string, string> = {};
+    if (apiToken) headers.Authorization = `Bearer ${apiToken}`;
+
+    const response = await fetch(modelsUrl, { headers });
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+    const models = extractModelIds(await response.json());
+    if (statusEl) {
+      statusEl.textContent = models.length ? `${models.length} model(s) found.` : "No models returned by the endpoint.";
+    }
+    if (listEl) renderModelList(listEl, models);
+  } catch (e) {
+    console.error("OPTIONS: Could not query models:", e);
+    if (statusEl) statusEl.textContent = `Could not query models: ${(e as Error).message}`;
+  }
+}
+
+/** Render each discovered model as a row with an arrow button that applies it. */
+function renderModelList(container: Element, models: string[]): void {
+  container.replaceChildren();
+  for (const model of models) {
+    const row = document.createElement("div");
+    row.className = "model-row";
+
+    const id = document.createElement("span");
+    id.className = "model-id";
+    id.textContent = model;
+
+    const applyBtn = document.createElement("button");
+    applyBtn.type = "button";
+    applyBtn.className = "apply-model-btn";
+    applyBtn.textContent = "→";
+    applyBtn.title = `Use "${model}" (sets params.model in Other options)`;
+    applyBtn.addEventListener("click", () => applyModelToOtherOptions(model));
+
+    row.append(id, applyBtn);
+    container.appendChild(row);
+  }
+}
+
+/** Upsert the chosen model into the "other options" JSON (params.model) and persist it. */
+async function applyModelToOtherOptions(model: string): Promise<void> {
+  await notifyOnError(async () => {
+    const otherOptionsEl = getInputElement("#other_options");
+    let params: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(otherOptionsEl.value.trim() || "{}");
+      params = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      // The textarea held invalid JSON; start from an empty object rather than failing.
+      params = {};
+    }
+    params.model = model;
+    otherOptionsEl.value = JSON.stringify(params, null, 2);
+
+    const options = await getPluginOptions();
+    options.params = params;
+    await browser.storage.sync.set({ options });
+  });
+}
+
 /** Persist a positive-integer numeric option, ignoring empty/invalid input. */
 async function updatePositiveIntOption(
   event: Event,
@@ -214,7 +326,7 @@ async function refreshFolderPaths() {
     }
 
     if (statusEl) statusEl.textContent = `${paths.length} folder(s) found.`;
-    if (availableEl) availableEl.textContent = paths.join("\n");
+    if (availableEl) renderAvailablePaths(availableEl, paths);
 
     // Re-validate any existing rows
     revalidateAllRows(paths);
@@ -222,6 +334,46 @@ async function refreshFolderPaths() {
     console.error("OPTIONS: Could not fetch folder paths:", e);
     if (statusEl) statusEl.textContent = `Could not load folder paths: ${(e as Error).message}`;
   }
+}
+
+/** Render the available folder paths as rows, each with a button that copies the path. */
+function renderAvailablePaths(container: Element, paths: string[]): void {
+  container.replaceChildren();
+  for (const path of paths) {
+    const row = document.createElement("div");
+    row.className = "folder-path-row";
+
+    const text = document.createElement("span");
+    text.className = "path-text";
+    text.textContent = path;
+
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "copy-path-btn";
+    copyBtn.textContent = "Copy";
+    copyBtn.title = `Copy "${path}"`;
+    copyBtn.addEventListener("click", () => copyPathToClipboard(path, copyBtn));
+
+    row.append(text, copyBtn);
+    container.appendChild(row);
+  }
+}
+
+/** Copy a folder path to the clipboard and briefly confirm on the button. */
+async function copyPathToClipboard(path: string, button: HTMLButtonElement): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(path);
+  } catch {
+    console.warn("OPTIONS: Clipboard API unavailable; could not copy folder path.");
+    return;
+  }
+  const previousText = button.textContent;
+  button.textContent = "Copied!";
+  button.disabled = true;
+  setTimeout(() => {
+    button.textContent = previousText;
+    button.disabled = false;
+  }, 1200);
 }
 
 async function loadFolderPaths(): Promise<string[]> {
