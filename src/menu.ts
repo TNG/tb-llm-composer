@@ -32,7 +32,7 @@ export const actionMenuEntries: browser.menus._CreateCreateProperties[] = [
   {
     id: "create-report",
     contexts: ["action_menu"],
-    title: "Create Report…",
+    title: "Create Report",
     enabled: true,
   },
 ];
@@ -43,6 +43,46 @@ export const cancelRequestMenuEntry: browser.menus._CreateCreateProperties = {
   title: "Cancel Request",
   enabled: true,
 };
+
+// Shown in place of the toolbar action entries while a folder is being organised:
+// a single top-level entry that displays progress and doubles as an abort button,
+// mirroring the compose_action "Cancel Request" behaviour.
+export const cancelOrganiseMenuEntry: browser.menus._CreateCreateProperties = {
+  id: "cancel-organise",
+  contexts: ["action_menu"],
+  title: "Organising…",
+  enabled: true,
+};
+
+function organiseProgressTitle(percent: number): string {
+  return `Organising… ${percent}%`;
+}
+
+/** Swap the toolbar action entries for a single organise-progress/cancel entry. */
+export async function showOrganiseProgressMenu(percent: number): Promise<void> {
+  for (const menuEntry of actionMenuEntries) {
+    await removeMenuEntry(menuEntry.id);
+  }
+  await addMenuEntry({ ...cancelOrganiseMenuEntry, title: organiseProgressTitle(percent) });
+}
+
+/** Update the organise-progress entry title with the latest percentage. */
+export async function updateOrganiseProgressMenu(percent: number): Promise<void> {
+  try {
+    await browser.menus.update(cancelOrganiseMenuEntry.id as string, { title: organiseProgressTitle(percent) });
+    await browser.menus.refresh();
+  } catch (error) {
+    console.info("MENU: could not update organise progress entry:", error);
+  }
+}
+
+/** Restore the normal toolbar action entries once organising ends. */
+export async function restoreActionMenu(): Promise<void> {
+  await removeMenuEntry(cancelOrganiseMenuEntry.id);
+  for (const menuEntry of actionMenuEntries) {
+    await addMenuEntry(menuEntry);
+  }
+}
 
 export async function addLlmActionsToMenu() {
   await browser.menus.removeAll();

@@ -1,7 +1,14 @@
 import { getActiveMailFolder, getAllFolderPaths, organiseCurrentFolder } from "./emailOrganising";
 import { handleKeepAliveAlarm } from "./keepAlive";
 import { executeLlmAction, type LlmPluginAction } from "./llmButtonClickHandling";
-import { addLlmActionsToMenu, enableSummarizeMenuEntryIfReply, handleMenuClickListener } from "./menu";
+import {
+  addLlmActionsToMenu,
+  enableSummarizeMenuEntryIfReply,
+  handleMenuClickListener,
+  restoreActionMenu,
+  showOrganiseProgressMenu,
+  updateOrganiseProgressMenu,
+} from "./menu";
 import { notifyOnError, timedNotification } from "./notifications";
 import { deleteFromOriginalTabCache, storeOriginalReplyText } from "./originalTabConversation";
 import { generateReport, type ReportRequest } from "./reportGeneration";
@@ -29,7 +36,9 @@ browser.tabs.onRemoved.addListener(deleteFromOriginalTabCache);
 // (compose/summarize) share the browser.menus namespace. Route the action-menu
 // entries here; delegate everything else to the LLM action handler.
 browser.menus.onClicked.addListener((info: OnClickData, tab?: Tab) => {
-  if (info.menuItemId === "organise-folder") {
+  // "organise-folder" starts a run; "cancel-organise" (shown while a run is in
+  // progress) aborts it — both go through the same toggle.
+  if (info.menuItemId === "organise-folder" || info.menuItemId === "cancel-organise") {
     return void toggleOrganiseFolder();
   }
   if (info.menuItemId === "create-report") {
@@ -42,11 +51,12 @@ browser.menus.onClicked.addListener((info: OnClickData, tab?: Tab) => {
 // Only one organise run happens at a time; a second trigger cancels it.
 let organiseAbortController: AbortController | null = null;
 
-/** Update the action icon/title to reflect organise loading/idle state. */
-async function setOrganiseActionState(loading: boolean) {
+/** Update the action icon/title to reflect organise loading/idle state, including progress %. */
+async function setOrganiseActionState(loading: boolean, percent?: number) {
   try {
     if (loading) {
-      await browser.action.setTitle({ title: "LLM Composer — organising… (open menu to cancel)" });
+      const progress = percent === undefined ? "Organising…" : `Organising… ${percent}%`;
+      await browser.action.setTitle({ title: progress });
       await browser.action.setIcon({ path: { 32: "icons/loader-32px.gif" } });
     } else {
       // Read the title from the manifest so the " (dev)" suffix is present in dev
@@ -66,24 +76,30 @@ async function setOrganiseActionState(loading: boolean) {
 async function toggleOrganiseFolder(): Promise<void> {
   if (organiseAbortController) {
     console.log("ORGANISE: Aborting existing organise-folder run");
+    // Just signal the abort; the in-flight run resets the UI and shows the
+    // final popup (with what was moved so far) from its finally block below.
     organiseAbortController.abort(new DOMException("User cancelled organise folder", "AbortError"));
     organiseAbortController = null;
-    await setOrganiseActionState(false);
     return;
   }
 
   const abortController = new AbortController();
   organiseAbortController = abortController;
-  await setOrganiseActionState(true);
+  await setOrganiseActionState(true, 0);
+  await showOrganiseProgressMenu(0);
 
   await notifyOnError(async () => {
     try {
-      await organiseCurrentFolder(abortController.signal);
+      await organiseCurrentFolder(abortController.signal, async (percent) => {
+        await setOrganiseActionState(true, percent);
+        await updateOrganiseProgressMenu(percent);
+      });
     } finally {
       if (organiseAbortController === abortController) {
         organiseAbortController = null;
       }
       await setOrganiseActionState(false);
+      await restoreActionMenu();
     }
   });
 }

@@ -275,7 +275,10 @@ async function moveMessageToFolder(messageId: number, targetFolder: browser.fold
   await browser.messages.move([messageId], fallbackFolder);
 }
 
-export async function organiseCurrentFolder(abortSignal: AbortSignal): Promise<void> {
+export async function organiseCurrentFolder(
+  abortSignal: AbortSignal,
+  onProgress?: (percent: number) => void | Promise<void>,
+): Promise<void> {
   const options = await getPluginOptions();
   const rules = options.folderSortingRules ?? [];
 
@@ -346,64 +349,121 @@ export async function organiseCurrentFolder(abortSignal: AbortSignal): Promise<v
     }),
   );
 
-  const organisationByRefId = new Map<number, number | null>();
-  for (const entriesChunk of chunk(messagesForOrganising, BATCH_SIZE)) {
-    if (abortSignal.aborted) break;
+  // Label and move one chunk at a time, so already-classified emails are moved
+  // immediately rather than all at the end. This keeps progress durable: if the
+  // run is aborted mid-way, everything moved so far stays moved.
+  const chunks = chunk(messagesForOrganising, BATCH_SIZE);
+  let moved = 0;
+  let skipped = 0;
+  let processed = 0;
+  let aborted = false;
 
-    const userPrompt = buildBatchOrganisingPrompt(rules, entriesChunk);
-    try {
-      const response = await sendContentToLlm(
-        [
-          { role: LlmRoles.SYSTEM, content: BATCH_ORGANISING_SYSTEM_PROMPT },
-          { role: LlmRoles.USER, content: userPrompt },
-        ],
-        abortSignal,
-      );
+  await reportProgress(onProgress, 0);
 
-      if (!isLlmTextCompletionResponse(response)) {
-        console.warn("ORGANISE: LLM error response for batch", response);
-        for (const entry of entriesChunk) {
-          organisationByRefId.set(entry.refId, null);
-        }
-        continue;
-      }
-
-      const firstChoice = Array.isArray(response.choices) ? response.choices[0] : undefined;
-      const rawBatchResponse =
-        firstChoice && typeof firstChoice.message?.content === "string" ? firstChoice.message.content : null;
-      if (rawBatchResponse === null) {
-        console.error("ORGANISE: LLM batch response missing choices[0].message.content", response);
-        for (const entry of entriesChunk) {
-          organisationByRefId.set(entry.refId, null);
-        }
-        continue;
-      }
-      console.log("ORGANISE: LLM batch reply:", rawBatchResponse);
-
-      const parsed = parseBatchOrganisingResponse(
-        rawBatchResponse,
-        entriesChunk.map((entry) => entry.refId),
-        rules.length,
-      );
-      for (const [refId, ruleIndex] of parsed.entries()) {
-        organisationByRefId.set(refId, ruleIndex);
-      }
-    } catch (e) {
-      if ((e as Error).name === "AbortError") throw e;
-      console.warn("ORGANISE: LLM call failed for batch", e);
-      for (const entry of entriesChunk) {
-        organisationByRefId.set(entry.refId, null);
-      }
+  for (const entriesChunk of chunks) {
+    if (abortSignal.aborted) {
+      aborted = true;
+      break;
     }
+
+    let organisation: Map<number, number | null>;
+    try {
+      organisation = await classifyChunk(rules, entriesChunk, abortSignal);
+    } catch (e) {
+      if ((e as Error).name === "AbortError") {
+        aborted = true;
+        break;
+      }
+      console.warn("ORGANISE: LLM call failed for batch", e);
+      organisation = new Map(entriesChunk.map((entry) => [entry.refId, null]));
+    }
+
+    const chunkResult = await moveClassifiedMessages(entriesChunk, organisation, resolvedFolders, rules, abortSignal);
+    moved += chunkResult.moved;
+    skipped += chunkResult.skipped;
+    aborted = aborted || chunkResult.aborted;
+
+    processed += entriesChunk.length;
+    await reportProgress(onProgress, Math.round((processed / messagesForOrganising.length) * 100));
+
+    if (aborted) break;
   }
 
+  await timedNotification(
+    aborted ? "Organise Folder Aborted" : "Organise Folder Complete",
+    aborted
+      ? `Aborted. Moved ${moved} email(s) so far. ${skipped} email(s) kept in place.`
+      : `Moved ${moved} email(s). ${skipped} email(s) kept in place.`,
+    10000,
+  );
+}
+
+async function reportProgress(
+  onProgress: ((percent: number) => void | Promise<void>) | undefined,
+  percent: number,
+): Promise<void> {
+  try {
+    await onProgress?.(percent);
+  } catch (e) {
+    console.warn("ORGANISE: progress callback failed", e);
+  }
+}
+
+/** Classify a single chunk of messages via the LLM, mapping refId → folder index (null when unclassified). */
+async function classifyChunk(
+  rules: FolderRule[],
+  entriesChunk: MessageForOrganising[],
+  abortSignal: AbortSignal,
+): Promise<Map<number, number | null>> {
+  const fallback = new Map<number, number | null>(entriesChunk.map((entry) => [entry.refId, null]));
+
+  const userPrompt = buildBatchOrganisingPrompt(rules, entriesChunk);
+  const response = await sendContentToLlm(
+    [
+      { role: LlmRoles.SYSTEM, content: BATCH_ORGANISING_SYSTEM_PROMPT },
+      { role: LlmRoles.USER, content: userPrompt },
+    ],
+    abortSignal,
+  );
+
+  if (!isLlmTextCompletionResponse(response)) {
+    console.warn("ORGANISE: LLM error response for batch", response);
+    return fallback;
+  }
+
+  const firstChoice = Array.isArray(response.choices) ? response.choices[0] : undefined;
+  const rawBatchResponse =
+    firstChoice && typeof firstChoice.message?.content === "string" ? firstChoice.message.content : null;
+  if (rawBatchResponse === null) {
+    console.error("ORGANISE: LLM batch response missing choices[0].message.content", response);
+    return fallback;
+  }
+  console.log("ORGANISE: LLM batch reply:", rawBatchResponse);
+
+  return parseBatchOrganisingResponse(
+    rawBatchResponse,
+    entriesChunk.map((entry) => entry.refId),
+    rules.length,
+  );
+}
+
+/** Move each classified message in a chunk to its target folder; returns tallies and whether it was aborted. */
+async function moveClassifiedMessages(
+  entries: MessageForOrganising[],
+  organisation: Map<number, number | null>,
+  resolvedFolders: Array<browser.folders.MailFolder | null>,
+  rules: FolderRule[],
+  abortSignal: AbortSignal,
+): Promise<{ moved: number; skipped: number; aborted: boolean }> {
   let moved = 0;
   let skipped = 0;
 
-  for (const entry of messagesForOrganising) {
-    if (abortSignal.aborted) break;
+  for (const entry of entries) {
+    if (abortSignal.aborted) {
+      return { moved, skipped, aborted: true };
+    }
 
-    const responseIndex = organisationByRefId.get(entry.refId) ?? null;
+    const responseIndex = organisation.get(entry.refId) ?? null;
     if (responseIndex === null) {
       skipped++;
       continue;
@@ -434,11 +494,7 @@ export async function organiseCurrentFolder(abortSignal: AbortSignal): Promise<v
     }
   }
 
-  await timedNotification(
-    "Organise Folder Complete",
-    `Moved ${moved} email(s). ${skipped} email(s) kept in place.`,
-    10000,
-  );
+  return { moved, skipped, aborted: false };
 }
 
 /** Recursively extract text (plain or stripped HTML) from message part hierarchy. */
