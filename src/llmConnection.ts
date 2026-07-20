@@ -42,6 +42,14 @@ export interface LlmToolDefinition {
 /** Executes a tool call and returns a JSON-serialisable result. */
 export type LlmToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
 
+/** Result of an agentic run: the final text plus the full conversation (for continuation). */
+export interface AgenticRunResult {
+  /** The model's final message content. */
+  report: string;
+  /** The full conversation including the final assistant message, so the run can be continued. */
+  messages: LlmApiRequestMessage[];
+}
+
 /** Live progress snapshot emitted during an agentic run so callers can surface it in the UI. */
 export interface AgenticProgress {
   /** Number of completed LLM completions so far. */
@@ -242,7 +250,8 @@ function logTokenUsage(response: LlmTextCompletionResponse, runningTotal: number
  * Run an agentic chat-completion loop with tool calling. Posts the conversation plus tool
  * definitions, executes any requested tool calls via `toolHandlers`, and repeats until the
  * model returns a plain message or `maxSteps` is reached. Throws if the endpoint/model does
- * not support tool calling.
+ * not support tool calling. Returns the final text and the full conversation (so a caller can
+ * append a follow-up message and continue the same conversation).
  */
 export async function runAgenticLlm(
   messages: LlmApiRequestMessage[],
@@ -251,7 +260,7 @@ export async function runAgenticLlm(
   abortSignal: AbortSignal,
   maxSteps: number,
   onProgress?: (progress: AgenticProgress) => void,
-): Promise<string> {
+): Promise<AgenticRunResult> {
   const options = await getPluginOptions();
   if (!options.model) {
     throw Error("Missing LLM model, set it in the options panel.");
@@ -314,11 +323,14 @@ export async function runAgenticLlm(
     const toolCalls = choice.message?.tool_calls;
     if (!toolCalls || toolCalls.length === 0) {
       // Final answer.
+      const content = choice.message?.content ?? "";
       console.log(
-        `REPORT: completed after ${step} step(s), ~${totalTokens} total tokens, finalChars=${choice.message?.content?.length ?? 0}`,
+        `REPORT: completed after ${step} step(s), ~${totalTokens} total tokens, finalChars=${content.length}`,
       );
       reportProgress("Writing the report…");
-      return choice.message?.content ?? "";
+      // Record the final assistant turn so the conversation can be continued later.
+      conversation.push({ role: LlmRoles.ASSISTANT, content });
+      return { report: content, messages: conversation };
     }
 
     console.log(

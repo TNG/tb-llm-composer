@@ -5,15 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Create Report</title>
     <style>
+      /*
+       * Honour Thunderbird's light/dark theme and UI font:
+       * - color-scheme + CSS system colors (Canvas/CanvasText/Field/AccentColor…) auto-adapt to the theme.
+       * - `font: message-box` inherits Thunderbird's UI font family and size.
+       */
+      :root {
+        color-scheme: light dark;
+        --bg: Canvas;
+        --fg: CanvasText;
+        --muted: GrayText;
+        --field-bg: Field;
+        --field-fg: FieldText;
+        --border: color-mix(in srgb, CanvasText 22%, transparent);
+        --accent: AccentColor;
+        --accent-fg: AccentColorText;
+        --accent-hover: color-mix(in srgb, AccentColor 80%, black);
+        --subtle-bg: color-mix(in srgb, CanvasText 6%, Canvas);
+        --hover-bg: color-mix(in srgb, CanvasText 12%, Canvas);
+        --danger: #d9534f;
+      }
       html,
       body {
         height: 100%;
       }
       body {
-        font-family: Arial, sans-serif;
+        font: message-box;
         margin: 0;
         padding: 16px;
-        color: #222;
+        color: var(--fg);
+        background: var(--bg);
         box-sizing: border-box;
         /* Column layout so the report field can grow into the space left at the bottom. */
         display: flex;
@@ -21,7 +42,32 @@
       }
       h1 {
         font-size: 18px;
+        margin: 0;
+      }
+      /* Title row with the "New report" action pinned to the right. */
+      .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
         margin: 0 0 12px;
+      }
+      /* Red text button for the destructive "New report" (delete + start over) action. */
+      .danger-btn {
+        flex: 0 0 auto;
+        padding: 4px 12px;
+        border: 1px solid color-mix(in srgb, var(--danger) 55%, transparent);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--danger);
+        font: inherit;
+        cursor: pointer;
+      }
+      .danger-btn:hover {
+        background: color-mix(in srgb, var(--danger) 15%, var(--bg));
+      }
+      .danger-btn[hidden] {
+        display: none;
       }
       /* Checkbox and day-count share a single row (Copilot-style compact controls). */
       .controls-row {
@@ -37,19 +83,146 @@
         gap: 6px;
         white-space: nowrap;
       }
+      /* Drop the checkbox's default UA margin so it lines up cleanly with the label text. */
+      .control-inline input[type="checkbox"] {
+        margin: 0;
+        flex: 0 0 auto;
+      }
       .controls-row input[type="number"] {
         width: 56px;
         box-sizing: border-box;
         padding: 4px 6px;
-        border: 1px solid #ddd;
+        border: 1px solid var(--border);
         border-radius: 4px;
-        font-family: inherit;
-        font-size: 13px;
+        background: var(--field-bg);
+        color: var(--field-fg);
+        font: inherit;
       }
       .scope-note {
         font-size: 12px;
-        color: #666;
+        color: var(--muted);
         margin: 4px 0 0;
+      }
+      .toggle-label {
+        white-space: nowrap;
+      }
+      /* Slider toggle for the folder-scope switch. */
+      .switch {
+        position: relative;
+        display: inline-block;
+        width: 2.4em;
+        height: 1.25em;
+        flex: 0 0 auto;
+      }
+      .switch input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        opacity: 0;
+        cursor: pointer;
+      }
+      .slider {
+        position: absolute;
+        inset: 0;
+        background: color-mix(in srgb, CanvasText 32%, Canvas);
+        border-radius: 999px;
+        pointer-events: none;
+        transition: background 0.15s;
+      }
+      .slider::before {
+        content: "";
+        position: absolute;
+        width: 0.95em;
+        height: 0.95em;
+        left: 0.15em;
+        top: 0.15em;
+        background: var(--bg);
+        border-radius: 50%;
+        transition: transform 0.15s;
+      }
+      .switch input:checked + .slider {
+        background: var(--accent);
+      }
+      .switch input:checked + .slider::before {
+        transform: translateX(1.15em);
+      }
+      .switch input:disabled + .slider {
+        opacity: 0.5;
+      }
+      .switch input:focus-visible + .slider {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+      /* Round info badge (matches the options page). */
+      .info-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.25em;
+        height: 1.25em;
+        border: 1px solid currentColor;
+        border-radius: 50%;
+        font-size: 0.75em;
+        font-style: italic;
+        font-family: Georgia, "Times New Roman", serif;
+        line-height: 1;
+        vertical-align: middle;
+        margin-left: 4px;
+        cursor: help;
+        color: var(--fg);
+        user-select: none;
+      }
+      /* Folder picker button + accordion list (mirrors the options models list, with an arrow to select). */
+      .folder-select-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        max-width: 220px;
+        padding: 4px 8px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--field-bg);
+        color: var(--field-fg);
+        font: inherit;
+        cursor: pointer;
+      }
+      .folder-select-btn .selected-folder-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #folder-picker[hidden] {
+        display: none;
+      }
+      .model-list {
+        margin-top: 6px;
+        max-height: 180px;
+        overflow-y: auto;
+      }
+      .model-list[hidden] {
+        display: none;
+      }
+      /* Each folder row is itself the clickable control; it highlights on hover/focus. */
+      .model-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 6px;
+        font-size: 12px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .model-row:hover,
+      .model-row:focus-visible {
+        background: var(--subtle-bg);
+        outline: none;
+      }
+      .model-row .model-id {
+        flex: 1 1 auto;
+        overflow-wrap: anywhere;
+        font-family: monospace;
       }
       /* Row for saving/loading reusable report prompts. */
       .saved-row {
@@ -63,10 +236,11 @@
       .saved-row input[type="text"] {
         box-sizing: border-box;
         padding: 4px 6px;
-        border: 1px solid #ddd;
+        border: 1px solid var(--border);
         border-radius: 4px;
-        font-family: inherit;
-        font-size: 13px;
+        background: var(--field-bg);
+        color: var(--field-fg);
+        font: inherit;
       }
       #saved-prompts {
         flex: 1 1 40%;
@@ -76,8 +250,18 @@
         flex: 1 1 60%;
         min-width: 0;
       }
-      .saved-row .text-btn {
+      .saved-row .icon-btn {
         flex: 0 0 auto;
+        width: 1.9em;
+        height: 1.9em;
+      }
+      .icon-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .icon-btn:disabled:hover {
+        background: transparent;
+        color: var(--muted);
       }
       /* Prompt field with the send/stop icon docked in its bottom-right corner. */
       .prompt-box {
@@ -88,16 +272,18 @@
         width: 100%;
         box-sizing: border-box;
         height: 90px;
-        padding: 8px 44px 8px 8px;
-        border: 1px solid #ddd;
+        padding: 8px 2.7em 8px 8px;
+        border: 1px solid var(--border);
         border-radius: 8px;
-        font-family: inherit;
-        font-size: 13px;
-        resize: vertical;
+        background: var(--field-bg);
+        color: var(--field-fg);
+        font: inherit;
+        /* No resize grip — it would sit under the docked send button in the corner. */
+        resize: none;
       }
       #prompt:focus {
         outline: none;
-        border-color: #0a84ff;
+        border-color: var(--accent);
       }
       .icon-btn {
         display: inline-flex;
@@ -106,35 +292,36 @@
         padding: 0;
         border: none;
         background: transparent;
-        color: #555;
+        color: var(--muted);
         cursor: pointer;
         border-radius: 6px;
       }
       .icon-btn:hover {
-        background: #e9e9ed;
-        color: #1f1f1f;
+        background: var(--hover-bg);
+        color: var(--fg);
       }
       .icon-btn:focus-visible {
-        outline: 2px solid #0a84ff;
+        outline: 2px solid var(--accent);
         outline-offset: 1px;
       }
+      /* Icon size is set in em so glyphs scale with Thunderbird's UI font size. */
       .icon-btn svg {
-        width: 20px;
-        height: 20px;
+        width: 1.15em;
+        height: 1.15em;
         display: block;
       }
       #create-btn {
         position: absolute;
         right: 8px;
         bottom: 8px;
-        width: 32px;
-        height: 32px;
-        background: #0a84ff;
-        color: #fff;
+        width: 1.9em;
+        height: 1.9em;
+        background: var(--accent);
+        color: var(--accent-fg);
       }
       #create-btn:hover {
-        background: #0060df;
-        color: #fff;
+        background: var(--accent-hover);
+        color: var(--accent-fg);
       }
       /* Toggle between the send and stop glyphs depending on generation state. */
       #create-btn .icon-stop {
@@ -162,15 +349,18 @@
         gap: 4px;
       }
       #copy-btn {
-        width: 28px;
-        height: 28px;
+        width: 1.7em;
+        height: 1.7em;
+      }
+      /* .icon-btn sets display:inline-flex, which overrides the [hidden] default — re-hide explicitly. */
+      .icon-btn[hidden] {
+        display: none;
       }
       .text-btn {
         width: auto;
-        height: 28px;
-        padding: 0 8px;
-        font-size: 12px;
-        font-family: inherit;
+        height: 1.7em;
+        padding: 0 0.6em;
+        font: inherit;
       }
       #report-output {
         width: 100%;
@@ -179,9 +369,10 @@
         flex: 1 1 auto;
         min-height: 120px;
         padding: 8px;
-        border: 1px solid #ccc;
+        border: 1px solid var(--border);
         border-radius: 4px;
-        background: #f8f8f8;
+        background: var(--subtle-bg);
+        color: var(--fg);
         font-family: inherit;
         font-size: 13px;
         white-space: pre-wrap;
@@ -190,7 +381,7 @@
       }
       #status {
         font-size: 13px;
-        color: #555;
+        color: var(--muted);
         min-height: 18px;
         margin: 4px 0 4px;
       }
@@ -200,7 +391,7 @@
         align-items: center;
         gap: 8px;
         font-size: 13px;
-        color: #555;
+        color: var(--muted);
         margin: 0 0 12px;
       }
       /* .progress sets display:flex, which overrides the [hidden] default — re-hide explicitly. */
@@ -216,33 +407,54 @@
       }
       .abort-btn {
         flex: 0 0 auto;
-        border: 1px solid #e0b4b4;
-        color: #b00020;
+        border: 1px solid color-mix(in srgb, var(--danger) 55%, transparent);
+        color: var(--danger);
       }
       .abort-btn:hover {
-        background: #fbe9e9;
-        color: #b00020;
+        background: color-mix(in srgb, var(--danger) 15%, var(--bg));
+        color: var(--danger);
       }
     </style>
   </head>
   <body>
-    <h1>Create Report</h1>
+    <div class="page-header">
+      <h1>Create Report</h1>
+      <button type="button" id="new-report-btn" class="danger-btn" title="Delete this report and start a new one" hidden>
+        New report
+      </button>
+    </div>
 
     <div class="controls-row">
-      <label class="control-inline">
-        <input type="checkbox" id="folder-only" checked />
-        Search in this folder only
-      </label>
-      <label class="control-inline">
-        <input type="checkbox" id="include-sent" />
-        Include Sent folder
-      </label>
       <span class="control-inline">
-        Last
+        Days in the past:
         <input type="number" id="days" min="1" step="1" value="30" aria-label="Number of days in the past to search" />
-        days
       </span>
+
+      <!-- Folder scope: All folders (left) ↔ Single folder (right). #folder-only checked = single folder. -->
+      <span class="control-inline">
+        <span class="toggle-label">All folders</span>
+        <label class="switch" title="Toggle between searching all folders and a single folder">
+          <input type="checkbox" id="folder-only" checked aria-label="Search a single folder only" />
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">Single folder</span>
+      </span>
+
+      <!-- Folder picker (only relevant for a single-folder search). -->
+      <span class="control-inline" id="folder-picker">
+        <button type="button" id="folder-select-btn" class="folder-select-btn" title="Choose the folder to search">
+          <span id="selected-folder-name" class="selected-folder-name">Current folder</span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+      </span>
+
+      <label class="control-inline">
+        <input type="checkbox" id="include-sent" checked />
+        Include Sent folder
+        <span class="info-icon" title="Also search the account's Sent folder(s), so the report can tell which messages you have already answered.">i</span>
+      </label>
     </div>
+    <div id="folder-list" class="model-list" hidden></div>
     <p class="scope-note" id="scope-note"></p>
 
     <div class="saved-row">
@@ -250,8 +462,21 @@
         <option value="">Saved prompts…</option>
       </select>
       <input type="text" id="prompt-name" placeholder="Name to save as" aria-label="Prompt name" />
-      <button type="button" id="save-prompt-btn" class="icon-btn text-btn">Save</button>
-      <button type="button" id="delete-prompt-btn" class="icon-btn text-btn" disabled>Delete</button>
+      <button type="button" id="save-prompt-btn" class="icon-btn" title="Save prompt" aria-label="Save prompt">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+          <polyline points="17 21 17 13 7 13 7 21" />
+          <polyline points="7 3 7 8 15 8" />
+        </svg>
+      </button>
+      <button type="button" id="delete-prompt-btn" class="icon-btn" title="Delete prompt" aria-label="Delete prompt" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="3 6 5 6 21 6" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          <line x1="10" y1="11" x2="10" y2="17" />
+          <line x1="14" y1="11" x2="14" y2="17" />
+        </svg>
+      </button>
     </div>
 
     <div class="prompt-box">

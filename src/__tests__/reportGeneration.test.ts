@@ -26,7 +26,7 @@ vi.mock("../optionsParams", async () => {
 });
 
 import { getPluginOptions } from "../optionsParams";
-import { generateReport, type ReportRequest } from "../reportGeneration";
+import { continueReport, generateReport, type ReportRequest } from "../reportGeneration";
 
 const abortSignal = new AbortController().signal;
 
@@ -37,11 +37,16 @@ const BASE_REQUEST: ReportRequest = {
   folder: { accountId: "a", path: "/INBOX" },
 };
 
+/** runAgenticLlm now returns the final text plus the full conversation. */
+function agenticResult(report: string, messages: unknown[] = []) {
+  return { report, messages };
+}
+
 describe("reportGeneration", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-05T12:00:00Z"));
-    runAgenticLlmMock.mockReset().mockResolvedValue("Final report");
+    runAgenticLlmMock.mockReset().mockResolvedValue(agenticResult("Final report"));
     assertSearchCapabilitiesMock.mockReset().mockResolvedValue(undefined);
     createReportToolHandlersMock.mockReset().mockReturnValue({ search_messages: vi.fn() });
   });
@@ -81,16 +86,43 @@ describe("reportGeneration", () => {
     expect(messages.some((m: { content: string }) => m.content.includes("Report run date: 2026-06-05."))).toBe(true);
   });
 
-  test("includes the prior report when refining", async () => {
-    await generateReport({ ...BASE_REQUEST, priorReport: "PREVIOUS REPORT" }, abortSignal);
+  test("returns the report plus the conversation and scope for continuation", async () => {
+    runAgenticLlmMock.mockResolvedValue(
+      agenticResult("Final report", [{ role: "assistant", content: "Final report" }]),
+    );
+    const session = await generateReport(BASE_REQUEST, abortSignal);
+    expect(session.report).toBe("Final report");
+    expect(session.messages).toHaveLength(1);
+    expect(session.scope).toMatchObject({ folderOnly: true, folder: { accountId: "a", path: "/INBOX" } });
+  });
+
+  test("continueReport appends the follow-up to the existing conversation", async () => {
+    const priorMessages = [
+      { role: "system", content: "sys" },
+      { role: "assistant", content: "First report" },
+    ] as unknown as Parameters<typeof continueReport>[0]["messages"];
+    const scope = {
+      folderOnly: true,
+      folder: { accountId: "a", path: "/INBOX" },
+      includeSent: false,
+      defaultDays: 14,
+      maxSearchResults: 50,
+    };
+
+    await continueReport({ messages: priorMessages, scope }, "Add deadlines", abortSignal);
+
     const [messages] = runAgenticLlmMock.mock.calls[0];
-    expect(messages.some((m: { content: string }) => m.content.includes("PREVIOUS REPORT"))).toBe(true);
+    // Prior turns are preserved and the new follow-up is appended.
+    expect(messages.slice(0, 2)).toEqual(priorMessages);
+    const lastMessage = messages[messages.length - 1];
+    expect(lastMessage.role).toBe("user");
+    expect(lastMessage.content).toContain("Add deadlines");
   });
 
   test("strips <think> tags from the report by default", async () => {
-    runAgenticLlmMock.mockResolvedValue("<think>reasoning</think>Clean report");
-    const result = await generateReport(BASE_REQUEST, abortSignal);
-    expect(result).toBe("Clean report");
+    runAgenticLlmMock.mockResolvedValue(agenticResult("<think>reasoning</think>Clean report"));
+    const session = await generateReport(BASE_REQUEST, abortSignal);
+    expect(session.report).toBe("Clean report");
   });
 
   test("keeps <think> tags when strip_think_tag is disabled", async () => {
@@ -100,9 +132,9 @@ describe("reportGeneration", () => {
       strip_think_tag: false,
       // biome-ignore lint/suspicious/noExplicitAny: minimal options stub for the test
     } as any);
-    runAgenticLlmMock.mockResolvedValue("<think>keep</think>Report");
+    runAgenticLlmMock.mockResolvedValue(agenticResult("<think>keep</think>Report"));
 
-    const result = await generateReport(BASE_REQUEST, abortSignal);
-    expect(result).toContain("<think>keep</think>");
+    const session = await generateReport(BASE_REQUEST, abortSignal);
+    expect(session.report).toContain("<think>keep</think>");
   });
 });

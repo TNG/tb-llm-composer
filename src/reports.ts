@@ -1,7 +1,8 @@
+import { getAllFolderPaths, resolveFolderPath } from "./emailOrganising";
 import type { AgenticProgress } from "./llmConnection";
 import { getPluginOptions } from "./optionsParams";
-import { deletePrompt, getSavedPrompts, savePrompt } from "./reportPrompts";
 import type { ReportRequest } from "./reportGeneration";
+import { deletePrompt, getSavedPrompts, savePrompt } from "./reportPrompts";
 import { getButtonElement, getInputElement } from "./utils";
 
 const params = new URLSearchParams(window.location.search);
@@ -13,11 +14,23 @@ const folderName = params.get("name") ?? folderContext?.path ?? "";
 
 let windowId: number | undefined;
 let busy = false;
-let lastReport = "";
+// Whether a report already exists in this window. When true, "Create" refines by continuing
+// the existing agent conversation; "New report" clears it to start fresh.
+let hasReport = false;
+
+// The folder a single-folder search targets. Defaults to the folder that was open when the
+// window was launched, but the user can pick another via the folder picker.
+let selectedFolder: { accountId: string; path: string; name: string } | null = folderContext
+  ? { accountId: folderContext.accountId, path: folderContext.path, name: folderName || folderContext.path }
+  : null;
 
 const folderOnlyInput = getInputElement("#folder-only");
 const includeSentInput = getInputElement("#include-sent");
 const daysInput = getInputElement("#days");
+const folderSelectBtn = document.querySelector<HTMLButtonElement>("#folder-select-btn");
+const selectedFolderNameEl = document.querySelector<HTMLSpanElement>("#selected-folder-name");
+const folderPickerEl = document.querySelector<HTMLElement>("#folder-picker");
+const folderListEl = document.querySelector<HTMLDivElement>("#folder-list");
 const promptInput = document.querySelector<HTMLTextAreaElement>("#prompt");
 const outputArea = document.querySelector<HTMLTextAreaElement>("#report-output");
 const statusEl = document.querySelector<HTMLParagraphElement>("#status");
@@ -26,6 +39,7 @@ const progressTextEl = document.querySelector<HTMLSpanElement>("#progress-text")
 const abortBtn = getButtonElement("#abort-btn");
 const createBtn = getButtonElement("#create-btn");
 const copyBtn = getButtonElement("#copy-btn");
+const newReportBtn = getButtonElement("#new-report-btn");
 const saveTxtBtn = getButtonElement("#save-txt-btn");
 const saveMdBtn = getButtonElement("#save-md-btn");
 const scopeNote = document.querySelector<HTMLParagraphElement>("#scope-note");
@@ -48,13 +62,16 @@ async function init(): Promise<void> {
     folderOnlyInput.checked = false;
     folderOnlyInput.disabled = true;
   }
+  if (selectedFolderNameEl) selectedFolderNameEl.textContent = selectedFolder?.name ?? "Current folder";
   updateScopeControls();
 
   folderOnlyInput.addEventListener("change", updateScopeControls);
   includeSentInput.addEventListener("change", updateScopeNote);
+  folderSelectBtn?.addEventListener("click", toggleFolderList);
   createBtn.addEventListener("click", onCreate);
   abortBtn.addEventListener("click", onAbort);
   copyBtn.addEventListener("click", onCopy);
+  newReportBtn.addEventListener("click", onNewReport);
   saveTxtBtn.addEventListener("click", () => saveReport("txt"));
   saveMdBtn.addEventListener("click", () => saveReport("md"));
 
@@ -151,21 +168,117 @@ async function onDeleteSavedPrompt(): Promise<void> {
   setStatus(`Deleted prompt "${name}".`);
 }
 
-/** Keep the "Include Sent" control and scope note consistent with the folder-only toggle. */
+/** Keep the "Include Sent" control, folder picker and scope note consistent with the folder-only toggle. */
 function updateScopeControls(): void {
-  // "Include Sent" only applies to a folder-only search; an all-folders search already covers Sent.
-  includeSentInput.disabled = !folderOnlyInput.checked || !folderContext;
+  const single = folderOnlyInput.checked && !!folderContext;
+  // "Include Sent" and the folder picker only apply to a single-folder search;
+  // an all-folders search already covers Sent.
+  includeSentInput.disabled = !single;
+  if (folderPickerEl) folderPickerEl.hidden = !single;
+  if (!single) closeFolderList();
   updateScopeNote();
 }
 
 function updateScopeNote(): void {
   if (!scopeNote) return;
   if (folderOnlyInput.checked && folderContext) {
+    const name = selectedFolder?.name ?? folderName;
     const sentSuffix = includeSentInput.checked ? " + Sent" : "";
-    scopeNote.textContent = `Scope: "${folderName}"${sentSuffix} only.`;
+    scopeNote.textContent = `Scope: "${name}"${sentSuffix} only.`;
   } else {
     scopeNote.textContent = "Scope: all folders.";
   }
+}
+
+// ── Folder picker ───────────────────────────────────────────────────────────────
+
+/** Accordion toggle for the folder list: closed → load and show; open → hide. */
+async function toggleFolderList(): Promise<void> {
+  if (!folderListEl) return;
+  if (folderListEl.childElementCount > 0) {
+    closeFolderList();
+    return;
+  }
+  await populateFolderList();
+}
+
+function closeFolderList(): void {
+  folderListEl?.replaceChildren();
+  folderListEl?.setAttribute("hidden", "");
+}
+
+/** Render every mailbox folder path as a row with an arrow button that selects it (like the options list). */
+async function populateFolderList(): Promise<void> {
+  if (!folderListEl) return;
+  folderListEl.replaceChildren();
+  folderListEl.removeAttribute("hidden");
+
+  let paths: string[];
+  try {
+    paths = await loadFolderPaths();
+  } catch (e) {
+    console.error("REPORT-WINDOW: could not load folder paths", e);
+    setStatus("Could not load folders.");
+    closeFolderList();
+    return;
+  }
+
+  for (const path of paths) {
+    const row = document.createElement("div");
+    row.className = "model-row";
+    row.setAttribute("role", "button");
+    row.tabIndex = 0;
+    row.title = `Search "${path}"`;
+
+    const id = document.createElement("span");
+    id.className = "model-id";
+    id.textContent = path;
+    row.appendChild(id);
+
+    const activate = () => void selectFolder(path);
+    row.addEventListener("click", activate);
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        activate();
+      }
+    });
+
+    folderListEl.appendChild(row);
+  }
+}
+
+/** Select `path` as the single-folder target, resolving its account (for Sent detection) and display name. */
+async function selectFolder(path: string): Promise<void> {
+  let accountId = folderContext?.accountId ?? "";
+  let name = path;
+  try {
+    const folder = await resolveFolderPath(path);
+    if (folder) {
+      accountId = folder.accountId ?? accountId;
+      name = folder.name ?? path;
+    }
+  } catch (e) {
+    console.warn("REPORT-WINDOW: could not resolve folder account for", path, e);
+  }
+  selectedFolder = { accountId, path, name };
+  if (selectedFolderNameEl) selectedFolderNameEl.textContent = name;
+  closeFolderList();
+  updateScopeNote();
+}
+
+/** Load all folder paths, falling back to the background script if the direct API call fails. */
+async function loadFolderPaths(): Promise<string[]> {
+  try {
+    return await getAllFolderPaths();
+  } catch (directError) {
+    console.warn("REPORT-WINDOW: direct folder-path lookup failed, trying background fallback:", directError);
+  }
+  const response = await browser.runtime.sendMessage({ type: "get-folder-paths" });
+  if (!Array.isArray(response) || response.some((path) => typeof path !== "string")) {
+    throw new Error("Invalid folder path response from background script.");
+  }
+  return response as string[];
 }
 
 function setBusy(value: boolean): void {
@@ -173,8 +286,9 @@ function setBusy(value: boolean): void {
   // While generating, the send button turns into a stop control (Copilot-style),
   // so it must stay enabled to allow cancelling.
   createBtn.classList.toggle("busy", value);
-  createBtn.title = value ? "Stop generating" : "Create report";
-  createBtn.setAttribute("aria-label", value ? "Stop generating" : "Create report");
+  const idleTitle = hasReport ? "Refine report" : "Create report";
+  createBtn.title = value ? "Stop generating" : idleTitle;
+  createBtn.setAttribute("aria-label", value ? "Stop generating" : idleTitle);
   // Show the progress row (spinner + counters + Stop button) only while generating.
   progressEl?.toggleAttribute("hidden", !value);
   if (value) {
@@ -204,21 +318,28 @@ async function onCreate(): Promise<void> {
   const folderOnly = folderOnlyInput.checked && !!folderContext;
   // Including Sent only makes sense for a folder-only search (all-folders already covers it).
   const includeSent = folderOnly && includeSentInput.checked;
+  const targetFolder = selectedFolder ?? folderContext;
+  // With a report already present, keep talking to the same agent instead of starting over.
+  const continueConversation = hasReport;
 
   const request: ReportRequest = {
     prompt,
     days,
     folderOnly,
     includeSent,
-    folder: folderContext,
-    priorReport: lastReport || undefined,
+    folder: targetFolder ? { accountId: targetFolder.accountId, path: targetFolder.path } : null,
   };
 
   setBusy(true);
   // Progress row (spinner + live counters) now conveys generation state.
   setStatus("");
   try {
-    const response = (await browser.runtime.sendMessage({ type: "generate-report", windowId, request })) as {
+    const response = (await browser.runtime.sendMessage({
+      type: "generate-report",
+      windowId,
+      request,
+      continueConversation,
+    })) as {
       report?: string;
       error?: string;
     };
@@ -226,14 +347,28 @@ async function onCreate(): Promise<void> {
       setStatus(`Error: ${response.error}`);
       return;
     }
-    lastReport = response?.report ?? "";
-    if (outputArea) outputArea.value = lastReport;
-    setStatus("Report ready. Refine the prompt and click Create to iterate.");
+    if (outputArea) outputArea.value = response?.report ?? "";
+    hasReport = true;
+    newReportBtn.hidden = false;
+    setStatus("Report ready. Type a follow-up and click Create to refine it, or start a new report.");
   } catch (e) {
     setStatus(`Error: ${(e as Error).message}`);
   } finally {
     setBusy(false);
   }
+}
+
+/** Clear the current report and its agent conversation so the next Create starts from scratch. */
+async function onNewReport(): Promise<void> {
+  if (busy) return;
+  await browser.runtime.sendMessage({ type: "reset-report", windowId }).catch(() => {});
+  hasReport = false;
+  newReportBtn.hidden = true;
+  if (outputArea) outputArea.value = "";
+  if (promptInput) promptInput.value = "";
+  createBtn.title = "Create report";
+  createBtn.setAttribute("aria-label", "Create report");
+  setStatus("Started a new report. Enter a request and click Create.");
 }
 
 /** Current local date as YYYY-MM-DD, for use in the saved report filename. */

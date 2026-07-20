@@ -163,7 +163,9 @@ describe("runAgenticLlm", () => {
     );
 
     expect(handler).toHaveBeenCalledWith({ query: "hi" });
-    expect(result).toBe("All done");
+    expect(result.report).toBe("All done");
+    // The returned conversation ends with the final assistant answer (so it can be continued).
+    expect(result.messages.at(-1)).toMatchObject({ role: "assistant", content: "All done" });
     expect(global.fetch).toHaveBeenCalledTimes(2);
 
     // Second request must include the assistant tool-call message and the tool result.
@@ -178,7 +180,7 @@ describe("runAgenticLlm", () => {
     global.fetch = vi.fn().mockResolvedValueOnce(okJson(finalResponse("Quick answer")));
 
     const result = await runAgenticLlm([{ content: "hi", role: LlmRoles.USER }], TOOLS, {}, abortSignal, 8);
-    expect(result).toBe("Quick answer");
+    expect(result.report).toBe("Quick answer");
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
