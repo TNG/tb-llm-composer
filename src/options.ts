@@ -22,8 +22,8 @@ document.querySelector("#report_default_days")?.addEventListener("change", updat
 document.querySelector("#report_max_search_results")?.addEventListener("change", updateReportMaxSearchResults);
 document.querySelector("#report_max_steps")?.addEventListener("change", updateReportMaxSteps);
 document.querySelector("#add-folder-rule-btn")?.addEventListener("click", addFolderRuleRow);
-document.querySelector("#refresh-folder-paths-btn")?.addEventListener("click", refreshFolderPaths);
-document.querySelector("#query-models-btn")?.addEventListener("click", queryAvailableModels);
+document.querySelector("#refresh-folder-paths-btn")?.addEventListener("click", toggleFolderPaths);
+document.querySelector("#query-models-btn")?.addEventListener("click", toggleAvailableModels);
 
 async function updateUrl(event: Event) {
   await notifyOnError(async () => {
@@ -61,17 +61,22 @@ async function grantEndpointAccess() {
   }
 }
 
-/** Show whether the extension currently has host permission for the configured endpoint. */
+/**
+ * Show whether the extension currently has host permission for the configured endpoint.
+ * Renders as an icon-only badge (like the folder-existence badge); the wording shows on hover.
+ */
 async function updateUrlPermissionStatus() {
-  const statusEl = document.querySelector("#url-permission-status");
+  const statusEl = document.querySelector<HTMLElement>("#url-permission-status");
   if (!statusEl) return;
   const modelUrl = getInputElement("#url").value;
   if (!modelUrl) {
     statusEl.textContent = "";
+    statusEl.title = "";
     return;
   }
   const granted = await hasEndpointPermission(modelUrl);
-  statusEl.textContent = granted ? "✅ Access granted" : '⚠️ Access not granted — click "Grant access".';
+  statusEl.textContent = granted ? "✅" : "⚠️";
+  statusEl.title = granted ? "Access granted" : 'Access not granted — click "Grant access".';
 }
 
 async function updateApiToken(event: Event) {
@@ -194,26 +199,60 @@ async function queryAvailableModels(): Promise<void> {
   }
 }
 
-/** Render each discovered model as a row with an arrow button that applies it. */
+/**
+ * Accordion toggle for the models list: closed → fetch and show (button becomes "Hide…");
+ * open → clear the list and reset the button label.
+ */
+async function toggleAvailableModels(): Promise<void> {
+  const listEl = document.querySelector("#models-list");
+  const statusEl = document.querySelector("#models-status");
+  const btn = document.querySelector<HTMLButtonElement>("#query-models-btn");
+  if (listEl && listEl.childElementCount > 0) {
+    listEl.replaceChildren();
+    if (statusEl) statusEl.textContent = "";
+    if (btn) btn.textContent = "Query available models";
+    return;
+  }
+  await queryAvailableModels();
+  if (btn && listEl && listEl.childElementCount > 0) btn.textContent = "Hide available models";
+}
+
+/**
+ * Build a clickable list row (the whole row acts as the button — no inner button) with the given
+ * label and an activation handler that also receives the row (used for in-row feedback).
+ */
+function makeClickableRow(label: string, title: string, onActivate: (row: HTMLElement) => void): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "model-row";
+  row.setAttribute("role", "button");
+  row.tabIndex = 0;
+  row.title = title;
+
+  const id = document.createElement("span");
+  id.className = "model-id";
+  id.textContent = label;
+  row.appendChild(id);
+
+  const activate = () => onActivate(row);
+  row.addEventListener("click", activate);
+  row.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      activate();
+    }
+  });
+  return row;
+}
+
+/** Render each discovered model as a clickable row that applies it. */
 function renderModelList(container: Element, models: string[]): void {
   container.replaceChildren();
   for (const model of models) {
-    const row = document.createElement("div");
-    row.className = "model-row";
-
-    const id = document.createElement("span");
-    id.className = "model-id";
-    id.textContent = model;
-
-    const applyBtn = document.createElement("button");
-    applyBtn.type = "button";
-    applyBtn.className = "apply-model-btn";
-    applyBtn.textContent = "→";
-    applyBtn.title = `Use "${model}" (sets params.model in Other options)`;
-    applyBtn.addEventListener("click", () => applyModelToOtherOptions(model));
-
-    row.append(id, applyBtn);
-    container.appendChild(row);
+    container.appendChild(
+      makeClickableRow(model, `Use "${model}" (sets params.model in Other options)`, () =>
+        applyModelToOtherOptions(model),
+      ),
+    );
   }
 }
 
@@ -224,7 +263,8 @@ async function applyModelToOtherOptions(model: string): Promise<void> {
     let params: Record<string, unknown>;
     try {
       const parsed = JSON.parse(otherOptionsEl.value.trim() || "{}");
-      params = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+      params =
+        parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
     } catch {
       // The textarea held invalid JSON; start from an empty object rather than failing.
       params = {};
@@ -286,7 +326,7 @@ export async function restoreOptions(): Promise<void> {
   if (!list) return;
   list.innerHTML = "";
 
-  await refreshFolderPaths();
+  await primeFolderPaths();
 
   const knownPaths = getKnownPaths();
   for (const rule of rules) {
@@ -301,34 +341,18 @@ function getKnownPaths(): string[] {
   return dl ? Array.from(dl.options).map((o) => o.value) : [];
 }
 
+/** Button handler: (re)fetch folder paths and render them as a copyable list (like the models list). */
 async function refreshFolderPaths() {
   const statusEl = document.querySelector("#folder-paths-status");
   const availableEl = document.querySelector("#available-folder-paths");
-  if (statusEl) statusEl.textContent = "Loading folder paths...";
-  if (availableEl) availableEl.textContent = "";
+  if (statusEl) statusEl.textContent = "Loading folder paths…";
+  if (availableEl) availableEl.replaceChildren();
 
   try {
     const paths = await loadFolderPaths();
-
-    // Populate datalist for autocomplete
-    let dl = document.querySelector<HTMLDataListElement>("#folder-paths-datalist");
-    if (!dl) {
-      dl = document.createElement("datalist");
-      dl.id = "folder-paths-datalist";
-      document.body.appendChild(dl);
-    }
-    dl.replaceChildren();
-    for (const path of paths) {
-      const option = document.createElement("option");
-      option.value = path;
-      option.textContent = path;
-      dl.appendChild(option);
-    }
-
+    populateFolderDatalist(paths);
     if (statusEl) statusEl.textContent = `${paths.length} folder(s) found.`;
     if (availableEl) renderAvailablePaths(availableEl, paths);
-
-    // Re-validate any existing rows
     revalidateAllRows(paths);
   } catch (e) {
     console.error("OPTIONS: Could not fetch folder paths:", e);
@@ -336,44 +360,74 @@ async function refreshFolderPaths() {
   }
 }
 
-/** Render the available folder paths as rows, each with a button that copies the path. */
-function renderAvailablePaths(container: Element, paths: string[]): void {
-  container.replaceChildren();
-  for (const path of paths) {
-    const row = document.createElement("div");
-    row.className = "folder-path-row";
+/**
+ * Accordion toggle for the folder-paths list: closed → fetch and show (button becomes "Hide…");
+ * open → clear the list and reset the button label.
+ */
+async function toggleFolderPaths(): Promise<void> {
+  const listEl = document.querySelector("#available-folder-paths");
+  const statusEl = document.querySelector("#folder-paths-status");
+  const btn = document.querySelector<HTMLButtonElement>("#refresh-folder-paths-btn");
+  if (listEl && listEl.childElementCount > 0) {
+    listEl.replaceChildren();
+    if (statusEl) statusEl.textContent = "";
+    if (btn) btn.textContent = "Show available folder paths";
+    return;
+  }
+  await refreshFolderPaths();
+  if (btn && listEl && listEl.childElementCount > 0) btn.textContent = "Hide available folder paths";
+}
 
-    const text = document.createElement("span");
-    text.className = "path-text";
-    text.textContent = path;
-
-    const copyBtn = document.createElement("button");
-    copyBtn.type = "button";
-    copyBtn.className = "copy-path-btn";
-    copyBtn.textContent = "Copy";
-    copyBtn.title = `Copy "${path}"`;
-    copyBtn.addEventListener("click", () => copyPathToClipboard(path, copyBtn));
-
-    row.append(text, copyBtn);
-    container.appendChild(row);
+/** On page load: fetch folder paths only to power rule autocomplete + validation (no visible list). */
+async function primeFolderPaths() {
+  try {
+    const paths = await loadFolderPaths();
+    populateFolderDatalist(paths);
+    revalidateAllRows(paths);
+  } catch (e) {
+    console.warn("OPTIONS: Could not prime folder paths:", e);
   }
 }
 
-/** Copy a folder path to the clipboard and briefly confirm on the button. */
-async function copyPathToClipboard(path: string, button: HTMLButtonElement): Promise<void> {
+/** Populate the hidden datalist backing folder-path autocomplete in the rule inputs. */
+function populateFolderDatalist(paths: string[]): void {
+  let dl = document.querySelector<HTMLDataListElement>("#folder-paths-datalist");
+  if (!dl) {
+    dl = document.createElement("datalist");
+    dl.id = "folder-paths-datalist";
+    document.body.appendChild(dl);
+  }
+  dl.replaceChildren();
+  for (const path of paths) {
+    const option = document.createElement("option");
+    option.value = path;
+    option.textContent = path;
+    dl.appendChild(option);
+  }
+}
+
+/** Render the available folder paths as clickable rows (styled like the models list); clicking copies the path. */
+function renderAvailablePaths(container: Element, paths: string[]): void {
+  container.replaceChildren();
+  for (const path of paths) {
+    container.appendChild(makeClickableRow(path, `Copy "${path}"`, (row) => copyPathToClipboard(path, row)));
+  }
+}
+
+/** Copy a folder path to the clipboard and briefly show a "Copied!" flag on the row. */
+async function copyPathToClipboard(path: string, row: HTMLElement): Promise<void> {
   try {
     await navigator.clipboard.writeText(path);
   } catch {
     console.warn("OPTIONS: Clipboard API unavailable; could not copy folder path.");
     return;
   }
-  const previousText = button.textContent;
-  button.textContent = "Copied!";
-  button.disabled = true;
-  setTimeout(() => {
-    button.textContent = previousText;
-    button.disabled = false;
-  }, 1200);
+  row.querySelector(".copied-flag")?.remove();
+  const flag = document.createElement("span");
+  flag.className = "copied-flag";
+  flag.textContent = "Copied!";
+  row.appendChild(flag);
+  setTimeout(() => flag.remove(), 1200);
 }
 
 async function loadFolderPaths(): Promise<string[]> {

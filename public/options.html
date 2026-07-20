@@ -5,8 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings Page</title>
     <style>
+      /*
+       * Honour Thunderbird's light/dark theme and UI font:
+       * - color-scheme + CSS system colors (Canvas/CanvasText/Field/AccentColor…) auto-adapt to the theme.
+       * - `font: message-box` inherits Thunderbird's UI font family and size.
+       */
+      :root {
+        color-scheme: light dark;
+        --bg: Canvas;
+        --fg: CanvasText;
+        --muted: GrayText;
+        --field-bg: Field;
+        --field-fg: FieldText;
+        --border: color-mix(in srgb, CanvasText 22%, transparent);
+        --accent: AccentColor;
+        --accent-fg: AccentColorText;
+        --accent-hover: color-mix(in srgb, AccentColor 80%, black);
+        --subtle-bg: color-mix(in srgb, CanvasText 6%, Canvas);
+      }
+
       body {
-        font-family: Arial, sans-serif;
+        font: message-box;
+        color: var(--fg);
+        background: var(--bg);
+        /* No default UA margin: it overflows Thunderbird's embedded options frame and adds a second scrollbar. */
+        margin: 0;
+        padding: 16px;
+        box-sizing: border-box;
       }
 
       .settings-section {
@@ -14,7 +39,7 @@
       }
 
       .settings-section h2 {
-        border-bottom: 1px solid #ccc;
+        border-bottom: 1px solid var(--border);
         padding-bottom: 5px;
       }
 
@@ -28,44 +53,129 @@
       }
 
       .form-group input[type="text"],
+      .form-group input[type="number"],
       .form-group select {
         width: 90%;
         padding: 8px;
-        border: 1px solid #ddd;
+        border: 1px solid var(--border);
         border-radius: 4px;
+        background: var(--field-bg);
+        color: var(--field-fg);
+        font: inherit;
       }
 
       .form-group input[type="checkbox"] {
         margin-right: 5px;
       }
 
+      /* Checkbox + its label sit on one line, vertically centred. */
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+
+      .checkbox-row input[type="checkbox"] {
+        margin: 0;
+      }
+
+      .checkbox-row label {
+        display: inline;
+        margin-bottom: 0;
+      }
+
+      /* Single-line fields: label on the left, control filling the rest of the row. */
+      .form-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .form-row > label {
+        flex: 0 0 auto;
+        width: 200px;
+        margin-bottom: 0;
+      }
+
+      .form-row > input {
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+      }
+
+      /*
+       * "URL:" + Grant access + status occupy the label column (so the input lines up with the
+       * fields below). push-right on the button keeps the empty space between "URL:" and the controls.
+       */
+      .url-label-group {
+        flex: 0 0 200px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .url-label-group label {
+        margin-bottom: 0;
+      }
+
+      /* All buttons share one look: the grant-access (accent) color and a uniform size. */
       button {
-        padding: 10px 15px;
-        background-color: #007bff;
-        color: white;
+        padding: 6px 12px;
+        background-color: var(--accent);
+        color: var(--accent-fg);
         border: none;
         border-radius: 4px;
         cursor: pointer;
-        margin-bottom: 20px;
+        font: inherit;
+        margin-bottom: 0;
       }
 
       button:hover {
-        background-color: #0056b3;
+        background-color: var(--accent-hover);
+      }
+
+      /* Compact variant for the delete button inside a dense rule row. */
+      .remove-rule-btn {
+        padding: 4px 10px;
       }
 
       textarea {
-        width: 90%;
+        width: 100%;
+        box-sizing: border-box;
         padding: 8px;
-        border: 1px solid #000;
+        border: 1px solid var(--border);
         border-radius: 4px;
+        background: var(--field-bg);
+        color: var(--field-fg);
+        font: inherit;
+        /* No resize grip in the corner. */
+        resize: none;
       }
 
-      #other_options {
-        height: 300px;
-      }
-
+      #other_options,
       #llm_context {
         height: 150px;
+      }
+
+      /* Round info badge: a bordered "i" that inherits the theme's text color and scales with the font. */
+      .info-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.25em;
+        height: 1.25em;
+        border: 1px solid currentColor;
+        border-radius: 50%;
+        font-size: 0.75em;
+        font-style: italic;
+        font-family: Georgia, "Times New Roman", serif;
+        line-height: 1;
+        vertical-align: middle;
+        margin-left: 4px;
+        cursor: help;
+        color: var(--fg);
+        user-select: none;
       }
 
       .folder-path-badge {
@@ -74,39 +184,16 @@
         cursor: default;
       }
 
-      /* Available folder paths, each with a copy button. */
-      .folder-path-list {
-        font-size: 12px;
-        background: #f5f5f5;
-        padding: 8px;
-        border-radius: 4px;
-        max-height: 200px;
-        overflow-y: auto;
-      }
-
-      .folder-path-row {
+      /* A button plus its status message on one line (e.g. "Show available folder paths"). */
+      .inline-controls {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 2px 0;
+        gap: 10px;
       }
 
-      .folder-path-row .path-text {
-        flex: 1 1 auto;
-        overflow-wrap: anywhere;
-        font-family: monospace;
-      }
-
-      .copy-path-btn {
-        flex: 0 0 auto;
-        padding: 2px 8px;
-        font-size: 12px;
-        margin-bottom: 0;
-        background-color: #6c757d;
-      }
-
-      .copy-path-btn:hover {
-        background-color: #545b62;
+      /* Push this item (and everything after it) to the right end of a flex row. */
+      .push-right {
+        margin-left: auto;
       }
 
       .folder-rule-row {
@@ -119,34 +206,25 @@
       .folder-rule-row input {
         flex: 1;
         padding: 6px;
-        border: 1px solid #ddd;
+        border: 1px solid var(--border);
         border-radius: 4px;
+        background: var(--field-bg);
+        color: var(--field-fg);
+        font: inherit;
       }
 
       .folder-rule-row .description-input {
         flex: 2;
       }
 
+      /* Neutral black/white delete button (adapts to the theme) rather than a coloured one. */
       .remove-rule-btn {
-        padding: 4px 10px;
-        background-color: #dc3545;
-        font-size: 12px;
-        margin-bottom: 0;
+        background-color: transparent;
+        color: var(--fg);
       }
 
       .remove-rule-btn:hover {
-        background-color: #a71d2a;
-      }
-
-      #add-folder-rule-btn {
-        background-color: #28a745;
-        padding: 6px 12px;
-        font-size: 13px;
-        margin-top: 4px;
-      }
-
-      #add-folder-rule-btn:hover {
-        background-color: #1e7e34;
+        background-color: var(--subtle-bg);
       }
 
       .folder-rule-header {
@@ -154,7 +232,7 @@
         gap: 8px;
         margin-bottom: 4px;
         font-size: 12px;
-        color: #555;
+        color: var(--muted);
       }
 
       .folder-rule-header span:first-child { flex: 1; }
@@ -204,40 +282,29 @@
         }
       }
 
-      .url-permission-row {
+      /* "Other options" label, the query-models button, and its status share one row. */
+      .other-options-header {
         display: flex;
         align-items: center;
-        gap: 8px;
-        margin-top: 6px;
-      }
-      #url-permission-status {
-        font-size: 13px;
-      }
-
-      .models-controls {
-        display: flex;
-        align-items: center;
+        flex-wrap: wrap;
         gap: 10px;
-        margin-top: 6px;
+        margin-bottom: 5px;
       }
 
-      #query-models-btn {
-        padding: 6px 12px;
-        font-size: 13px;
+      .other-options-header label {
         margin-bottom: 0;
-        background-color: #6c757d;
       }
 
-      #query-models-btn:hover {
-        background-color: #545b62;
-      }
 
       .models-status {
         font-size: 12px;
-        color: #555;
+        color: var(--muted);
       }
 
-      /* Discovered models, each with an arrow that applies it to the "other options" JSON. */
+      /*
+       * Discovered models / available folder paths. Each row is itself the clickable control
+       * (applies the model, or copies the path) — it highlights on hover/focus.
+       */
       .model-list {
         margin-top: 6px;
         max-height: 200px;
@@ -252,8 +319,16 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 2px 0;
+        padding: 4px 6px;
         font-size: 12px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      .model-row:hover,
+      .model-row:focus-visible {
+        background: var(--subtle-bg);
+        outline: none;
       }
 
       .model-row .model-id {
@@ -262,17 +337,11 @@
         font-family: monospace;
       }
 
-      .apply-model-btn {
+      /* Transient "Copied!" confirmation shown at the end of a folder row after clicking. */
+      .copied-flag {
         flex: 0 0 auto;
-        padding: 2px 10px;
-        font-size: 14px;
-        line-height: 1;
-        margin-bottom: 0;
-        background-color: #28a745;
-      }
-
-      .apply-model-btn:hover {
-        background-color: #1e7e34;
+        font-size: 12px;
+        color: var(--accent);
       }
     </style>
   </head>
@@ -281,24 +350,22 @@
       <form id="settingsForm">
         <div class="settings-section">
           <h2>LLM API Settings</h2>
-          <div class="form-group">
-            <label for="url">URL:</label>
-            <input type="text" id="url" name="URL" />
-            <div class="url-permission-row">
-              <button type="button" id="grant-access-btn">Grant access</button>
-              <span id="url-permission-status"></span>
+          <div class="form-group form-row">
+            <div class="url-label-group">
+              <label for="url">URL:</label>
+              <button type="button" id="grant-access-btn" class="push-right">Grant access</button>
+              <span id="url-permission-status" class="folder-path-badge"></span>
             </div>
+            <input type="text" id="url" name="URL" />
           </div>
-          <div class="form-group">
+          <div class="form-group form-row">
             <label for="api_token">Api token:</label>
             <input type="text" id="api_token" name="api token" />
           </div>
-          <div class="form-group">
+          <div class="form-group form-row">
             <label for="timeout">
               Request timeout (seconds):
-              <sup title="Timeout for API requests in seconds. Leave empty or set to 0 for no timeout.">
-                &#8505;&#65039;
-              </sup>
+              <span class="info-icon" title="Timeout for API requests in seconds. Leave empty or set to 0 for no timeout.">i</span>
             </label>
             <input type="number" id="timeout" name="timeout" min="0" step="1" placeholder="No timeout" />
           </div>
@@ -310,30 +377,26 @@
             <label for="llm_context">LLM Context:</label>
             <textarea id="llm_context" name="llm context window"> </textarea>
           </div>
-          <div class="form-group">
+          <div class="form-group checkbox-row">
             <input type="checkbox" id="use_last_mails" name="use last mails" />
-            <label for="use_last_mails" style="display: inline-block; margin-left: 5px"
-              >Use last few mails to same recipient as context</label
-            >
+            <label for="use_last_mails">Use last few mails to same recipient as context</label>
           </div>
         </div>
 
         <div class="settings-section">
           <h2>Response</h2>
-          <div class="form-group">
+          <div class="form-group checkbox-row">
             <input type="checkbox" id="strip_think_tag" name="strip think tag" />
-            <label for="strip_think_tag" style="display: inline-block; margin-left: 5px">
+            <label for="strip_think_tag">
               Remove &lt;think&gt; tag and its content from the response
-              <sup title="When enabled, any &lt;think&gt;...&lt;/think&gt; block produced by reasoning models will be stripped from the response before it is inserted into the composer.">
-                &#8505;&#65039;
-              </sup>
+              <span class="info-icon" title="When enabled, any &lt;think&gt;...&lt;/think&gt; block produced by reasoning models will be stripped from the response before it is inserted into the composer.">i</span>
             </label>
           </div>
         </div>
 
         <div class="settings-section">
           <h2>Organise Folder</h2>
-          <p style="font-size:13px;color:#555;margin-bottom:8px;">
+          <p style="font-size:13px;color:var(--muted);margin-bottom:8px;">
             Define folders and descriptions so the LLM can organise emails and move them automatically.
             Emails that do not clearly match any folder are kept in place.
           </p>
@@ -343,45 +406,37 @@
             <span>Description for the LLM</span>
           </div>
           <div id="folder-rules-list"></div>
-          <button type="button" id="add-folder-rule-btn">+ Add Rule</button>
-
-          <details style="margin-top:12px;">
-            <summary style="cursor:pointer;font-size:13px;color:#333;">
-              Available folder paths
-              <button type="button" id="refresh-folder-paths-btn"
-                style="margin-left:10px;padding:2px 8px;font-size:12px;margin-bottom:0;">
-                ↺ Refresh
-              </button>
-            </summary>
-            <p id="folder-paths-status" style="font-size:12px;color:#555;margin:4px 0;"></p>
-            <div id="available-folder-paths" class="folder-path-list"></div>
-          </details>
+          <div class="inline-controls" style="margin-top:4px;">
+            <button type="button" id="add-folder-rule-btn">+ Add Rule</button>
+            <span id="folder-paths-status" class="models-status push-right"></span>
+            <button type="button" id="refresh-folder-paths-btn"
+              title="List the folder paths available in your mailbox">
+              Show available folder paths
+            </button>
+          </div>
+          <div id="available-folder-paths" class="model-list"></div>
         </div>
 
         <div class="settings-section">
           <h2>Reports</h2>
-          <p style="font-size:13px;color:#555;margin-bottom:8px;">
+          <p style="font-size:13px;color:var(--muted);margin-bottom:8px;">
             Settings for the agentic "Create Report" feature (action button → Create Report…).
           </p>
-          <div class="form-group">
+          <div class="form-group form-row">
             <label for="report_default_days">Default days in the past:</label>
             <input type="number" id="report_default_days" name="report default days" min="1" step="1" />
           </div>
-          <div class="form-group">
+          <div class="form-group form-row">
             <label for="report_max_search_results">
               Max search results per query:
-              <sup title="Upper bound on messages returned by a single search_messages tool call. Lower values reduce token usage.">
-                &#8505;&#65039;
-              </sup>
+              <span class="info-icon" title="Upper bound on messages returned by a single search_messages tool call. Lower values reduce token usage.">i</span>
             </label>
             <input type="number" id="report_max_search_results" name="report max search results" min="1" step="1" />
           </div>
-          <div class="form-group">
+          <div class="form-group form-row">
             <label for="report_max_steps">
               Max agentic steps:
-              <sup title="Upper bound on tool-calling iterations per report. Bounds cost; raise it for more complex reports.">
-                &#8505;&#65039;
-              </sup>
+              <span class="info-icon" title="Upper bound on tool-calling iterations per report. Bounds cost; raise it for more complex reports.">i</span>
             </label>
             <input type="number" id="report_max_steps" name="report max steps" min="1" step="1" />
           </div>
@@ -390,23 +445,23 @@
         <div class="settings-section">
           <h2>Model settings</h2>
           <div class="form-group">
-            <label for="context_window">Context window:</label>
-            <input type="number" id="context_window" name="context window" min="1"/>
-            <label for="other_options">
-              Other options (json):
-              <sup title="These are options added as 'params' in the request body when calling the LLM endpoint configured above. See the documentation of that endpoint for available options. 'params.messages' is added/overwritten by the plugin. Typically a 'model' key can be used to select different models if available.">
-                &#8505;&#65039;
-              </sup>
-            </label>
-            <textarea id="other_options" name="other option window"> </textarea>
-            <div class="models-controls">
+            <div class="form-row">
+              <label for="context_window">Context window:</label>
+              <input type="number" id="context_window" name="context window" min="1"/>
+            </div>
+            <div class="other-options-header">
+              <label for="other_options">
+                Other options (json):
+                <span class="info-icon" title="These are options added as 'params' in the request body when calling the LLM endpoint configured above. See the documentation of that endpoint for available options. 'params.messages' is added/overwritten by the plugin. Typically a 'model' key can be used to select different models if available.">i</span>
+              </label>
+              <span id="models-status" class="models-status push-right"></span>
               <button type="button" id="query-models-btn"
                 title="Query the endpoint's available models (GET {base}/models)">
                 Query available models
               </button>
-              <span id="models-status" class="models-status"></span>
             </div>
             <div id="models-list" class="model-list"></div>
+            <textarea id="other_options" name="other option window"> </textarea>
           </div>
         </div>
       </form>

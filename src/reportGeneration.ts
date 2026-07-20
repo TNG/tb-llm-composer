@@ -1,4 +1,4 @@
-import { type AgenticProgress, LlmRoles, runAgenticLlm } from "./llmConnection";
+import { type AgenticProgress, type LlmApiRequestMessage, LlmRoles, runAgenticLlm } from "./llmConnection";
 import { getPluginOptions } from "./optionsParams";
 import {
   assertSearchCapabilities,
@@ -15,7 +15,16 @@ export interface ReportRequest {
   /** When folder-only, also search the account's Sent folder(s) to follow conversations. */
   includeSent?: boolean;
   folder: { accountId: string; path: string } | null;
-  priorReport?: string;
+}
+
+/**
+ * A report generation result plus the state needed to continue the same agent conversation:
+ * the full message history and the scope its tools are bound to.
+ */
+export interface ReportSession {
+  report: string;
+  messages: LlmApiRequestMessage[];
+  scope: ReportScope;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -54,14 +63,15 @@ function toLocalDateYmd(date: Date): string {
 }
 
 /**
- * Run an agentic report generation for the given request. Validates search capabilities first,
- * then loops the LLM with email-search tools, and returns the final plain-text report.
+ * Start a fresh agentic report generation for the given request. Validates search capabilities
+ * first, then loops the LLM with email-search tools. Returns the report plus the conversation
+ * state (messages + scope) so it can be continued via {@link continueReport}.
  */
 export async function generateReport(
   request: ReportRequest,
   abortSignal: AbortSignal,
   onProgress?: (progress: AgenticProgress) => void,
-): Promise<string> {
+): Promise<ReportSession> {
   const startedAt = Date.now();
   const options = await getPluginOptions();
 
@@ -76,41 +86,72 @@ export async function generateReport(
   console.log(
     "REPORT: starting generation " +
       `(days=${request.days}, folderOnly=${request.folderOnly}, folder=${request.folder?.path ?? "(all)"}, ` +
-      `promptChars=${request.prompt.length}, hasPriorReport=${Boolean(request.priorReport?.trim())})`,
+      `promptChars=${request.prompt.length})`,
   );
 
   // Hard requirement: fail loudly if the mailbox cannot be searched the way we need.
   await assertSearchCapabilities(scope);
   console.log("REPORT: search capability probe succeeded");
 
-  const messages = [
+  const messages: LlmApiRequestMessage[] = [
     { role: LlmRoles.SYSTEM, content: REPORT_SYSTEM_PROMPT },
     { role: LlmRoles.USER, content: buildScopePreamble(request) },
+    { role: LlmRoles.USER, content: `Report request:\n${request.prompt}` },
   ];
 
-  if (request.priorReport?.trim()) {
-    messages.push({
-      role: LlmRoles.USER,
-      content:
-        "Here is the previous report. Refine it according to the new instructions below rather than " +
-        `starting from scratch:\n\n${request.priorReport.trim()}`,
-    });
-  }
+  return runReportLoop(messages, scope, options.reportMaxSteps, startedAt, abortSignal, onProgress);
+}
 
-  messages.push({ role: LlmRoles.USER, content: `Report request:\n${request.prompt}` });
+/**
+ * Continue an existing report conversation: append the user's refinement as a new turn and keep
+ * looping the same agent (with its accumulated context and tool history) instead of starting over.
+ */
+export async function continueReport(
+  session: { messages: LlmApiRequestMessage[]; scope: ReportScope },
+  prompt: string,
+  abortSignal: AbortSignal,
+  onProgress?: (progress: AgenticProgress) => void,
+): Promise<ReportSession> {
+  const startedAt = Date.now();
+  const options = await getPluginOptions();
 
-  const handlers = createReportToolHandlers(scope);
   console.log(
-    `REPORT: entering agentic loop (maxSteps=${options.reportMaxSteps}, maxSearchResults=${scope.maxSearchResults})`,
+    `REPORT: continuing conversation (priorMessages=${session.messages.length}, promptChars=${prompt.length})`,
   );
 
+  const messages: LlmApiRequestMessage[] = [
+    ...session.messages,
+    {
+      role: LlmRoles.USER,
+      content:
+        "Refine the previous report according to the following instructions, reusing what you already " +
+        `gathered and only searching again if needed:\n${prompt}`,
+    },
+  ];
+
+  return runReportLoop(messages, session.scope, options.reportMaxSteps, startedAt, abortSignal, onProgress);
+}
+
+/** Shared agentic loop for both fresh and continued report runs. */
+async function runReportLoop(
+  messages: LlmApiRequestMessage[],
+  scope: ReportScope,
+  maxSteps: number,
+  startedAt: number,
+  abortSignal: AbortSignal,
+  onProgress?: (progress: AgenticProgress) => void,
+): Promise<ReportSession> {
+  const options = await getPluginOptions();
+  const handlers = createReportToolHandlers(scope);
+  console.log(`REPORT: entering agentic loop (maxSteps=${maxSteps}, maxSearchResults=${scope.maxSearchResults})`);
+
   try {
-    const rawReport = await runAgenticLlm(
+    const { report: rawReport, messages: finalMessages } = await runAgenticLlm(
       messages,
       reportToolDefinitions,
       handlers,
       abortSignal,
-      options.reportMaxSteps,
+      maxSteps,
       onProgress,
     );
     const finalReport = options.strip_think_tag ? stripThinkTags(rawReport) : rawReport;
@@ -121,7 +162,7 @@ export async function generateReport(
         `strippedThinkTags=${options.strip_think_tag})`,
     );
 
-    return finalReport;
+    return { report: finalReport, messages: finalMessages, scope };
   } catch (e) {
     console.error(`REPORT: generation failed after ${Date.now() - startedAt}ms`, e);
     throw e;

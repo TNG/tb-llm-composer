@@ -1,6 +1,7 @@
 import { getActiveMailFolder, getAllFolderPaths, organiseCurrentFolder } from "./emailOrganising";
 import { handleKeepAliveAlarm } from "./keepAlive";
 import { executeLlmAction, type LlmPluginAction } from "./llmButtonClickHandling";
+import type { AgenticProgress, LlmApiRequestMessage } from "./llmConnection";
 import {
   addLlmActionsToMenu,
   enableSummarizeMenuEntryIfReply,
@@ -11,7 +12,8 @@ import {
 } from "./menu";
 import { notifyOnError, timedNotification } from "./notifications";
 import { deleteFromOriginalTabCache, storeOriginalReplyText } from "./originalTabConversation";
-import { generateReport, type ReportRequest } from "./reportGeneration";
+import { continueReport, generateReport, type ReportRequest } from "./reportGeneration";
+import type { ReportScope } from "./reportTools";
 
 import Tab = browser.tabs.Tab;
 import OnClickData = browser.menus.OnClickData;
@@ -108,6 +110,10 @@ async function toggleOrganiseFolder(): Promise<void> {
 // One AbortController per report window, keyed by the window id.
 const reportAbortControllers = new Map<number, AbortController>();
 
+// Ongoing agent conversation per report window, so refinements can continue it instead of
+// starting over. Cleared when the user starts a new report or the window closes.
+const reportSessions = new Map<number, { messages: LlmApiRequestMessage[]; scope: ReportScope }>();
+
 /** Open the report window, seeding it with the active folder context via URL params. */
 async function openReportWindow(): Promise<void> {
   const folder = await getActiveMailFolder();
@@ -130,19 +136,30 @@ async function openReportWindow(): Promise<void> {
   });
 }
 
-async function runReport(windowId: number, request: ReportRequest): Promise<{ report?: string; error?: string }> {
+async function runReport(
+  windowId: number,
+  request: ReportRequest,
+  continueConversation: boolean,
+): Promise<{ report?: string; error?: string }> {
   // Cancel any previous run for this window before starting a new one.
   reportAbortControllers.get(windowId)?.abort(new DOMException("Superseded by a new report", "AbortError"));
 
   const abortController = new AbortController();
   reportAbortControllers.set(windowId, abortController);
+  const onProgress = (progress: AgenticProgress) => {
+    // Fire-and-forget progress updates to the originating report window. If the
+    // window is gone there is no receiver; ignore the resulting rejection.
+    void browser.runtime.sendMessage({ type: "report-progress", windowId, progress }).catch(() => {});
+  };
   try {
-    const report = await generateReport(request, abortController.signal, (progress) => {
-      // Fire-and-forget progress updates to the originating report window. If the
-      // window is gone there is no receiver; ignore the resulting rejection.
-      void browser.runtime.sendMessage({ type: "report-progress", windowId, progress }).catch(() => {});
-    });
-    return { report };
+    const existing = reportSessions.get(windowId);
+    const session =
+      continueConversation && existing
+        ? await continueReport(existing, request.prompt, abortController.signal, onProgress)
+        : await generateReport(request, abortController.signal, onProgress);
+    // Persist the conversation so the next refinement continues it.
+    reportSessions.set(windowId, { messages: session.messages, scope: session.scope });
+    return { report: session.report };
   } catch (e) {
     if ((e as Error).name === "AbortError") {
       return { error: "Report generation was cancelled." };
@@ -156,13 +173,14 @@ async function runReport(windowId: number, request: ReportRequest): Promise<{ re
   }
 }
 
-// Clean up an in-flight report when its window is closed.
+// Clean up an in-flight report and its conversation when the window is closed.
 browser.windows.onRemoved.addListener((windowId: number) => {
   const controller = reportAbortControllers.get(windowId);
   if (controller) {
     controller.abort(new DOMException("Report window closed", "AbortError"));
     reportAbortControllers.delete(windowId);
   }
+  reportSessions.delete(windowId);
 });
 
 // Register menu entries without blocking listener registration; this keeps
@@ -182,8 +200,9 @@ type ReportFolderPayload = { accountId: string; path: string } | null;
 type RuntimeRequestMessage =
   | { type: "get-folder-paths" }
   | { type: "get-active-folder" }
-  | { type: "generate-report"; windowId: number; request: ReportRequest }
-  | { type: "cancel-report"; windowId: number };
+  | { type: "generate-report"; windowId: number; request: ReportRequest; continueConversation?: boolean }
+  | { type: "cancel-report"; windowId: number }
+  | { type: "reset-report"; windowId: number };
 
 function isRuntimeRequestMessage(value: unknown): value is RuntimeRequestMessage {
   if (!value || typeof value !== "object") return false;
@@ -192,7 +211,8 @@ function isRuntimeRequestMessage(value: unknown): value is RuntimeRequestMessage
     type === "get-folder-paths" ||
     type === "get-active-folder" ||
     type === "generate-report" ||
-    type === "cancel-report"
+    type === "cancel-report" ||
+    type === "reset-report"
   );
 }
 
@@ -212,12 +232,18 @@ browser.runtime.onMessage.addListener((message: unknown) => {
       }));
 
     case "generate-report":
-      return runReport(message.windowId, message.request);
+      return runReport(message.windowId, message.request, message.continueConversation ?? false);
 
     case "cancel-report": {
       const controller = reportAbortControllers.get(message.windowId);
       controller?.abort(new DOMException("User cancelled report", "AbortError"));
       reportAbortControllers.delete(message.windowId);
+      return Promise.resolve({ ok: true });
+    }
+
+    case "reset-report": {
+      // Drop the stored conversation so the next report starts a fresh agent conversation.
+      reportSessions.delete(message.windowId);
       return Promise.resolve({ ok: true });
     }
 

@@ -204,9 +204,9 @@ describe("The options page", () => {
 
     await waitFor(() => {
       expect(permissionsRequestMock).toHaveBeenCalledWith({ origins: ["https://my-llm.com/*"] });
-      expect(optionsDom.window.document.getElementById("url-permission-status")?.textContent).toContain(
-        "Access granted",
-      );
+      const statusBadge = optionsDom.window.document.getElementById("url-permission-status") as HTMLElement;
+      expect(statusBadge.textContent).toBe("✅");
+      expect(statusBadge.title).toContain("Access granted");
     });
   });
 
@@ -221,7 +221,9 @@ describe("The options page", () => {
     await waitFor(() => {
       expect(jsDomNotifications).toHaveLength(1);
       expect(jsDomNotifications[0].message).toContain("not granted");
-      expect(optionsDom.window.document.getElementById("url-permission-status")?.textContent).toContain("not granted");
+      expect((optionsDom.window.document.getElementById("url-permission-status") as HTMLElement).title).toContain(
+        "not granted",
+      );
     });
   });
 
@@ -237,7 +239,7 @@ describe("The options page", () => {
     expect(permissionsRequestMock).not.toHaveBeenCalled();
   });
 
-  test("lists available folder paths each with a copy button that copies the path", async () => {
+  test("lists available folder paths and copies a path when its row is clicked", async () => {
     const win = optionsDom.window;
     const doc = win.document;
     const clipboardWriteMock = vi.fn().mockResolvedValue(undefined);
@@ -249,17 +251,18 @@ describe("The options page", () => {
     (doc.getElementById("refresh-folder-paths-btn") as HTMLButtonElement).click();
 
     await waitFor(() => {
-      const rows = doc.querySelectorAll("#available-folder-paths .folder-path-row");
+      const rows = doc.querySelectorAll("#available-folder-paths .model-row");
       expect(rows.length).toBeGreaterThan(0);
     });
 
-    const firstPath = (doc.querySelector("#available-folder-paths .path-text") as HTMLElement).textContent;
-    const firstCopyBtn = doc.querySelector("#available-folder-paths .copy-path-btn") as HTMLButtonElement;
-    firstCopyBtn.click();
+    const firstRow = doc.querySelector("#available-folder-paths .model-row") as HTMLElement;
+    const firstPath = (firstRow.querySelector(".model-id") as HTMLElement).textContent;
+    firstRow.click();
 
     await waitFor(() => {
       expect(clipboardWriteMock).toHaveBeenCalledWith(firstPath);
-      expect(firstCopyBtn.textContent).toBe("Copied!");
+      // Confirmation shows a transient "Copied!" flag on the row.
+      expect(firstRow.querySelector(".copied-flag")?.textContent).toBe("Copied!");
     });
   });
 
@@ -283,8 +286,8 @@ describe("The options page", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://my-llm.com/v1/models", expect.anything());
 
     // Applying a model upserts params.model while preserving existing keys.
-    const applyButtons = doc.querySelectorAll("#models-list .apply-model-btn");
-    (applyButtons[1] as HTMLButtonElement).click();
+    const modelRows = doc.querySelectorAll("#models-list .model-row");
+    (modelRows[1] as HTMLElement).click();
 
     await waitFor(() => {
       const params = JSON.parse((doc.getElementById("other_options") as HTMLTextAreaElement).value);
