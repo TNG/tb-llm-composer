@@ -99,9 +99,9 @@ async function toggleOrganiseFolder(): Promise<void> {
     } finally {
       if (organiseAbortController === abortController) {
         organiseAbortController = null;
+        await setOrganiseActionState(false);
+        await restoreActionMenu();
       }
-      await setOrganiseActionState(false);
-      await restoreActionMenu();
     }
   });
 }

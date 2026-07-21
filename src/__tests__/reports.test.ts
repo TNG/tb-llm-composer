@@ -44,9 +44,16 @@ const mockBrowser = {
   },
   storage: {
     sync: {
-      get: async (key: string) => ({ [key]: syncStore[key] }),
+      get: async (keys: string | string[]) => {
+        const result: Record<string, unknown> = {};
+        for (const key of Array.isArray(keys) ? keys : [keys]) result[key] = syncStore[key];
+        return result;
+      },
       set: async (items: Record<string, unknown>) => {
         Object.assign(syncStore, items);
+      },
+      remove: async (keys: string | string[]) => {
+        for (const key of Array.isArray(keys) ? keys : [keys]) delete syncStore[key];
       },
     },
   },
@@ -248,6 +255,7 @@ describe("The report popup", () => {
       expect(doc.getElementById("status")?.textContent).toContain('Deleted prompt "Action items"');
     });
     expect(syncStore.reportPrompts).toEqual([]);
+    expect(syncStore["reportPrompt:Action items"]).toBeUndefined();
   });
 
   test("persists saved prompts across popup reloads", async () => {
@@ -258,7 +266,8 @@ describe("The report popup", () => {
     (doc.getElementById("save-prompt-btn") as HTMLButtonElement).click();
 
     await waitFor(() => {
-      expect(syncStore.reportPrompts).toEqual([{ name: "Digest", text: "Weekly digest" }]);
+      expect(syncStore.reportPrompts).toEqual(["Digest"]);
+      expect(syncStore["reportPrompt:Digest"]).toBe("Weekly digest");
     });
 
     // Reopen the popup: the saved prompt is listed again from storage.
