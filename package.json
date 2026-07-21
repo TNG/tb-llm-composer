@@ -33,7 +33,7 @@
   ],
   "author": "TNG Technology Consulting GmbH",
   "devDependencies": {
-    "@biomejs/biome": "^2.5.3",
+    "@biomejs/biome": "^2.5.5",
     "@types/jsdom": "^28.0.3",
     "@types/thunderbird-webext-browser": "^127.0.0",
     "@vitest/browser": "^4.1.10",
@@ -44,7 +44,7 @@
     "terser-webpack-plugin": "^5.6.1",
     "ts-loader": "^9.6.2",
     "typescript": "^6.0.3",
-    "vite": "^8.1.4",
+    "vite": "^8.1.5",
     "vitest": "^4.1.10",
     "vitest-fetch-mock": "^0.4.5",
     "webpack": "^5.108.4",
