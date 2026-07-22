@@ -23,6 +23,7 @@ document.querySelector("#report_max_search_results")?.addEventListener("change",
 document.querySelector("#report_max_steps")?.addEventListener("change", updateReportMaxSteps);
 document.querySelector("#report_max_message_bodies")?.addEventListener("change", updateReportMaxMessageBodies);
 document.querySelector("#report_max_total_body_chars")?.addEventListener("change", updateReportMaxTotalBodyChars);
+document.querySelector("#confirm_moves")?.addEventListener("change", updateConfirmMovesBeforeApplying);
 document.querySelector("#add-folder-rule-btn")?.addEventListener("click", addFolderRuleRow);
 document.querySelector("#refresh-folder-paths-btn")?.addEventListener("click", toggleFolderPaths);
 document.querySelector("#query-models-btn")?.addEventListener("click", toggleAvailableModels);
@@ -115,6 +116,13 @@ async function updateStripThinkTag(event: Event) {
   const stripThinkTagInput = event.target as HTMLInputElement;
   const options = await getPluginOptions();
   options.strip_think_tag = stripThinkTagInput.checked;
+  await browser.storage.sync.set({ options });
+}
+
+async function updateConfirmMovesBeforeApplying(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const options = await getPluginOptions();
+  options.confirmMovesBeforeApplying = input.checked;
   await browser.storage.sync.set({ options });
 }
 
@@ -330,6 +338,7 @@ export async function restoreOptions(): Promise<void> {
   getInputElement("#context_window").value = `${options.context_window}`;
   getInputElement("#use_last_mails").checked = options.include_recent_mails;
   getInputElement("#strip_think_tag").checked = options.strip_think_tag ?? true;
+  getInputElement("#confirm_moves").checked = options.confirmMovesBeforeApplying ?? true;
   getInputElement("#other_options").value = JSON.stringify(options.params, null, 2);
   getInputElement("#llm_context").value = options.llmContext;
   getInputElement("#report_default_days").value = `${options.reportDefaultDays}`;

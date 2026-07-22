@@ -250,11 +250,6 @@
         flex: 1 1 60%;
         min-width: 0;
       }
-      .saved-row .icon-btn {
-        flex: 0 0 auto;
-        width: 1.9em;
-        height: 1.9em;
-      }
       .icon-btn:disabled {
         opacity: 0.4;
         cursor: default;
@@ -303,6 +298,14 @@
       .icon-btn:focus-visible {
         outline: 2px solid var(--accent);
         outline-offset: 1px;
+      }
+      /* Sized icon buttons in the saved-prompts row. .saved-row .icon-btn overrides .icon-btn by its
+         greater specificity (0,2,0 vs 0,1,0), regardless of order; it is kept after the base rules only
+         to satisfy the no-descending-specificity lint rule. */
+      .saved-row .icon-btn {
+        flex: 0 0 auto;
+        width: 1.9em;
+        height: 1.9em;
       }
       /* Icon size is set in em so glyphs scale with Thunderbird's UI font size. */
       .icon-btn svg {

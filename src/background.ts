@@ -1,4 +1,16 @@
-import { getActiveMailFolder, getAllFolderPaths, organiseCurrentFolder } from "./emailOrganising";
+import {
+  applyOrganisePlan,
+  getActiveMailFolder,
+  getAllFolderPaths,
+  type MoveSource,
+  type OrganiseAssignment,
+  type OrganiseFolderOption,
+  type OrganisePlan,
+  type OrganisePlanEntry,
+  organiseCurrentFolder,
+  planOrganiseCurrentFolder,
+  resolveFolderPath,
+} from "./emailOrganising";
 import { handleKeepAliveAlarm } from "./keepAlive";
 import { executeLlmAction, type LlmPluginAction } from "./llmButtonClickHandling";
 import type { AgenticProgress, LlmApiRequestMessage } from "./llmConnection";
@@ -11,6 +23,7 @@ import {
   updateOrganiseProgressMenu,
 } from "./menu";
 import { notifyOnError, timedNotification } from "./notifications";
+import { getPluginOptions } from "./optionsParams";
 import { deleteFromOriginalTabCache, storeOriginalReplyText } from "./originalTabConversation";
 import { continueReport, generateReport, type ReportRequest } from "./reportGeneration";
 import type { ReportScope } from "./reportTools";
@@ -78,24 +91,41 @@ async function setOrganiseActionState(loading: boolean, percent?: number) {
 async function toggleOrganiseFolder(): Promise<void> {
   if (organiseAbortController) {
     console.log("ORGANISE: Aborting existing organise-folder run");
-    // Just signal the abort; the in-flight run resets the UI and shows the
-    // final popup (with what was moved so far) from its finally block below.
+    // Just signal the abort; the in-flight run resets the UI and shows its summary notification.
     organiseAbortController.abort(new DOMException("User cancelled organise folder", "AbortError"));
     organiseAbortController = null;
     return;
   }
+
+  const options = await getPluginOptions();
+  const confirmBeforeMoving = options.confirmMovesBeforeApplying ?? true;
 
   const abortController = new AbortController();
   organiseAbortController = abortController;
   await setOrganiseActionState(true, 0);
   await showOrganiseProgressMenu(0);
 
+  const onProgress = async (percent: number) => {
+    await setOrganiseActionState(true, percent);
+    await updateOrganiseProgressMenu(percent);
+  };
+
   await notifyOnError(async () => {
     try {
-      await organiseCurrentFolder(abortController.signal, async (percent) => {
-        await setOrganiseActionState(true, percent);
-        await updateOrganiseProgressMenu(percent);
-      });
+      if (confirmBeforeMoving) {
+        // Classify only, then let the user confirm/adjust in a popup before anything moves.
+        const plan = await planOrganiseCurrentFolder(abortController.signal, onProgress);
+        if (plan && !abortController.signal.aborted) {
+          if (plan.entries.length === 0) {
+            await timedNotification("Organise Folder", "No movable emails in this folder.", 5000);
+          } else {
+            await openConfirmWindow(plan);
+          }
+        }
+      } else {
+        // Classify and move automatically, in batches.
+        await organiseCurrentFolder(abortController.signal, onProgress);
+      }
     } finally {
       if (organiseAbortController === abortController) {
         organiseAbortController = null;
@@ -104,6 +134,76 @@ async function toggleOrganiseFolder(): Promise<void> {
       }
     }
   });
+}
+
+// ── Organise-folder confirmation popup ──────────────────────────────────────────
+// The pending plan is persisted (not just held in memory) because MV3 may suspend the background page
+// while the confirmation window is open; an in-memory map would be lost by the time the user clicks OK.
+// Only serialisable data is stored (entries + folder metadata + source); destination folders are
+// re-resolved from their paths at apply time.
+interface StoredConfirmPlan {
+  entries: OrganisePlanEntry[];
+  folders: OrganiseFolderOption[];
+  source: MoveSource | null;
+}
+
+// storage.session survives background suspension but is cleared on browser restart (ideal here). Fall
+// back to storage.local on builds without a session area.
+const confirmPlanStore = browser.storage.session ?? browser.storage.local;
+const confirmPlanKey = (windowId: number) => `organiseConfirmPlan:${windowId}`;
+
+async function saveConfirmPlan(windowId: number, plan: StoredConfirmPlan): Promise<void> {
+  await confirmPlanStore.set({ [confirmPlanKey(windowId)]: plan });
+}
+
+async function loadConfirmPlan(windowId: number): Promise<StoredConfirmPlan | undefined> {
+  const key = confirmPlanKey(windowId);
+  const stored = await confirmPlanStore.get(key);
+  return stored?.[key] as StoredConfirmPlan | undefined;
+}
+
+async function deleteConfirmPlan(windowId: number): Promise<void> {
+  await confirmPlanStore.remove(confirmPlanKey(windowId));
+}
+
+/** Open the confirmation popup for a plan and persist it so the window can fetch and apply it. */
+async function openConfirmWindow(plan: OrganisePlan): Promise<void> {
+  // organiseConfirm.html sits next to the options page in public/. Resolve it relative to the options
+  // page URL so the path is correct in both the repo and the packaged build (see openReportWindow).
+  const optionsPage = browser.runtime.getManifest().options_ui?.page ?? "public/options.html";
+  const confirmUrl = new URL("organiseConfirm.html", browser.runtime.getURL(optionsPage)).href;
+
+  const win = await browser.windows.create({
+    type: "popup",
+    url: confirmUrl,
+    width: 620,
+    height: 680,
+  });
+  if (win.id !== undefined) {
+    await saveConfirmPlan(win.id, { entries: plan.entries, folders: plan.folders, source: plan.source });
+  }
+}
+
+/** Apply the user-confirmed assignments for a confirmation window. */
+async function applyConfirmedPlan(
+  windowId: number,
+  assignments: OrganiseAssignment[],
+): Promise<{ ok: boolean; error?: string }> {
+  const plan = await loadConfirmPlan(windowId);
+  if (!plan) {
+    return { ok: false, error: "This organisation plan is no longer available." };
+  }
+  try {
+    // Re-resolve the destination folders from their paths (index-aligned with the folder options).
+    const resolvedFolders = await Promise.all(plan.folders.map((folder) => resolveFolderPath(folder.path)));
+    const abortController = new AbortController();
+    await applyOrganisePlan(assignments, resolvedFolders, plan.source, abortController.signal);
+    await deleteConfirmPlan(windowId);
+    return { ok: true };
+  } catch (e) {
+    console.warn("ORGANISE: failed to apply confirmed plan", e);
+    return { ok: false, error: (e as Error).message };
+  }
 }
 
 // ── Create-report flow ────────────────────────────────────────────────────────
@@ -181,6 +281,8 @@ browser.windows.onRemoved.addListener((windowId: number) => {
     reportAbortControllers.delete(windowId);
   }
   reportSessions.delete(windowId);
+  // Closing the confirmation window without applying cancels the plan (nothing was moved).
+  void deleteConfirmPlan(windowId).catch(() => {});
 });
 
 // Register menu entries without blocking listener registration; this keeps
@@ -202,7 +304,9 @@ type RuntimeRequestMessage =
   | { type: "get-active-folder" }
   | { type: "generate-report"; windowId: number; request: ReportRequest; continueConversation?: boolean }
   | { type: "cancel-report"; windowId: number }
-  | { type: "reset-report"; windowId: number };
+  | { type: "reset-report"; windowId: number }
+  | { type: "get-organise-plan"; windowId: number }
+  | { type: "apply-organise-plan"; windowId: number; assignments: OrganiseAssignment[] };
 
 function isRuntimeRequestMessage(value: unknown): value is RuntimeRequestMessage {
   if (!value || typeof value !== "object") return false;
@@ -212,7 +316,9 @@ function isRuntimeRequestMessage(value: unknown): value is RuntimeRequestMessage
     type === "get-active-folder" ||
     type === "generate-report" ||
     type === "cancel-report" ||
-    type === "reset-report"
+    type === "reset-report" ||
+    type === "get-organise-plan" ||
+    type === "apply-organise-plan"
   );
 }
 
@@ -246,6 +352,16 @@ browser.runtime.onMessage.addListener((message: unknown) => {
       reportSessions.delete(message.windowId);
       return Promise.resolve({ ok: true });
     }
+
+    case "get-organise-plan":
+      return loadConfirmPlan(message.windowId).then((plan) => ({
+        entries: plan?.entries ?? [],
+        folders: plan?.folders ?? [],
+        sourceName: plan?.source?.name ?? "",
+      }));
+
+    case "apply-organise-plan":
+      return applyConfirmedPlan(message.windowId, message.assignments);
 
     default:
       return false;
