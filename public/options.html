@@ -440,6 +440,20 @@
             </label>
             <input type="number" id="report_max_steps" name="report max steps" min="1" step="1" />
           </div>
+          <div class="form-group form-row">
+            <label for="report_max_message_bodies">
+              Max message bodies per report:
+              <span class="info-icon" title="Upper bound on how many full email bodies a single report may read (via get_messages). Bodies are always read in full; this caps how many.">i</span>
+            </label>
+            <input type="number" id="report_max_message_bodies" name="report max message bodies" min="1" step="1" />
+          </div>
+          <div class="form-group form-row">
+            <label for="report_max_total_body_chars">
+              Max total body characters per report:
+              <span class="info-icon" title="Run-level ceiling on the combined characters of all bodies read in one report. Once reached, no further bodies are served. The main knob for keeping token use predictable.">i</span>
+            </label>
+            <input type="number" id="report_max_total_body_chars" name="report max total body chars" min="1" step="1" />
+          </div>
         </div>
 
         <div class="settings-section">

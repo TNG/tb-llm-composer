@@ -21,6 +21,8 @@ document.querySelector("#other_options")?.addEventListener("change", updateOther
 document.querySelector("#report_default_days")?.addEventListener("change", updateReportDefaultDays);
 document.querySelector("#report_max_search_results")?.addEventListener("change", updateReportMaxSearchResults);
 document.querySelector("#report_max_steps")?.addEventListener("change", updateReportMaxSteps);
+document.querySelector("#report_max_message_bodies")?.addEventListener("change", updateReportMaxMessageBodies);
+document.querySelector("#report_max_total_body_chars")?.addEventListener("change", updateReportMaxTotalBodyChars);
 document.querySelector("#add-folder-rule-btn")?.addEventListener("click", addFolderRuleRow);
 document.querySelector("#refresh-folder-paths-btn")?.addEventListener("click", toggleFolderPaths);
 document.querySelector("#query-models-btn")?.addEventListener("click", toggleAvailableModels);
@@ -281,7 +283,12 @@ async function applyModelToOtherOptions(model: string): Promise<void> {
 /** Persist a positive-integer numeric option, ignoring empty/invalid input. */
 async function updatePositiveIntOption(
   event: Event,
-  key: "reportDefaultDays" | "reportMaxSearchResults" | "reportMaxSteps",
+  key:
+    | "reportDefaultDays"
+    | "reportMaxSearchResults"
+    | "reportMaxSteps"
+    | "reportMaxMessageBodies"
+    | "reportMaxTotalBodyChars",
 ) {
   const input = event.target as HTMLInputElement;
   const value = input.valueAsNumber;
@@ -305,6 +312,14 @@ async function updateReportMaxSteps(event: Event) {
   await updatePositiveIntOption(event, "reportMaxSteps");
 }
 
+async function updateReportMaxMessageBodies(event: Event) {
+  await updatePositiveIntOption(event, "reportMaxMessageBodies");
+}
+
+async function updateReportMaxTotalBodyChars(event: Event) {
+  await updatePositiveIntOption(event, "reportMaxTotalBodyChars");
+}
+
 export async function restoreOptions(): Promise<void> {
   const options = await getPluginOptions();
 
@@ -320,6 +335,8 @@ export async function restoreOptions(): Promise<void> {
   getInputElement("#report_default_days").value = `${options.reportDefaultDays}`;
   getInputElement("#report_max_search_results").value = `${options.reportMaxSearchResults}`;
   getInputElement("#report_max_steps").value = `${options.reportMaxSteps}`;
+  getInputElement("#report_max_message_bodies").value = `${options.reportMaxMessageBodies}`;
+  getInputElement("#report_max_total_body_chars").value = `${options.reportMaxTotalBodyChars}`;
 
   const rules = options.folderSortingRules ?? [];
   const list = document.querySelector("#folder-rules-list");

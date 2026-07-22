@@ -75,7 +75,7 @@ describe("reportGeneration", () => {
     expect(tools).toEqual([{ type: "function", function: { name: "search_messages" } }]);
     expect(handlers).toEqual({ search_messages: expect.any(Function) });
     expect(signal).toBe(abortSignal);
-    expect(maxSteps).toBe(8); // DEFAULT_OPTIONS.reportMaxSteps
+    expect(maxSteps).toBe(20); // DEFAULT_OPTIONS.reportMaxSteps
     expect(messages[0].role).toBe("system");
     expect(messages.some((m: { content: string }) => m.content.includes("Make me a todo list"))).toBe(true);
     expect(
@@ -104,9 +104,10 @@ describe("reportGeneration", () => {
     const scope = {
       folderOnly: true,
       folder: { accountId: "a", path: "/INBOX" },
-      includeSent: false,
       defaultDays: 14,
       maxSearchResults: 50,
+      maxMessageBodies: 25,
+      maxTotalBodyChars: 60000,
     };
 
     await continueReport({ messages: priorMessages, scope }, "Add deadlines", abortSignal);
