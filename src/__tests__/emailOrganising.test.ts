@@ -12,6 +12,7 @@ vi.mock("../llmConnection", () => ({
   LlmRoles: {
     SYSTEM: "system",
     USER: "user",
+    ASSISTANT: "assistant",
   },
   sendContentToLlm: sendContentToLlmMock,
   isLlmTextCompletionResponse: (response: unknown) => {
@@ -252,9 +253,9 @@ describe("emailOrganising", () => {
 
     await organiseCurrentFolder(new AbortController().signal);
 
-    expect(messagesMove).toHaveBeenCalledTimes(2);
-    expect(messagesMove).toHaveBeenNthCalledWith(1, [8], "target-id");
-    expect(messagesMove).toHaveBeenNthCalledWith(2, [7], "target-id");
+    // Both emails target the same folder, so they are moved together in a single API call.
+    expect(messagesMove).toHaveBeenCalledTimes(1);
+    expect(messagesMove).toHaveBeenNthCalledWith(1, [8, 7], "target-id");
     expect(timedNotificationMock).toHaveBeenCalledWith(
       "Organise Folder Complete",
       "Moved 2 email(s). 0 email(s) kept in place.",
@@ -262,7 +263,65 @@ describe("emailOrganising", () => {
     );
   });
 
-  test("keeps messages in place when LLM response has no choice message content", async () => {
+  test("still moves emails when the endpoint rejects JSON output mode by throwing", async () => {
+    const messagesMove = vi.fn().mockResolvedValue(undefined);
+
+    // First call (JSON output mode requested) throws as if the endpoint rejected `response_format`;
+    // the plain-text retry succeeds. The email must still be classified and moved.
+    sendContentToLlmMock
+      .mockRejectedValueOnce(new Error("LLM-CONNECTION: Error response: unknown field response_format"))
+      .mockResolvedValueOnce({
+        status: 1,
+        id: "mock-response-id",
+        created: 1,
+        model: "mock-model",
+        choices: [{ message: { role: "system", content: '{"classifications":[{"id":15,"folder":1}]}' } }],
+      });
+
+    global.browser = {
+      accounts: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: "acc-1",
+            rootFolder: { id: "root-id", accountId: "acc-1", path: "/", name: "root" },
+            folders: [{ id: "target-id", accountId: "acc-1", path: "/target", name: "Target" }],
+          },
+        ]),
+      },
+      mailTabs: {
+        query: vi.fn().mockResolvedValue([
+          {
+            displayedFolder: { id: "folder-id", accountId: "acc-1", path: "/inbox", name: "Inbox" },
+          },
+        ]),
+      },
+      messages: {
+        list: vi.fn().mockResolvedValue({
+          id: undefined,
+          messages: [{ id: 15, author: "alice@example.com", subject: "Quarterly report" }],
+        }),
+        continueList: vi.fn(),
+        getFull: vi.fn().mockResolvedValue({ contentType: "text/plain", body: "Please process this message" }),
+        move: messagesMove,
+      },
+      folders: {
+        getSubFolders: vi.fn(),
+      },
+    } as unknown as typeof browser;
+
+    await organiseCurrentFolder(new AbortController().signal);
+
+    expect(sendContentToLlmMock).toHaveBeenCalledTimes(2);
+    expect(messagesMove).toHaveBeenCalledTimes(1);
+    expect(messagesMove).toHaveBeenNthCalledWith(1, [15], "target-id");
+    expect(timedNotificationMock).toHaveBeenCalledWith(
+      "Organise Folder Complete",
+      "Moved 1 email(s). 0 email(s) kept in place.",
+      10000,
+    );
+  });
+
+  test("reports emails as errors (not kept in place) when the LLM reply cannot be classified", async () => {
     const messagesMove = vi.fn().mockResolvedValue(undefined);
 
     sendContentToLlmMock.mockResolvedValue({
@@ -309,7 +368,7 @@ describe("emailOrganising", () => {
     expect(messagesMove).not.toHaveBeenCalled();
     expect(timedNotificationMock).toHaveBeenCalledWith(
       "Organise Folder Complete",
-      "Moved 0 email(s). 1 email(s) kept in place.",
+      "Moved 0 email(s). 0 email(s) kept in place. 1 email(s) could not be processed.",
       10000,
     );
   });

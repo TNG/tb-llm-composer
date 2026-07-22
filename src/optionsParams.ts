@@ -36,6 +36,7 @@ export interface Options {
   reportMaxMessageBodies: number; // cap on full message bodies fetched per report run (via get_messages)
   reportMaxTotalBodyChars: number; // run-level ceiling on summed body characters served by get_messages
   reportDefaultDays: number; // prefilled "days in the past" value in the report window
+  confirmMovesBeforeApplying: boolean; // show a confirmation popup to review moves; if false, move automatically
 }
 
 export const DEFAULT_PARAMS: LlmParameters = {};
@@ -60,6 +61,7 @@ export const DEFAULT_OPTIONS: Options = {
   reportMaxMessageBodies: 25,
   reportMaxTotalBodyChars: 60000,
   reportDefaultDays: 30,
+  confirmMovesBeforeApplying: true,
 };
 
 export async function getPluginOptions(): Promise<Options> {

@@ -76,7 +76,11 @@ export interface LlmApiRequestBody extends LlmParameters {
   messages: LlmApiRequestMessage[];
   tools?: LlmToolDefinition[];
   tool_choice?: "auto" | "none";
+  response_format?: LlmResponseFormat;
 }
+
+/** OpenAI-style structured-output hint. `json_object` asks the model to emit strict JSON. */
+export type LlmResponseFormat = { type: "json_object" } | { type: "text" };
 
 export interface InputToken {
   id: number;
@@ -135,15 +139,17 @@ export interface TgiErrorResponse {
 export async function sendContentToLlm(
   messages: Array<LlmApiRequestMessage>,
   abortSignal: AbortSignal,
+  responseFormat?: LlmResponseFormat,
 ): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
   const options = await getPluginOptions();
   if (!options.model) {
     throw Error("Missing LLM model, set it in the options panel.");
   }
 
-  const requestBody = {
+  const requestBody: LlmApiRequestBody = {
     messages,
     ...options.params,
+    ...(responseFormat ? { response_format: responseFormat } : {}),
   };
 
   return callLlmApi(options.model, requestBody, abortSignal, options.api_token, options.timeout);

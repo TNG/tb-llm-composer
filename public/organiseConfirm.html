@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Organise Folder — Confirm moves</title>
+    <style>
+      /*
+       * Honour Thunderbird's light/dark theme and UI font (mirrors reports.html):
+       * CSS system colors auto-adapt to the theme; `font: message-box` inherits the UI font.
+       */
+      :root {
+        color-scheme: light dark;
+        --bg: Canvas;
+        --fg: CanvasText;
+        --muted: GrayText;
+        --field-bg: Field;
+        --field-fg: FieldText;
+        --border: color-mix(in srgb, CanvasText 22%, transparent);
+        --accent: AccentColor;
+        --accent-fg: AccentColorText;
+        --accent-hover: color-mix(in srgb, AccentColor 80%, black);
+        --subtle-bg: color-mix(in srgb, CanvasText 6%, Canvas);
+        --hover-bg: color-mix(in srgb, CanvasText 12%, Canvas);
+        --danger: #d9534f;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font: message-box;
+        margin: 0;
+        padding: 16px;
+        color: var(--fg);
+        background: var(--bg);
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 4px;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 0 0 12px;
+      }
+      #status {
+        font-size: 13px;
+        color: var(--muted);
+        min-height: 18px;
+        margin: 0 0 8px;
+      }
+      /* Scrollable list filling the remaining height. */
+      #move-list {
+        flex: 1 1 auto;
+        min-height: 120px;
+        overflow-y: auto;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--subtle-bg);
+      }
+      .move-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+      }
+      .move-row:last-child {
+        border-bottom: none;
+      }
+      .move-info {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .move-subject {
+        font-size: 13px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .move-author {
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      /* Destination dropdown per row. */
+      .move-select {
+        flex: 0 0 auto;
+        max-width: 240px;
+        box-sizing: border-box;
+        padding: 4px 6px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--field-bg);
+        color: var(--field-fg);
+        font: inherit;
+      }
+      /* Pager row (shown only when there is more than one page). */
+      .pager {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-top: 10px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .pager[hidden] {
+        display: none;
+      }
+      .pager button {
+        padding: 4px 12px;
+        border-radius: 4px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--fg);
+        font: inherit;
+        cursor: pointer;
+      }
+      .pager button:hover:not(:disabled) {
+        background: var(--hover-bg);
+      }
+      .pager button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      /* Footer with the OK / Cancel actions. */
+      .footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .footer button {
+        padding: 6px 16px;
+        border-radius: 4px;
+        font: inherit;
+        cursor: pointer;
+      }
+      .btn-primary {
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: var(--accent-fg);
+      }
+      .btn-primary:hover {
+        background: var(--accent-hover);
+      }
+      .btn-primary:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .btn-secondary {
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--fg);
+      }
+      .btn-secondary:hover {
+        background: var(--hover-bg);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Confirm moves</h1>
+    <p class="subtitle" id="subtitle">
+      Choose where each email should go, then click OK. Close this window to cancel — nothing moves until you confirm.
+    </p>
+    <p id="status">Loading…</p>
+    <div id="move-list"></div>
+    <div class="pager" id="pager" hidden>
+      <button type="button" id="prev-btn">Previous</button>
+      <span id="pager-text"></span>
+      <button type="button" id="next-btn">Next</button>
+    </div>
+    <div class="footer">
+      <button type="button" id="cancel-btn" class="btn-secondary">Cancel</button>
+      <button type="button" id="apply-btn" class="btn-primary">OK</button>
+    </div>
+    <script src="../organiseConfirm.js"></script>
+  </body>
+</html>
