@@ -25,7 +25,6 @@ let selectedFolder: { accountId: string; path: string; name: string } | null = f
   : null;
 
 const folderOnlyInput = getInputElement("#folder-only");
-const includeSentInput = getInputElement("#include-sent");
 const daysInput = getInputElement("#days");
 const folderSelectBtn = document.querySelector<HTMLButtonElement>("#folder-select-btn");
 const selectedFolderNameEl = document.querySelector<HTMLSpanElement>("#selected-folder-name");
@@ -66,7 +65,6 @@ async function init(): Promise<void> {
   updateScopeControls();
 
   folderOnlyInput.addEventListener("change", updateScopeControls);
-  includeSentInput.addEventListener("change", updateScopeNote);
   folderSelectBtn?.addEventListener("click", toggleFolderList);
   createBtn.addEventListener("click", onCreate);
   abortBtn.addEventListener("click", onAbort);
@@ -168,12 +166,10 @@ async function onDeleteSavedPrompt(): Promise<void> {
   setStatus(`Deleted prompt "${name}".`);
 }
 
-/** Keep the "Include Sent" control, folder picker and scope note consistent with the folder-only toggle. */
+/** Keep the folder picker and scope note consistent with the folder-only toggle. */
 function updateScopeControls(): void {
   const single = folderOnlyInput.checked && !!folderContext;
-  // "Include Sent" and the folder picker only apply to a single-folder search;
-  // an all-folders search already covers Sent.
-  includeSentInput.disabled = !single;
+  // The folder picker only applies to a single-folder search.
   if (folderPickerEl) folderPickerEl.hidden = !single;
   if (!single) closeFolderList();
   updateScopeNote();
@@ -183,8 +179,7 @@ function updateScopeNote(): void {
   if (!scopeNote) return;
   if (folderOnlyInput.checked && folderContext) {
     const name = selectedFolder?.name ?? folderName;
-    const sentSuffix = includeSentInput.checked ? " + Sent" : "";
-    scopeNote.textContent = `Scope: "${name}"${sentSuffix} only.`;
+    scopeNote.textContent = `Scope: "${name}" only (use get_thread to follow replies into other folders).`;
   } else {
     scopeNote.textContent = "Scope: all folders.";
   }
@@ -248,7 +243,7 @@ async function populateFolderList(): Promise<void> {
   }
 }
 
-/** Select `path` as the single-folder target, resolving its account (for Sent detection) and display name. */
+/** Select `path` as the single-folder target, resolving its account and display name. */
 async function selectFolder(path: string): Promise<void> {
   let accountId = folderContext?.accountId ?? "";
   let name = path;
@@ -316,8 +311,6 @@ async function onCreate(): Promise<void> {
 
   const days = daysInput.valueAsNumber > 0 ? daysInput.valueAsNumber : 30;
   const folderOnly = folderOnlyInput.checked && !!folderContext;
-  // Including Sent only makes sense for a folder-only search (all-folders already covers it).
-  const includeSent = folderOnly && includeSentInput.checked;
   const targetFolder = selectedFolder ?? folderContext;
   // With a report already present, keep talking to the same agent instead of starting over.
   const continueConversation = hasReport;
@@ -326,7 +319,6 @@ async function onCreate(): Promise<void> {
     prompt,
     days,
     folderOnly,
-    includeSent,
     folder: targetFolder ? { accountId: targetFolder.accountId, path: targetFolder.path } : null,
   };
 

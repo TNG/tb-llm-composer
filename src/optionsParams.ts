@@ -33,6 +33,8 @@ export interface Options {
   folderSortingRules: FolderRule[];
   reportMaxSteps: number; // upper bound on agentic tool-calling iterations
   reportMaxSearchResults: number; // cap on messages returned by a single search_messages call
+  reportMaxMessageBodies: number; // cap on full message bodies fetched per report run (via get_messages)
+  reportMaxTotalBodyChars: number; // run-level ceiling on summed body characters served by get_messages
   reportDefaultDays: number; // prefilled "days in the past" value in the report window
 }
 
@@ -53,8 +55,10 @@ export const DEFAULT_OPTIONS: Options = {
     "[Writer's name, without the mail signature]",
   include_recent_mails: true,
   folderSortingRules: [],
-  reportMaxSteps: 8,
+  reportMaxSteps: 20,
   reportMaxSearchResults: 50,
+  reportMaxMessageBodies: 25,
+  reportMaxTotalBodyChars: 60000,
   reportDefaultDays: 30,
 };
 

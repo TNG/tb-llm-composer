@@ -7,6 +7,6 @@ minimumReleaseAgeExclude:
 
 overrides:
   picomatch: ">=4.0.4"
-  fast-uri: ">=3.1.2"
+  fast-uri: ">=4.1.1"
   ws: ">=8.20.1"
   serialize-javascript: ">=7.0.5"

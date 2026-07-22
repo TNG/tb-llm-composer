@@ -1,15 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { resolveFolderPathMock, extractTextFromPartMock, getFoldersForAccountMock } = vi.hoisted(() => ({
+const { resolveFolderPathMock, extractTextFromPartMock } = vi.hoisted(() => ({
   resolveFolderPathMock: vi.fn(),
   extractTextFromPartMock: vi.fn(),
-  getFoldersForAccountMock: vi.fn(),
 }));
 
 vi.mock("../emailOrganising", () => ({
   resolveFolderPath: resolveFolderPathMock,
   extractTextFromPart: extractTextFromPartMock,
-  getFoldersForAccount: getFoldersForAccountMock,
 }));
 
 import {
@@ -24,9 +22,10 @@ const originalBrowser = global.browser;
 const BASE_SCOPE: ReportScope = {
   folderOnly: false,
   folder: null,
-  includeSent: false,
   defaultDays: 30,
   maxSearchResults: 50,
+  maxMessageBodies: 25,
+  maxTotalBodyChars: 60000,
 };
 
 function setBrowser(overrides: Record<string, unknown>): void {
@@ -45,16 +44,15 @@ describe("reportTools", () => {
   beforeEach(() => {
     resolveFolderPathMock.mockReset();
     extractTextFromPartMock.mockReset();
-    getFoldersForAccountMock.mockReset();
   });
 
   afterEach(() => {
     global.browser = originalBrowser;
   });
 
-  test("exposes search_messages and get_message tool definitions", () => {
+  test("exposes the report tool definitions", () => {
     const names = reportToolDefinitions.map((t) => t.function.name);
-    expect(names).toEqual(["search_messages", "get_message"]);
+    expect(names).toEqual(["search_messages", "get_messages", "get_thread", "aggregate_messages"]);
   });
 
   describe("assertSearchCapabilities", () => {
@@ -80,7 +78,7 @@ describe("reportTools", () => {
   });
 
   describe("search_messages", () => {
-    test("maps query args to messages.query and returns compact metadata only", async () => {
+    test("maps filter args to messages.query and returns compact metadata with flags", async () => {
       const query = vi.fn().mockResolvedValue({
         id: undefined,
         messages: [
@@ -96,50 +94,52 @@ describe("reportTools", () => {
       setBrowser({ query });
 
       const handlers = createReportToolHandlers(BASE_SCOPE);
-      const result = (await handlers.search_messages({ query: "invoice", author: "alice" })) as Array<
-        Record<string, unknown>
-      >;
+      const result = (await handlers.search_messages({
+        query: "invoice",
+        author: "alice",
+        recipient: "bob",
+        unread: true,
+        flagged: true,
+        hasAttachment: true,
+      })) as { hits: Array<Record<string, unknown>>; returned: number; truncated: boolean };
 
-      expect(query).toHaveBeenCalledTimes(1);
       const queryInfo = query.mock.calls[0][0];
       expect(queryInfo.fullText).toBe("invoice");
       expect(queryInfo.author).toBe("alice");
+      expect(queryInfo.recipients).toBe("bob");
+      expect(queryInfo.read).toBe(false); // unread -> read:false
+      expect(queryInfo.flagged).toBe(true);
+      expect(queryInfo.attachment).toBe(true);
       expect(queryInfo.fromDate).toBeInstanceOf(Date);
-      expect(result).toEqual([
-        {
-          id: 1,
-          date: "2026-01-01T00:00:00.000Z",
-          author: "alice@example.com",
-          recipients: ["me@example.com"],
-          subject: "Hello",
-        },
-      ]);
-      // No body field is leaked in search results.
-      expect(result[0]).not.toHaveProperty("body");
+
+      expect(result.returned).toBe(1);
+      expect(result.truncated).toBe(false);
+      expect(result.hits[0]).toEqual({
+        id: 1,
+        date: "2026-01-01T00:00:00.000Z",
+        author: "alice@example.com",
+        recipients: ["me@example.com"],
+        subject: "Hello",
+      });
+      expect(result.hits[0]).not.toHaveProperty("body");
     });
 
-    test("respects maxSearchResults cap across paged results", async () => {
-      const page1 = {
-        id: "page-1",
+    test("reports truncated when more matches exist beyond maxSearchResults", async () => {
+      const query = vi.fn().mockResolvedValue({
+        id: undefined,
         messages: [
           { id: 1, subject: "a", author: "x", recipients: [] },
           { id: 2, subject: "b", author: "x", recipients: [] },
+          { id: 3, subject: "c", author: "x", recipients: [] },
         ],
-      };
-      const page2 = {
-        id: undefined,
-        messages: [{ id: 3, subject: "c", author: "x", recipients: [] }],
-      };
-      const query = vi.fn().mockResolvedValue(page1);
-      const continueList = vi.fn().mockResolvedValue(page2);
-      setBrowser({ query, continueList });
+      });
+      setBrowser({ query });
 
       const handlers = createReportToolHandlers({ ...BASE_SCOPE, maxSearchResults: 2 });
-      const result = (await handlers.search_messages({})) as unknown[];
+      const result = (await handlers.search_messages({})) as { hits: unknown[]; truncated: boolean };
 
-      expect(result).toHaveLength(2);
-      // Cap reached on first page, so continueList is never called.
-      expect(continueList).not.toHaveBeenCalled();
+      expect(result.hits).toHaveLength(2);
+      expect(result.truncated).toBe(true);
     });
 
     test("filters subjects as a case-insensitive substring instead of an exact query match", async () => {
@@ -154,11 +154,10 @@ describe("reportTools", () => {
       setBrowser({ query });
 
       const handlers = createReportToolHandlers(BASE_SCOPE);
-      const result = (await handlers.search_messages({ subject: "schulung" })) as Array<Record<string, unknown>>;
+      const result = (await handlers.search_messages({ subject: "schulung" })) as { hits: Array<{ id: number }> };
 
-      // `subject` must not be forwarded as an exact-match query field.
       expect(query.mock.calls[0][0]).not.toHaveProperty("subject");
-      expect(result.map((r) => r.id)).toEqual([1, 3]);
+      expect(result.hits.map((r) => r.id)).toEqual([1, 3]);
     });
 
     test("restricts to the active folder id when folderOnly is set", async () => {
@@ -176,100 +175,175 @@ describe("reportTools", () => {
       expect(resolveFolderPathMock).toHaveBeenCalledWith("/INBOX");
       expect(query.mock.calls[0][0].folderId).toBe("folder-7");
     });
-
-    test("also searches the account's Sent folder when includeSent is set", async () => {
-      const query = vi.fn().mockResolvedValue({ id: undefined, messages: [] });
-      setBrowser({ query, accounts: undefined });
-      // Provide an accounts.get + folder tree containing a Sent folder.
-      global.browser.accounts = {
-        get: vi.fn().mockResolvedValue({ id: "a" }),
-      } as unknown as typeof browser.accounts;
-      resolveFolderPathMock.mockResolvedValue({ id: "folder-7", accountId: "a", path: "/INBOX", name: "Inbox" });
-      getFoldersForAccountMock.mockResolvedValue([
-        { id: "inbox-id", path: "/INBOX", name: "Inbox", type: "inbox" },
-        { id: "sent-id", path: "/Sent", name: "Sent", specialUse: ["sent"] },
-      ]);
-
-      const handlers = createReportToolHandlers({
-        ...BASE_SCOPE,
-        folderOnly: true,
-        includeSent: true,
-        folder: { accountId: "a", path: "/INBOX" },
-      });
-      await handlers.search_messages({});
-
-      // One query per in-scope folder: the target folder and the Sent folder.
-      expect(query).toHaveBeenCalledTimes(2);
-      expect(query.mock.calls[0][0].folderId).toBe("folder-7");
-      expect(query.mock.calls[1][0].folderId).toBe("sent-id");
-    });
-
-    test("de-duplicates messages that appear in more than one searched folder", async () => {
-      const query = vi
-        .fn()
-        .mockResolvedValueOnce({ id: undefined, messages: [{ id: 1, subject: "a", author: "x", recipients: [] }] })
-        .mockResolvedValueOnce({
-          id: undefined,
-          messages: [
-            { id: 1, subject: "a", author: "x", recipients: [] },
-            { id: 2, subject: "b", author: "x", recipients: [] },
-          ],
-        });
-      setBrowser({ query });
-      global.browser.accounts = {
-        get: vi.fn().mockResolvedValue({ id: "a" }),
-      } as unknown as typeof browser.accounts;
-      resolveFolderPathMock.mockResolvedValue({ id: "folder-7", accountId: "a", path: "/INBOX", name: "Inbox" });
-      getFoldersForAccountMock.mockResolvedValue([{ id: "sent-id", path: "/Sent", name: "Sent", type: "sent" }]);
-
-      const handlers = createReportToolHandlers({
-        ...BASE_SCOPE,
-        folderOnly: true,
-        includeSent: true,
-        folder: { accountId: "a", path: "/INBOX" },
-      });
-      const result = (await handlers.search_messages({})) as Array<{ id: number }>;
-
-      expect(result.map((r) => r.id)).toEqual([1, 2]);
-    });
   });
 
-  describe("get_message", () => {
-    test("returns a truncated plain-text body", async () => {
+  describe("get_messages", () => {
+    test("returns full (untruncated) bodies for a batch of ids", async () => {
       const longBody = "x".repeat(5000);
       extractTextFromPartMock.mockReturnValue(longBody);
       const get = vi.fn().mockResolvedValue({
         date: new Date("2026-02-02T00:00:00Z"),
         author: "bob@example.com",
+        recipients: ["me@example.com"],
         subject: "Re: Hi",
       });
       const getFull = vi.fn().mockResolvedValue({ contentType: "text/plain", body: longBody });
       setBrowser({ get, getFull });
 
       const handlers = createReportToolHandlers(BASE_SCOPE);
-      const result = (await handlers.get_message({ id: 42 })) as { id: number; body: string; author: string };
+      const result = (await handlers.get_messages({ ids: [42, 43] })) as {
+        messages: Array<{ id: number; body: string }>;
+        skipped: unknown[];
+      };
 
-      expect(get).toHaveBeenCalledWith(42);
-      expect(getFull).toHaveBeenCalledWith(42);
-      expect(result.id).toBe(42);
-      expect(result.author).toBe("bob@example.com");
-      expect(result.body.length).toBe(1200);
+      expect(get).toHaveBeenCalledTimes(2);
+      expect(result.messages).toHaveLength(2);
+      expect(result.messages[0].body.length).toBe(5000); // no windowing/truncation
+      expect(result.skipped).toHaveLength(0);
     });
 
-    test("throws when id is not numeric", async () => {
-      setBrowser({});
-      const handlers = createReportToolHandlers(BASE_SCOPE);
-      await expect(handlers.get_message({ id: "not-a-number" })).rejects.toThrow(/numeric 'id'/);
+    test("skips ids once the body-count budget is exhausted", async () => {
+      extractTextFromPartMock.mockReturnValue("body");
+      const get = vi.fn().mockResolvedValue({ subject: "s", author: "a", recipients: [] });
+      const getFull = vi.fn().mockResolvedValue({ body: "body" });
+      setBrowser({ get, getFull });
+
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE, maxMessageBodies: 1 });
+      const result = (await handlers.get_messages({ ids: [1, 2] })) as {
+        messages: unknown[];
+        skipped: Array<{ id: number; reason: string }>;
+      };
+
+      expect(result.messages).toHaveLength(1);
+      expect(result.skipped).toHaveLength(1);
+      expect(result.skipped[0]).toMatchObject({ id: 2 });
+      expect(result.skipped[0].reason).toMatch(/budget/i);
     });
 
-    test("returns a recoverable hint when the message id does not exist", async () => {
+    test("stops serving bodies once the total-char budget is spent", async () => {
+      extractTextFromPartMock.mockReturnValue("y".repeat(100));
+      const get = vi.fn().mockResolvedValue({ subject: "s", author: "a", recipients: [] });
+      const getFull = vi.fn().mockResolvedValue({ body: "y".repeat(100) });
+      setBrowser({ get, getFull });
+
+      // Budget of 50 chars: the first 100-char body is served whole (overshoot), the next is skipped.
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE, maxTotalBodyChars: 50 });
+      const result = (await handlers.get_messages({ ids: [1, 2] })) as {
+        messages: unknown[];
+        skipped: unknown[];
+      };
+
+      expect(result.messages).toHaveLength(1);
+      expect(result.skipped).toHaveLength(1);
+    });
+
+    test("reports a recoverable hint for ids that do not exist", async () => {
       const get = vi.fn().mockRejectedValue(new Error("Message not found: 51291."));
       const getFull = vi.fn();
       setBrowser({ get, getFull });
 
       const handlers = createReportToolHandlers(BASE_SCOPE);
-      await expect(handlers.get_message({ id: 51291 })).rejects.toThrow(/No message exists with id 51291/);
-      expect(getFull).not.toHaveBeenCalled();
+      const result = (await handlers.get_messages({ ids: [51291] })) as {
+        messages: unknown[];
+        skipped: Array<{ id: number; reason: string }>;
+      };
+
+      expect(result.messages).toHaveLength(0);
+      expect(result.skipped[0].reason).toMatch(/No message exists with id 51291/);
+    });
+
+    test("throws when ids is empty", async () => {
+      setBrowser({});
+      const handlers = createReportToolHandlers(BASE_SCOPE);
+      await expect(handlers.get_messages({ ids: [] })).rejects.toThrow(/non-empty 'ids'/);
+    });
+  });
+
+  describe("get_thread", () => {
+    test("collects referenced messages and same-subject siblings across folders", async () => {
+      const get = vi.fn().mockResolvedValue({ subject: "Re: Project", headerMessageId: "b@x" });
+      const getFull = vi.fn().mockResolvedValue({
+        headers: { "message-id": ["<b@x>"], references: ["<a@x>"] },
+      });
+      const query = vi.fn(async (info: Record<string, unknown>) => {
+        if (info.headerMessageId === "a@x") {
+          return {
+            messages: [{ id: 10, subject: "Project", author: "alice", recipients: [], date: new Date("2026-01-01") }],
+          };
+        }
+        if (info.headerMessageId === "b@x") {
+          return {
+            messages: [{ id: 11, subject: "Re: Project", author: "me", recipients: [], date: new Date("2026-01-02") }],
+          };
+        }
+        // fullText subject scan finds a sent reply not linked by references.
+        return {
+          messages: [
+            { id: 11, subject: "Re: Project", author: "me", recipients: [], date: new Date("2026-01-02") },
+            { id: 12, subject: "RE: Project", author: "bob", recipients: [], date: new Date("2026-01-03") },
+            { id: 99, subject: "Unrelated", author: "x", recipients: [], date: new Date("2026-01-04") },
+          ],
+        };
+      });
+      setBrowser({ get, getFull, query });
+
+      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const result = (await handlers.get_thread({ id: 11 })) as { messages: Array<{ id: number }> };
+
+      const ids = result.messages.map((m) => m.id);
+      expect(ids).toContain(10);
+      expect(ids).toContain(11);
+      expect(ids).toContain(12);
+      expect(ids).not.toContain(99); // different normalized subject
+    });
+
+    test("throws a clear error for a numeric id that cannot be loaded", async () => {
+      const get = vi.fn().mockRejectedValue(new Error("nope"));
+      setBrowser({ get, getFull: vi.fn() });
+      const handlers = createReportToolHandlers(BASE_SCOPE);
+      await expect(handlers.get_thread({ id: 5 })).rejects.toThrow(/No message exists with id 5/);
+    });
+  });
+
+  describe("aggregate_messages", () => {
+    test("counts messages grouped by author", async () => {
+      const query = vi.fn().mockResolvedValue({
+        id: undefined,
+        messages: [
+          { id: 1, author: "alice", recipients: [], subject: "a", date: new Date("2026-01-01") },
+          { id: 2, author: "alice", recipients: [], subject: "b", date: new Date("2026-01-02") },
+          { id: 3, author: "bob", recipients: [], subject: "c", date: new Date("2026-01-03") },
+        ],
+      });
+      setBrowser({ query });
+
+      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const result = (await handlers.aggregate_messages({ groupBy: "author" })) as {
+        totalMatched: number;
+        groups: Array<{ key: string; count: number }>;
+      };
+
+      expect(result.totalMatched).toBe(3);
+      expect(result.groups[0]).toEqual({ key: "alice", count: 2 });
+      expect(result.groups).toContainEqual({ key: "bob", count: 1 });
+    });
+
+    test("groups by day", async () => {
+      const query = vi.fn().mockResolvedValue({
+        id: undefined,
+        messages: [
+          { id: 1, author: "a", recipients: [], subject: "x", date: new Date("2026-01-01T09:00:00Z") },
+          { id: 2, author: "b", recipients: [], subject: "y", date: new Date("2026-01-01T18:00:00Z") },
+        ],
+      });
+      setBrowser({ query });
+
+      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const result = (await handlers.aggregate_messages({ groupBy: "day" })) as {
+        groups: Array<{ key: string; count: number }>;
+      };
+
+      expect(result.groups).toEqual([{ key: "2026-01-01", count: 2 }]);
     });
   });
 });

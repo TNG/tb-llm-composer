@@ -12,8 +12,6 @@ export interface ReportRequest {
   prompt: string;
   days: number;
   folderOnly: boolean;
-  /** When folder-only, also search the account's Sent folder(s) to follow conversations. */
-  includeSent?: boolean;
   folder: { accountId: string; path: string } | null;
 }
 
@@ -33,9 +31,13 @@ const REPORT_SYSTEM_PROMPT = `You are an email-analysis assistant that produces 
 
 Work agentically:
 - Use the provided tools to gather ONLY the information you need.
-- Be token-frugal: prefer search_messages (compact metadata) and only call get_message for the
-  few messages whose bodies you truly need.
-- search_messages returns no bodies — you must call get_message to read content.
+- Be token-frugal: start with search_messages (compact metadata). For statistics (counts, volume
+  per sender/day), use aggregate_messages instead of listing messages yourself.
+- search_messages / get_thread / aggregate_messages return no bodies — call get_messages to read
+  content, batching all the ids you need into a single call rather than one call per message.
+- To follow a conversation (including your own Sent replies), call get_thread with any message id.
+- If a search result is 'truncated', narrow the query; if get_messages returns 'skipped' ids, the
+  per-report body budget is spent — write the report with what you already have.
 
 When you have enough information, stop calling tools and write the final report as your message
 content. The report must be self-contained, well-structured plain text that the user can copy
@@ -78,9 +80,10 @@ export async function generateReport(
   const scope: ReportScope = {
     folderOnly: request.folderOnly,
     folder: request.folder,
-    includeSent: request.includeSent ?? false,
     defaultDays: request.days,
     maxSearchResults: options.reportMaxSearchResults,
+    maxMessageBodies: options.reportMaxMessageBodies,
+    maxTotalBodyChars: options.reportMaxTotalBodyChars,
   };
 
   console.log(
