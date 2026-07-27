@@ -33,9 +33,12 @@ import OnClickData = browser.menus.OnClickData;
 
 // it is VERY important that this is the first line of the file.
 // Otherwise, the shortcuts may not work if the background script is not running (which is after 90s of idling or so)
-browser.commands.onCommand.addListener((command: string, tab: Tab) =>
-  executeLlmAction(command as LlmPluginAction, tab),
-);
+browser.commands.onCommand.addListener((command: string, tab: Tab) => {
+  // The toolbar-action commands aren't compose actions; route them to their handlers.
+  if (command === "organise-folder") return void toggleOrganiseFolder();
+  if (command === "create-report") return void openReportWindow();
+  return void executeLlmAction(command as LlmPluginAction, tab);
+});
 
 // Keep the background page alive during long-running LLM requests
 browser.alarms.onAlarm.addListener(handleKeepAliveAlarm);
@@ -150,20 +153,23 @@ interface StoredConfirmPlan {
 // storage.session survives background suspension but is cleared on browser restart (ideal here). Fall
 // back to storage.local on builds without a session area.
 const confirmPlanStore = browser.storage.session ?? browser.storage.local;
-const confirmPlanKey = (windowId: number) => `organiseConfirmPlan:${windowId}`;
+const confirmPlanStorageKey = (planKey: string) => `organiseConfirmPlan:${planKey}`;
 
-async function saveConfirmPlan(windowId: number, plan: StoredConfirmPlan): Promise<void> {
-  await confirmPlanStore.set({ [confirmPlanKey(windowId)]: plan });
+// Maps an open confirmation window to its plan key so the plan can be cleaned up when the window closes.
+const confirmPlanKeysByWindow = new Map<number, string>();
+
+async function saveConfirmPlan(planKey: string, plan: StoredConfirmPlan): Promise<void> {
+  await confirmPlanStore.set({ [confirmPlanStorageKey(planKey)]: plan });
 }
 
-async function loadConfirmPlan(windowId: number): Promise<StoredConfirmPlan | undefined> {
-  const key = confirmPlanKey(windowId);
+async function loadConfirmPlan(planKey: string): Promise<StoredConfirmPlan | undefined> {
+  const key = confirmPlanStorageKey(planKey);
   const stored = await confirmPlanStore.get(key);
   return stored?.[key] as StoredConfirmPlan | undefined;
 }
 
-async function deleteConfirmPlan(windowId: number): Promise<void> {
-  await confirmPlanStore.remove(confirmPlanKey(windowId));
+async function deleteConfirmPlan(planKey: string): Promise<void> {
+  await confirmPlanStore.remove(confirmPlanStorageKey(planKey));
 }
 
 /** Open the confirmation popup for a plan and persist it so the window can fetch and apply it. */
@@ -171,25 +177,31 @@ async function openConfirmWindow(plan: OrganisePlan): Promise<void> {
   // organiseConfirm.html sits next to the options page in public/. Resolve it relative to the options
   // page URL so the path is correct in both the repo and the packaged build (see openReportWindow).
   const optionsPage = browser.runtime.getManifest().options_ui?.page ?? "public/options.html";
-  const confirmUrl = new URL("organiseConfirm.html", browser.runtime.getURL(optionsPage)).href;
+  const confirmUrl = new URL("organiseConfirm.html", browser.runtime.getURL(optionsPage));
+
+  // Persist under a generated handoff key that travels in the URL, so the plan exists before the popup
+  // loads (no read-before-write race) and is never lost if the created window has no id.
+  const planKey = crypto.randomUUID();
+  confirmUrl.searchParams.set("planKey", planKey);
+  await saveConfirmPlan(planKey, { entries: plan.entries, folders: plan.folders, source: plan.source });
 
   const win = await browser.windows.create({
     type: "popup",
-    url: confirmUrl,
+    url: confirmUrl.href,
     width: 620,
     height: 680,
   });
   if (win.id !== undefined) {
-    await saveConfirmPlan(win.id, { entries: plan.entries, folders: plan.folders, source: plan.source });
+    confirmPlanKeysByWindow.set(win.id, planKey);
   }
 }
 
 /** Apply the user-confirmed assignments for a confirmation window. */
 async function applyConfirmedPlan(
-  windowId: number,
+  planKey: string,
   assignments: OrganiseAssignment[],
 ): Promise<{ ok: boolean; error?: string }> {
-  const plan = await loadConfirmPlan(windowId);
+  const plan = await loadConfirmPlan(planKey);
   if (!plan) {
     return { ok: false, error: "This organisation plan is no longer available." };
   }
@@ -198,7 +210,7 @@ async function applyConfirmedPlan(
     const resolvedFolders = await Promise.all(plan.folders.map((folder) => resolveFolderPath(folder.path)));
     const abortController = new AbortController();
     await applyOrganisePlan(assignments, resolvedFolders, plan.source, abortController.signal);
-    await deleteConfirmPlan(windowId);
+    await deleteConfirmPlan(planKey);
     return { ok: true };
   } catch (e) {
     console.warn("ORGANISE: failed to apply confirmed plan", e);
@@ -282,7 +294,11 @@ browser.windows.onRemoved.addListener((windowId: number) => {
   }
   reportSessions.delete(windowId);
   // Closing the confirmation window without applying cancels the plan (nothing was moved).
-  void deleteConfirmPlan(windowId).catch(() => {});
+  const planKey = confirmPlanKeysByWindow.get(windowId);
+  if (planKey !== undefined) {
+    confirmPlanKeysByWindow.delete(windowId);
+    void deleteConfirmPlan(planKey).catch(() => {});
+  }
 });
 
 // Register menu entries without blocking listener registration; this keeps
@@ -305,8 +321,8 @@ type RuntimeRequestMessage =
   | { type: "generate-report"; windowId: number; request: ReportRequest; continueConversation?: boolean }
   | { type: "cancel-report"; windowId: number }
   | { type: "reset-report"; windowId: number }
-  | { type: "get-organise-plan"; windowId: number }
-  | { type: "apply-organise-plan"; windowId: number; assignments: OrganiseAssignment[] };
+  | { type: "get-organise-plan"; planKey: string }
+  | { type: "apply-organise-plan"; planKey: string; assignments: OrganiseAssignment[] };
 
 function isRuntimeRequestMessage(value: unknown): value is RuntimeRequestMessage {
   if (!value || typeof value !== "object") return false;
@@ -354,14 +370,16 @@ browser.runtime.onMessage.addListener((message: unknown) => {
     }
 
     case "get-organise-plan":
-      return loadConfirmPlan(message.windowId).then((plan) => ({
+      return loadConfirmPlan(message.planKey).then((plan) => ({
+        // `found` lets the popup tell an expired/missing plan apart from a valid but empty one.
+        found: plan !== undefined,
         entries: plan?.entries ?? [],
         folders: plan?.folders ?? [],
         sourceName: plan?.source?.name ?? "",
       }));
 
     case "apply-organise-plan":
-      return applyConfirmedPlan(message.windowId, message.assignments);
+      return applyConfirmedPlan(message.planKey, message.assignments);
 
     default:
       return false;

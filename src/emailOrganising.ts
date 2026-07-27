@@ -399,27 +399,35 @@ async function prepareOrganise(): Promise<PreparedOrganise | null> {
     return null;
   }
 
-  const messages: MessageForOrganising[] = await Promise.all(
-    allMessages.map(async (msg, index) => {
-      let body = "";
-      try {
-        if (msg.id !== undefined) {
-          const full = await browser.messages.getFull(msg.id);
-          body = cleanEmailBody(extractTextFromPart(full));
+  // Fetch bodies in bounded batches (reusing the classifier's BATCH_SIZE) rather than firing one
+  // getFull per message at once, which would flood the API on large folders.
+  const messages: MessageForOrganising[] = [];
+  let index = 0;
+  for (const batch of chunk(allMessages, BATCH_SIZE)) {
+    const built = await Promise.all(
+      batch.map(async (msg, offset) => {
+        let body = "";
+        try {
+          if (msg.id !== undefined) {
+            const full = await browser.messages.getFull(msg.id);
+            body = cleanEmailBody(extractTextFromPart(full));
+          }
+        } catch {
+          body = "";
         }
-      } catch {
-        body = "";
-      }
 
-      return {
-        message: msg,
-        refId: msg.id ?? -(index + 1),
-        sender: msg.author ?? "",
-        subject: msg.subject ?? "(no subject)",
-        body,
-      };
-    }),
-  );
+        return {
+          message: msg,
+          refId: msg.id ?? -(index + offset + 1),
+          sender: msg.author ?? "",
+          subject: msg.subject ?? "(no subject)",
+          body,
+        };
+      }),
+    );
+    index += batch.length;
+    messages.push(...built);
+  }
 
   const source: MoveSource | null =
     sourceFolder.accountId && sourceFolder.path
@@ -796,6 +804,10 @@ async function executeMoves(
       // Batch move failed — retry each message individually so successes still count.
       console.warn("ORGANISE: Batch move failed, retrying messages individually", ids, batchError);
       for (const id of ids) {
+        // Stop issuing further moves once cancellation is requested; already-attempted ids stay counted.
+        if (abortSignal.aborted) {
+          return { moved, keptInPlace, errors, aborted: true };
+        }
         try {
           await moveMessagesToFolder([id], targetFolder);
           moved++;

@@ -284,9 +284,11 @@ describe("The LlmPluginAction type", () => {
     const shortcuts = manifestJson.commands;
 
     const existingActions: LlmPluginAction[] = ["compose", "summarize", "cancel"];
+    // Toolbar-action commands are routed directly in background.ts, not through executeLlmAction.
+    const toolbarActions = ["organise-folder", "create-report"];
 
     for (const shortcut in shortcuts) {
-      expect(existingActions).toContain(shortcut);
+      expect([...existingActions, ...toolbarActions]).toContain(shortcut);
     }
   });
 });
