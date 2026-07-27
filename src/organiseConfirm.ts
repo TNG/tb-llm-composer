@@ -2,6 +2,8 @@ import type { OrganiseAssignment, OrganiseFolderOption, OrganisePlanEntry } from
 import { getButtonElement } from "./utils";
 
 interface OrganisePlanResponse {
+  // False when the plan is missing/expired (as opposed to present but empty).
+  found: boolean;
   entries: OrganisePlanEntry[];
   folders: OrganiseFolderOption[];
   sourceName: string;
@@ -9,6 +11,8 @@ interface OrganisePlanResponse {
 
 const PAGE_SIZE = 20;
 
+// Handoff key set by the background when opening this window; identifies the plan to load/apply.
+const planKey = new URLSearchParams(location.search).get("planKey") ?? "";
 let windowId: number | undefined;
 let planEntries: OrganisePlanEntry[] = [];
 let planFolders: OrganiseFolderOption[] = [];
@@ -46,21 +50,22 @@ async function init(): Promise<void> {
 }
 
 /**
- * Fetch the plan for this window. The background stores it just after the window is created, so a first
- * request can occasionally land before it is ready — retry a few times before giving up.
+ * Fetch the plan by its handoff key. The plan is persisted before this window opens, but storage
+ * propagation can lag slightly — retry a few times until it is found before giving up.
  */
 async function loadPlan(): Promise<OrganisePlanResponse> {
+  let response: OrganisePlanResponse = { found: false, entries: [], folders: [], sourceName: "" };
   for (let attempt = 0; attempt < 5; attempt++) {
-    const response = (await browser.runtime.sendMessage({
+    response = (await browser.runtime.sendMessage({
       type: "get-organise-plan",
-      windowId,
+      planKey,
     })) as OrganisePlanResponse;
-    if (response?.entries?.length) {
+    if (response?.found) {
       return response;
     }
     await delay(120);
   }
-  return { entries: [], folders: [], sourceName: "" };
+  return response;
 }
 
 function delay(ms: number): Promise<void> {
@@ -84,7 +89,7 @@ function render(plan: OrganisePlanResponse): void {
 
   if (planEntries.length === 0) {
     if (listEl) listEl.replaceChildren();
-    setStatus("No movable emails to show.");
+    setStatus(plan.found ? "No movable emails to show." : "This organisation plan is no longer available.");
     applyBtn.disabled = true;
     if (pagerEl) pagerEl.hidden = true;
     return;
@@ -151,6 +156,8 @@ function buildRow(entry: OrganisePlanEntry): HTMLDivElement {
 
   const select = document.createElement("select");
   select.className = "move-select";
+  // Name the control for screen readers by the email it applies to.
+  select.setAttribute("aria-label", `Destination for "${entry.subject || "(no subject)"}"`);
 
   // "Keep in place" is the null option; each folder is an option whose value is its index.
   const keep = document.createElement("option");
@@ -189,7 +196,7 @@ async function onApply(): Promise<void> {
   try {
     const response = (await browser.runtime.sendMessage({
       type: "apply-organise-plan",
-      windowId,
+      planKey,
       assignments,
     })) as { ok: boolean; error?: string };
 

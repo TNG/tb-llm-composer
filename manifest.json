@@ -71,6 +71,18 @@
         "default": "Ctrl+Alt+C"
       },
       "description": "Cancels LLM requests currently running"
+    },
+    "organise-folder": {
+      "suggested_key": {
+        "default": "Ctrl+Alt+O"
+      },
+      "description": "Organises the current folder by moving messages into configured folders"
+    },
+    "create-report": {
+      "suggested_key": {
+        "default": "Ctrl+Alt+R"
+      },
+      "description": "Opens the Create Report window"
     }
   }
 }

@@ -12,6 +12,9 @@ A Thunderbird extension enabling LLM support while writing E-Mails.
 Compose, summarize and cancel are available while writing an email (see [Shortcuts](#shortcuts)).
 Folder sorting and reports are reached from the LLM Composer toolbar button.
 
+For step-by-step usage of each feature and a full settings reference, see the
+[User Guide](docs/USERGUIDE.md).
+
 ## Requirements
 
 - Thunderbird >= 110.0
@@ -36,14 +39,14 @@ Specify the following things:
 
 When you save the endpoint, Thunderbird asks you to grant access to that host. This permission is required for the plugin to reach the LLM; without it requests are blocked.
 
-![Thunderbird LLM Plugin Preferences Example](./docs/img/tb-llm-preferences.png)
-
 ### Shortcuts
 
 By default, the plugin, introduces the following shortcuts:
 - `Ctrl+Alt+L`: to ask the LLM to compose a mail
 - `Ctrl+Alt+K`: to ask the LLM to summarize the existing conversation
 - `Ctrl+Alt+C`: to cancel an ongoing LLM request
+- `Ctrl+Alt+O`: to organise the current folder
+- `Ctrl+Alt+R`: to open the Create Report window
 
 Shortcuts can be customized in
 "Add-ons Manger" >> Settings ⚙ >> "Manage Extension Shortcuts"
