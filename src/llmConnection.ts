@@ -278,117 +278,133 @@ export async function runAgenticLlm(
   let toolCallCount = 0;
   const reportProgress = (phase: string) => onProgress?.({ llmCalls: llmCallCount, toolCalls: toolCallCount, phase });
 
-  for (let step = 1; step <= maxSteps; step++) {
-    if (abortSignal.aborted) {
-      throw new DOMException("Report generation cancelled", "AbortError");
-    }
-
-    reportProgress("Waiting for the model…");
-
-    const requestBody: LlmApiRequestBody = {
-      messages: conversation,
-      tools,
-      tool_choice: "auto",
-      ...options.params,
-    };
-
-    console.log(
-      `REPORT: step ${step}/${maxSteps} request with ${conversation.length} conversation message(s) and ${tools.length} tool(s)`,
-    );
-
-    let response: LlmTextCompletionResponse | TgiErrorResponse;
-    try {
-      response = await callLlmApi(options.model, requestBody, abortSignal, options.api_token, options.timeout);
-    } catch (e) {
-      if ((e as Error).name === "AbortError" || (e as Error).name === "TimeoutError") {
-        throw e;
-      }
-      throw new Error(
-        `LLM tool-calling request failed. Your endpoint/model may not support tool calling, which the report ` +
-          `feature requires. Original error: ${(e as Error).message}`,
-      );
-    }
-
-    if (!isLlmTextCompletionResponse(response)) {
-      const errorResponse = response as TgiErrorResponse;
-      throw new Error(
-        `The LLM endpoint rejected the tool-calling request: ${errorResponse.error?.message ?? "unknown error"}. ` +
-          `The report feature requires an endpoint/model that supports tool calling.`,
-      );
-    }
-
-    const completion = response as LlmTextCompletionResponse;
-    totalTokens = logTokenUsage(completion, totalTokens, step);
-    llmCallCount++;
-
-    const choice = Array.isArray(completion.choices) ? completion.choices[0] : undefined;
-    if (!choice) {
-      throw new Error("LLM response did not contain any choices.");
-    }
-
-    const toolCalls = choice.message?.tool_calls;
-    if (!toolCalls || toolCalls.length === 0) {
-      // Final answer.
-      const content = choice.message?.content ?? "";
-      console.log(
-        `REPORT: completed after ${step} step(s), ~${totalTokens} total tokens, finalChars=${content.length}`,
-      );
-      reportProgress("Writing the report…");
-      // Record the final assistant turn so the conversation can be continued later.
-      conversation.push({ role: LlmRoles.ASSISTANT, content });
-      return { report: content, messages: conversation };
-    }
-
-    console.log(
-      `REPORT: step ${step} requested ${toolCalls.length} tool call(s): ${toolCalls.map((t) => t.function.name).join(", ")}`,
-    );
-
-    // Append the assistant's tool-call request, then each tool result.
-    conversation.push({
-      role: LlmRoles.ASSISTANT,
-      content: choice.message.content ?? null,
-      tool_calls: toolCalls,
-    });
-
-    for (const toolCall of toolCalls) {
-      const handler = toolHandlers[toolCall.function.name];
-      let resultContent: string;
-      if (!handler) {
-        console.warn(`REPORT: tool '${toolCall.function.name}' is not registered`);
-        resultContent = JSON.stringify({ error: `Unknown tool: ${toolCall.function.name}` });
-      } else {
-        try {
-          const parsedArgs = parseToolArguments(toolCall.function.arguments);
-          console.log(
-            `REPORT: running tool '${toolCall.function.name}' with arg keys: ${Object.keys(parsedArgs).join(",") || "(none)"}`,
-          );
-          reportProgress(describeToolPhase(toolCall.function.name));
-          const result = await handler(parsedArgs);
-          resultContent = JSON.stringify(result ?? null);
-          console.log(`REPORT: tool '${toolCall.function.name}' completed (resultChars=${resultContent.length})`);
-        } catch (e) {
-          if ((e as Error).name === "AbortError") throw e;
-          console.warn(`REPORT: tool '${toolCall.function.name}' failed:`, e);
-          resultContent = JSON.stringify({ error: (e as Error).message });
-        }
-      }
-      conversation.push({
-        role: LlmRoles.TOOL,
-        tool_call_id: toolCall.id,
-        name: toolCall.function.name,
-        content: resultContent,
-      });
-      toolCallCount++;
-      reportProgress(describeToolPhase(toolCall.function.name));
-    }
+  // Keep the background event page alive for the ENTIRE agentic run, not just each fetch.
+  // callLlmApi() already brackets its own fetch with start/stop, but that leaves the gaps
+  // between LLM calls — tool execution (mailbox search/aggregate) and inter-call pauses —
+  // without a heartbeat. On a slow tool call the event page can be suspended mid-run, which
+  // tears down the background context and aborts the pending generate-report message
+  // ("Actor 'Conduits' destroyed before query 'RuntimeMessage' was resolved"). The ref-counted
+  // keep-alive nests with the per-fetch calls, so the alarm stays armed across the whole loop.
+  await startKeepAlive();
+  try {
+    return await runAgenticLoop();
+  } finally {
+    await stopKeepAlive().catch((err) => console.error("REPORT: error stopping keep-alive:", err));
   }
 
-  console.warn(`REPORT: reached max steps (${maxSteps}) without a final answer`);
+  async function runAgenticLoop(): Promise<AgenticRunResult> {
+    for (let step = 1; step <= maxSteps; step++) {
+      if (abortSignal.aborted) {
+        throw new DOMException("Report generation cancelled", "AbortError");
+      }
 
-  throw new Error(
-    `Report generation stopped after the maximum of ${maxSteps} steps without a final answer. ` +
-      `Increase 'reportMaxSteps' in the options or simplify the request.`,
-  );
+      reportProgress("Waiting for the model…");
+
+      const requestBody: LlmApiRequestBody = {
+        messages: conversation,
+        tools,
+        tool_choice: "auto",
+        ...options.params,
+      };
+
+      console.log(
+        `REPORT: step ${step}/${maxSteps} request with ${conversation.length} conversation message(s) and ${tools.length} tool(s)`,
+      );
+
+      let response: LlmTextCompletionResponse | TgiErrorResponse;
+      try {
+        response = await callLlmApi(options.model, requestBody, abortSignal, options.api_token, options.timeout);
+      } catch (e) {
+        if ((e as Error).name === "AbortError" || (e as Error).name === "TimeoutError") {
+          throw e;
+        }
+        throw new Error(
+          `LLM tool-calling request failed. Your endpoint/model may not support tool calling, which the report ` +
+            `feature requires. Original error: ${(e as Error).message}`,
+        );
+      }
+
+      if (!isLlmTextCompletionResponse(response)) {
+        const errorResponse = response as TgiErrorResponse;
+        throw new Error(
+          `The LLM endpoint rejected the tool-calling request: ${errorResponse.error?.message ?? "unknown error"}. ` +
+            `The report feature requires an endpoint/model that supports tool calling.`,
+        );
+      }
+
+      const completion = response as LlmTextCompletionResponse;
+      totalTokens = logTokenUsage(completion, totalTokens, step);
+      llmCallCount++;
+
+      const choice = Array.isArray(completion.choices) ? completion.choices[0] : undefined;
+      if (!choice) {
+        throw new Error("LLM response did not contain any choices.");
+      }
+
+      const toolCalls = choice.message?.tool_calls;
+      if (!toolCalls || toolCalls.length === 0) {
+        // Final answer.
+        const content = choice.message?.content ?? "";
+        console.log(
+          `REPORT: completed after ${step} step(s), ~${totalTokens} total tokens, finalChars=${content.length}`,
+        );
+        reportProgress("Writing the report…");
+        // Record the final assistant turn so the conversation can be continued later.
+        conversation.push({ role: LlmRoles.ASSISTANT, content });
+        return { report: content, messages: conversation };
+      }
+
+      console.log(
+        `REPORT: step ${step} requested ${toolCalls.length} tool call(s): ${toolCalls.map((t) => t.function.name).join(", ")}`,
+      );
+
+      // Append the assistant's tool-call request, then each tool result.
+      conversation.push({
+        role: LlmRoles.ASSISTANT,
+        content: choice.message.content ?? null,
+        tool_calls: toolCalls,
+      });
+
+      for (const toolCall of toolCalls) {
+        const handler = toolHandlers[toolCall.function.name];
+        let resultContent: string;
+        if (!handler) {
+          console.warn(`REPORT: tool '${toolCall.function.name}' is not registered`);
+          resultContent = JSON.stringify({ error: `Unknown tool: ${toolCall.function.name}` });
+        } else {
+          try {
+            const parsedArgs = parseToolArguments(toolCall.function.arguments);
+            console.log(
+              `REPORT: running tool '${toolCall.function.name}' with arg keys: ${Object.keys(parsedArgs).join(",") || "(none)"}`,
+            );
+            reportProgress(describeToolPhase(toolCall.function.name));
+            const result = await handler(parsedArgs);
+            resultContent = JSON.stringify(result ?? null);
+            console.log(`REPORT: tool '${toolCall.function.name}' completed (resultChars=${resultContent.length})`);
+          } catch (e) {
+            if ((e as Error).name === "AbortError") throw e;
+            console.warn(`REPORT: tool '${toolCall.function.name}' failed:`, e);
+            resultContent = JSON.stringify({ error: (e as Error).message });
+          }
+        }
+        conversation.push({
+          role: LlmRoles.TOOL,
+          tool_call_id: toolCall.id,
+          name: toolCall.function.name,
+          content: resultContent,
+        });
+        toolCallCount++;
+        reportProgress(describeToolPhase(toolCall.function.name));
+      }
+    }
+
+    console.warn(`REPORT: reached max steps (${maxSteps}) without a final answer`);
+
+    throw new Error(
+      `Report generation stopped after the maximum of ${maxSteps} steps without a final answer. ` +
+        `Increase 'reportMaxSteps' in the options or simplify the request.`,
+    );
+  }
 }
 
 /** Parse tool-call arguments JSON; tolerate an empty/whitespace string as no-args. */
