@@ -32,7 +32,10 @@ const REPORT_SYSTEM_PROMPT = `You are an email-analysis assistant that produces 
 Work agentically:
 - Use the provided tools to gather ONLY the information you need.
 - Be token-frugal: start with search_messages (compact metadata). For statistics (counts, volume
-  per sender/day), use aggregate_messages instead of listing messages yourself.
+  per sender/day), use aggregate_messages instead of listing messages yourself. To report by
+  company/organisation, group by 'domain' (sender) or 'recipientDomain' rather than full addresses.
+- search_messages / get_messages return author and recipients already parsed into { name, address,
+  domain } — use the 'domain' field directly instead of parsing addresses out of a string.
 - search_messages / get_thread / aggregate_messages return no bodies — call get_messages to read
   content, batching all the ids you need into a single call rather than one call per message.
 - To follow a conversation (including your own Sent replies), call get_thread with any message id.
