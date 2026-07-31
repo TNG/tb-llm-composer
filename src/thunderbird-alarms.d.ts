@@ -14,6 +14,7 @@ declare namespace browser {
   export import identities = messenger.identities;
   export import mailTabs = messenger.mailTabs;
   export import menus = messenger.menus;
+  export import messageDisplay = messenger.messageDisplay;
   export import messages = messenger.messages;
   export import notifications = messenger.notifications;
   export import permissions = messenger.permissions;

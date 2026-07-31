@@ -121,10 +121,14 @@ keeping token use in check. A live counter shows LLM/tool calls while it works; 
 
 **After a report is generated**
 
+- **Linked emails** — the report cites the emails behind its statements as inline chips.
+  Click **↗** on a chip to open that email in a tab, or **↩** to start a reply to it.
+  (The links work within the current Thunderbird session.)
 - **Refine** — type a follow-up instruction and send again; the report continues the
   same conversation (e.g. *"group these by sender"*).
 - **New report** — discards the conversation and starts fresh.
-- **Copy**, or save as **.txt** / **.md**.
+- **Copy**, or save as **.txt** / **.md** — exported/copied text is plain text with the
+  email links flattened to their labels (the citations are only clickable inside the report window).
 
 **Saved prompts** — enter a name and click the **save** icon to store a report request
 for reuse; pick it later from the **Saved prompts…** dropdown, or delete it with the trash icon.

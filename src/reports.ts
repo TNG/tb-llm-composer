@@ -2,6 +2,7 @@ import { getAllFolderPaths, resolveFolderPath } from "./emailOrganising";
 import type { AgenticProgress } from "./llmConnection";
 import { getPluginOptions } from "./optionsParams";
 import type { ReportRequest } from "./reportGeneration";
+import { renderReportHtml, stripCitations } from "./reportMarkdown";
 import { deletePrompt, getSavedPrompts, savePrompt } from "./reportPrompts";
 import { getButtonElement, getInputElement } from "./utils";
 
@@ -14,6 +15,9 @@ const folderName = params.get("name") ?? folderContext?.path ?? "";
 
 let windowId: number | undefined;
 let busy = false;
+// The report's raw markdown (with `email:` citation links) is the source of truth for copy/export;
+// the output area shows a rendered HTML version of it.
+let currentReportText = "";
 // Whether a report already exists in this window. When true, "Create" refines by continuing
 // the existing agent conversation; "New report" clears it to start fresh.
 let hasReport = false;
@@ -31,7 +35,7 @@ const selectedFolderNameEl = document.querySelector<HTMLSpanElement>("#selected-
 const folderPickerEl = document.querySelector<HTMLElement>("#folder-picker");
 const folderListEl = document.querySelector<HTMLDivElement>("#folder-list");
 const promptInput = document.querySelector<HTMLTextAreaElement>("#prompt");
-const outputArea = document.querySelector<HTMLTextAreaElement>("#report-output");
+const outputArea = document.querySelector<HTMLElement>("#report-output");
 const statusEl = document.querySelector<HTMLParagraphElement>("#status");
 const progressEl = document.querySelector<HTMLDivElement>("#progress");
 const progressTextEl = document.querySelector<HTMLSpanElement>("#progress-text");
@@ -79,6 +83,8 @@ async function init(): Promise<void> {
   newReportBtn.addEventListener("click", onNewReport);
   saveTxtBtn.addEventListener("click", () => saveReport("txt"));
   saveMdBtn.addEventListener("click", () => saveReport("md"));
+  // Open/Reply on an inline email citation chip (event-delegated over the rendered report).
+  outputArea?.addEventListener("click", onReportOutputClick);
 
   savedPromptsSelect?.addEventListener("change", onSelectSavedPrompt);
   savePromptBtn.addEventListener("click", onSavePrompt);
@@ -346,7 +352,7 @@ async function onCreate(): Promise<void> {
       setStatus(`Error: ${response.error}`);
       return;
     }
-    if (outputArea) outputArea.value = response?.report ?? "";
+    renderReport(response?.report ?? "");
     hasReport = true;
     newReportBtn.hidden = false;
     setStatus("Report ready. Type a follow-up and click Create to refine it, or start a new report.");
@@ -363,7 +369,7 @@ async function onNewReport(): Promise<void> {
   await browser.runtime.sendMessage({ type: "reset-report", windowId }).catch(() => {});
   hasReport = false;
   newReportBtn.hidden = true;
-  if (outputArea) outputArea.value = "";
+  clearReport();
   if (promptInput) promptInput.value = "";
   // Reset the saved-prompt controls so a fresh report doesn't stay tied to a loaded preset.
   if (savedPromptsSelect) savedPromptsSelect.value = "";
@@ -383,9 +389,46 @@ function localDateYmd(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+/** Render the report markdown into the output area, keeping the raw text for copy/export. */
+function renderReport(text: string): void {
+  currentReportText = text;
+  if (!outputArea) return;
+  outputArea.replaceChildren(renderReportHtml(text));
+}
+
+/** Clear the rendered report and its raw text, restoring the placeholder. */
+function clearReport(): void {
+  currentReportText = "";
+  if (!outputArea) return;
+  const placeholder = document.createElement("p");
+  placeholder.className = "report-placeholder";
+  placeholder.textContent = "The generated report will appear here.";
+  outputArea.replaceChildren(placeholder);
+}
+
+/** Open or reply to the email behind a clicked citation chip. */
+async function onReportOutputClick(event: MouseEvent): Promise<void> {
+  const target = event.target as HTMLElement | null;
+  const button = target?.closest<HTMLButtonElement>(".email-open, .email-reply");
+  if (!button) return;
+  const id = Number(button.dataset.emailId);
+  if (!Number.isFinite(id)) return;
+
+  const reply = button.classList.contains("email-reply");
+  const response = (await browser.runtime
+    .sendMessage({ type: reply ? "reply-email" : "open-email", id })
+    .catch((e: unknown) => ({ error: (e as Error).message }))) as { ok?: true; error?: string } | undefined;
+  if (response?.error) {
+    setStatus(response.error);
+  } else {
+    setStatus(reply ? "Opened a reply to the cited email." : "Opened the cited email.");
+  }
+}
+
 /** Download the current report as a text or markdown file via a temporary object URL. */
 function saveReport(extension: "txt" | "md"): void {
-  const content = outputArea?.value ?? "";
+  // Exports are plain text: the `email:` citation ids only resolve in this Thunderbird session.
+  const content = stripCitations(currentReportText);
   if (!content) {
     setStatus("Nothing to save yet.");
     return;
@@ -404,17 +447,22 @@ function saveReport(extension: "txt" | "md"): void {
 }
 
 async function onCopy(): Promise<void> {
-  if (!outputArea?.value) {
+  const content = stripCitations(currentReportText);
+  if (!content) {
     setStatus("Nothing to copy yet.");
     return;
   }
   try {
-    await navigator.clipboard.writeText(outputArea.value);
+    await navigator.clipboard.writeText(content);
     setStatus("Report copied to clipboard.");
   } catch {
     // Fallback for environments without async clipboard access.
-    outputArea.select();
+    const scratch = document.createElement("textarea");
+    scratch.value = content;
+    document.body.appendChild(scratch);
+    scratch.select();
     document.execCommand("copy");
+    scratch.remove();
     setStatus("Report copied to clipboard.");
   }
 }

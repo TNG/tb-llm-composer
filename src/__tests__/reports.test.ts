@@ -26,6 +26,15 @@ function dispatchRuntimeMessage(message: unknown): void {
   for (const listener of messageListeners) listener(message);
 }
 
+/** Drive the create flow so the popup stores/renders a report (sendMessageMock must resolve one). */
+async function generateReportInPopup(doc: Document, prompt: string): Promise<void> {
+  (doc.getElementById("prompt") as HTMLTextAreaElement).value = prompt;
+  (doc.getElementById("create-btn") as HTMLButtonElement).click();
+  await waitFor(() => {
+    expect(doc.querySelector("#report-output .report-placeholder")).toBeNull();
+  });
+}
+
 /** Captures the anchors that would have triggered a file download. */
 let triggeredDownloads: Array<{ download: string; href: string }>;
 
@@ -129,7 +138,7 @@ describe("The report popup", () => {
     (doc.getElementById("create-btn") as HTMLButtonElement).click();
 
     await waitFor(() => {
-      expect((doc.getElementById("report-output") as HTMLTextAreaElement).value).toEqual("GENERATED REPORT BODY");
+      expect(doc.getElementById("report-output")?.textContent).toContain("GENERATED REPORT BODY");
     });
 
     expect(sendMessageMock).toHaveBeenCalledWith(
@@ -143,6 +152,27 @@ describe("The report popup", () => {
         }),
       }),
     );
+  });
+
+  test("renders an email citation as a chip and opens/replies to it on click", async () => {
+    sendMessageMock.mockResolvedValue({ report: 'Resolved [Alice — "Re: Invoice"](email:4242).' });
+    await loadPopup(FOLDER_SEARCH);
+
+    const doc = reportsDom.window.document;
+    (doc.getElementById("prompt") as HTMLTextAreaElement).value = "status";
+    (doc.getElementById("create-btn") as HTMLButtonElement).click();
+
+    await waitFor(() => {
+      expect(doc.querySelector("#report-output .email-citation")).not.toBeNull();
+    });
+
+    sendMessageMock.mockClear();
+    (doc.querySelector("#report-output .email-open") as HTMLButtonElement).click();
+    expect(sendMessageMock).toHaveBeenCalledWith({ type: "open-email", id: 4242 });
+
+    sendMessageMock.mockClear();
+    (doc.querySelector("#report-output .email-reply") as HTMLButtonElement).click();
+    expect(sendMessageMock).toHaveBeenCalledWith({ type: "reply-email", id: 4242 });
   });
 
   test("does not send a request when the prompt is empty", async () => {
@@ -171,10 +201,11 @@ describe("The report popup", () => {
   });
 
   test("saves the report as .txt with the default filename", async () => {
+    sendMessageMock.mockResolvedValue({ report: "report contents" });
     await loadPopup(FOLDER_SEARCH);
-
     const doc = reportsDom.window.document;
-    (doc.getElementById("report-output") as HTMLTextAreaElement).value = "report contents";
+    await generateReportInPopup(doc, "anything");
+
     (doc.getElementById("save-txt-btn") as HTMLButtonElement).click();
 
     expect(createObjectUrlMock).toHaveBeenCalledTimes(1);
@@ -184,10 +215,11 @@ describe("The report popup", () => {
   });
 
   test("saves the report as .md with the default filename", async () => {
+    sendMessageMock.mockResolvedValue({ report: "# report" });
     await loadPopup(FOLDER_SEARCH);
-
     const doc = reportsDom.window.document;
-    (doc.getElementById("report-output") as HTMLTextAreaElement).value = "# report";
+    await generateReportInPopup(doc, "anything");
+
     (doc.getElementById("save-md-btn") as HTMLButtonElement).click();
 
     expect(triggeredDownloads).toHaveLength(1);
@@ -206,15 +238,16 @@ describe("The report popup", () => {
     expect(doc.getElementById("status")?.textContent).toContain("Nothing to save");
   });
 
-  test("copies the report to the clipboard", async () => {
+  test("copies the report to the clipboard, flattening citation links to plain text", async () => {
+    sendMessageMock.mockResolvedValue({ report: "copy [Alice](email:7) me" });
     await loadPopup(FOLDER_SEARCH);
-
     const doc = reportsDom.window.document;
-    (doc.getElementById("report-output") as HTMLTextAreaElement).value = "copy me";
+    await generateReportInPopup(doc, "anything");
+
     (doc.getElementById("copy-btn") as HTMLButtonElement).click();
 
     await waitFor(() => {
-      expect(clipboardWriteMock).toHaveBeenCalledWith("copy me");
+      expect(clipboardWriteMock).toHaveBeenCalledWith("copy Alice me");
       expect(doc.getElementById("status")?.textContent).toContain("copied");
     });
   });
