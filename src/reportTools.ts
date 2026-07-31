@@ -19,12 +19,50 @@ export interface ReportScope {
 
 type QueryInfo = browser.messages._QueryQueryInfo & { folderId?: string };
 
+/** A raw From/To header value parsed into its display name, address, and domain. */
+export interface ParsedAddress {
+  name: string;
+  address: string;
+  domain: string;
+}
+
+/**
+ * Parse a raw address header ("Name <local@domain>", "<local@domain>", or "local@domain") into
+ * structured parts so the model gets a reliable `domain` instead of re-parsing the free-form string.
+ */
+export function parseAddress(raw: string): ParsedAddress {
+  const text = (raw ?? "").trim();
+  const angle = text.match(/^(.*)<([^>]*)>\s*$/);
+  let name = "";
+  let address = "";
+  if (angle) {
+    name = angle[1]
+      .trim()
+      .replace(/^"(.*)"$/, "$1")
+      .trim();
+    address = angle[2].trim();
+  } else if (text.includes("@")) {
+    address = text;
+  } else {
+    name = text;
+  }
+  const at = address.lastIndexOf("@");
+  const domain =
+    at >= 0
+      ? address
+          .slice(at + 1)
+          .trim()
+          .toLowerCase()
+      : "";
+  return { name, address, domain };
+}
+
 /** Compact metadata shape returned by search/thread tools (no bodies, to stay token-frugal). */
 interface SearchHit {
   id: number;
   date: string;
-  author: string;
-  recipients: string[];
+  author: ParsedAddress;
+  recipients: ParsedAddress[];
   subject: string;
 }
 
@@ -154,8 +192,10 @@ export const reportToolDefinitions: LlmToolDefinition[] = [
         properties: {
           groupBy: {
             type: "string",
-            enum: ["author", "recipient", "day", "subject"],
-            description: "Field to group the counts by.",
+            enum: ["author", "recipient", "domain", "recipientDomain", "day", "subject"],
+            description:
+              "Field to group the counts by. Use 'domain'/'recipientDomain' to group by the sender's / " +
+              "recipients' email domain (e.g. volume per company), rather than the full address.",
           },
           query: { type: "string", description: "Full-text search terms (optional)." },
           author: { type: "string", description: "Filter by sender address/name (optional)." },
@@ -304,8 +344,8 @@ function toHit(msg: browser.messages.MessageHeader): SearchHit {
   return {
     id: msg.id as number,
     date: msg.date ? new Date(msg.date).toISOString() : "",
-    author: msg.author ?? "",
-    recipients: msg.recipients ?? [],
+    author: parseAddress(msg.author ?? ""),
+    recipients: (msg.recipients ?? []).map(parseAddress),
     subject: msg.subject ?? "(no subject)",
   };
 }
@@ -314,7 +354,14 @@ async function handleGetMessages(
   args: Record<string, unknown>,
   budget: BodyBudget,
 ): Promise<{
-  messages: Array<{ id: number; date: string; author: string; recipients: string[]; subject: string; body: string }>;
+  messages: Array<{
+    id: number;
+    date: string;
+    author: ParsedAddress;
+    recipients: ParsedAddress[];
+    subject: string;
+    body: string;
+  }>;
   skipped: Array<{ id: number; reason: string }>;
 }> {
   const startedAt = Date.now();
@@ -327,8 +374,8 @@ async function handleGetMessages(
   const messages: Array<{
     id: number;
     date: string;
-    author: string;
-    recipients: string[];
+    author: ParsedAddress;
+    recipients: ParsedAddress[];
     subject: string;
     body: string;
   }> = [];
@@ -350,8 +397,8 @@ async function handleGetMessages(
       messages.push({
         id,
         date: header.date ? new Date(header.date).toISOString() : "",
-        author: header.author ?? "",
-        recipients: header.recipients ?? [],
+        author: parseAddress(header.author ?? ""),
+        recipients: (header.recipients ?? []).map(parseAddress),
         subject: header.subject ?? "(no subject)",
         body,
       });
@@ -519,6 +566,13 @@ function groupKeys(msg: browser.messages.MessageHeader, groupBy: string): string
   switch (groupBy) {
     case "recipient":
       return (msg.recipients ?? []).length ? (msg.recipients as string[]) : ["(none)"];
+    case "domain":
+      return [parseAddress(msg.author ?? "").domain || "(none)"];
+    case "recipientDomain": {
+      // Count each distinct recipient domain once per message.
+      const domains = new Set(((msg.recipients ?? []) as string[]).map((r) => parseAddress(r).domain).filter(Boolean));
+      return domains.size ? [...domains] : ["(none)"];
+    }
     case "day":
       return [msg.date ? new Date(msg.date).toISOString().slice(0, 10) : "(no date)"];
     case "subject":

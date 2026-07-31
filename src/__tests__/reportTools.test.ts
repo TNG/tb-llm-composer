@@ -117,8 +117,8 @@ describe("reportTools", () => {
       expect(result.hits[0]).toEqual({
         id: 1,
         date: "2026-01-01T00:00:00.000Z",
-        author: "alice@example.com",
-        recipients: ["me@example.com"],
+        author: { name: "", address: "alice@example.com", domain: "example.com" },
+        recipients: [{ name: "", address: "me@example.com", domain: "example.com" }],
         subject: "Hello",
       });
       expect(result.hits[0]).not.toHaveProperty("body");
@@ -326,6 +326,51 @@ describe("reportTools", () => {
       expect(result.totalMatched).toBe(3);
       expect(result.groups[0]).toEqual({ key: "alice", count: 2 });
       expect(result.groups).toContainEqual({ key: "bob", count: 1 });
+    });
+
+    test("groups by sender domain, ignoring display names and address casing", async () => {
+      const query = vi.fn().mockResolvedValue({
+        id: undefined,
+        messages: [
+          { id: 1, author: "Alice <alice@Example.com>", recipients: [], subject: "a", date: new Date("2026-01-01") },
+          { id: 2, author: "bob@example.com", recipients: [], subject: "b", date: new Date("2026-01-02") },
+          { id: 3, author: "carol@other.org", recipients: [], subject: "c", date: new Date("2026-01-03") },
+        ],
+      });
+      setBrowser({ query });
+
+      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const result = (await handlers.aggregate_messages({ groupBy: "domain" })) as {
+        groups: Array<{ key: string; count: number }>;
+      };
+
+      expect(result.groups[0]).toEqual({ key: "example.com", count: 2 });
+      expect(result.groups).toContainEqual({ key: "other.org", count: 1 });
+    });
+
+    test("groups by recipient domain, counting each distinct domain once per message", async () => {
+      const query = vi.fn().mockResolvedValue({
+        id: undefined,
+        messages: [
+          {
+            id: 1,
+            author: "a",
+            recipients: ["x@acme.com", "Y <y@acme.com>", "z@beta.io"],
+            subject: "a",
+            date: new Date("2026-01-01"),
+          },
+        ],
+      });
+      setBrowser({ query });
+
+      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const result = (await handlers.aggregate_messages({ groupBy: "recipientDomain" })) as {
+        groups: Array<{ key: string; count: number }>;
+      };
+
+      // acme.com appears on two recipients of the same message but is counted once.
+      expect(result.groups).toContainEqual({ key: "acme.com", count: 1 });
+      expect(result.groups).toContainEqual({ key: "beta.io", count: 1 });
     });
 
     test("groups by day", async () => {
