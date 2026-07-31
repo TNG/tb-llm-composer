@@ -126,7 +126,12 @@ keeping token use in check. A live counter shows LLM/tool calls while it works; 
   (The links work within the current Thunderbird session.)
 - **Refine** — type a follow-up instruction and send again; the report continues the
   same conversation (e.g. *"group these by sender"*).
-- **New report** — discards the conversation and starts fresh.
+- **Refine current text without search** — tick this checkbox (available once a report
+  exists) to have the model only rewrite/restructure the current report text via chat,
+  without searching your mailbox again or spending the search budget.
+- **Versions** — each generation and refinement is kept as a version. Use the
+  **‹ N / M ›** controls next to the Report heading to step back and forth between them.
+- **New report** — discards the conversation and all versions and starts fresh.
 - **Copy**, or save as **.txt** / **.md** — exported/copied text is plain text with the
   email links flattened to their labels (the citations are only clickable inside the report window).
 

@@ -98,11 +98,6 @@
         color: var(--field-fg);
         font: inherit;
       }
-      .scope-note {
-        font-size: 12px;
-        color: var(--muted);
-        margin: 4px 0 0;
-      }
       .toggle-label {
         white-space: nowrap;
       }
@@ -195,6 +190,17 @@
       }
       #folder-picker[hidden] {
         display: none;
+      }
+      /* "Refine without search" sits at the far right of the scope row and only appears with a report. */
+      #refine-control {
+        margin-left: auto;
+      }
+      #refine-control[hidden] {
+        display: none;
+      }
+      #refine-control input[type="checkbox"] {
+        margin: 0;
+        flex: 0 0 auto;
       }
       .model-list {
         margin-top: 6px;
@@ -351,6 +357,21 @@
         align-items: center;
         gap: 4px;
       }
+      /* Report version history: ‹ N of M › navigation shown once more than one version exists. */
+      .version-nav {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        margin-right: 4px;
+      }
+      .version-nav[hidden] {
+        display: none;
+      }
+      .version-label {
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
       #copy-btn {
         width: 1.7em;
         height: 1.7em;
@@ -497,15 +518,6 @@
       #progress-text {
         flex: 1 1 auto;
       }
-      .abort-btn {
-        flex: 0 0 auto;
-        border: 1px solid color-mix(in srgb, var(--danger) 55%, transparent);
-        color: var(--danger);
-      }
-      .abort-btn:hover {
-        background: color-mix(in srgb, var(--danger) 15%, var(--bg));
-        color: var(--danger);
-      }
     </style>
   </head>
   <body>
@@ -539,9 +551,16 @@
           <span class="caret" aria-hidden="true">▾</span>
         </button>
       </span>
+
+      <!-- Refine-without-search: right-aligned, shown only once a report exists. -->
+      <span class="control-inline" id="refine-control" hidden>
+        <input type="checkbox" id="no-search" />
+        <label for="no-search" title="Rewrite and restructure the current report by chatting with the model, without searching your mailbox again">
+          Refine current text without search
+        </label>
+      </span>
     </div>
     <div id="folder-list" class="model-list" hidden></div>
-    <p class="scope-note" id="scope-note"></p>
 
     <div class="saved-row">
       <select id="saved-prompts" aria-label="Load a saved prompt">
@@ -588,12 +607,16 @@
     <div id="progress" class="progress" hidden>
       <img class="spinner" src="../icons/loader-32px.gif" alt="" />
       <span id="progress-text">Starting…</span>
-      <button type="button" id="abort-btn" class="icon-btn text-btn abort-btn" title="Stop generating" aria-label="Stop generating">Stop</button>
     </div>
 
     <div class="output-header">
       <h2 id="report-heading">Report</h2>
       <div class="output-actions">
+        <span id="version-nav" class="version-nav" hidden>
+          <button type="button" id="prev-version" class="icon-btn text-btn" title="Previous version" aria-label="Previous report version">‹</button>
+          <span id="version-label" class="version-label"></span>
+          <button type="button" id="next-version" class="icon-btn text-btn" title="Next version" aria-label="Next report version">›</button>
+        </span>
         <button type="button" id="save-txt-btn" title="Save report as .txt" aria-label="Save report as .txt" class="icon-btn text-btn">.txt</button>
         <button type="button" id="save-md-btn" title="Save report as .md" aria-label="Save report as .md" class="icon-btn text-btn">.md</button>
         <button type="button" id="copy-btn" title="Copy report" aria-label="Copy report" class="icon-btn">
@@ -604,7 +627,9 @@
         </button>
       </div>
     </div>
-    <article id="report-output" class="report-rendered" aria-labelledby="report-heading">
+    <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: the report scrolls, so it must be keyboard-focusable -->
+    <!-- biome-ignore lint/a11y/useSemanticElements: role="region" makes the scrollable report an announced landmark -->
+    <article id="report-output" class="report-rendered" tabindex="0" role="region" aria-labelledby="report-heading">
       <p class="report-placeholder">The generated report will appear here.</p>
     </article>
 

@@ -18,6 +18,10 @@ let busy = false;
 // The report's raw markdown (with `email:` citation links) is the source of truth for copy/export;
 // the output area shows a rendered HTML version of it.
 let currentReportText = "";
+// Every generated/refined report is kept as a version until "New report" clears them, so the user can
+// step back and forth. `historyIndex` is the version currently shown (and used for copy/export).
+let reportHistory: string[] = [];
+let historyIndex = -1;
 // Whether a report already exists in this window. When true, "Create" refines by continuing
 // the existing agent conversation; "New report" clears it to start fresh.
 let hasReport = false;
@@ -39,17 +43,21 @@ const outputArea = document.querySelector<HTMLElement>("#report-output");
 const statusEl = document.querySelector<HTMLParagraphElement>("#status");
 const progressEl = document.querySelector<HTMLDivElement>("#progress");
 const progressTextEl = document.querySelector<HTMLSpanElement>("#progress-text");
-const abortBtn = getButtonElement("#abort-btn");
 const createBtn = getButtonElement("#create-btn");
 const copyBtn = getButtonElement("#copy-btn");
 const newReportBtn = getButtonElement("#new-report-btn");
 const saveTxtBtn = getButtonElement("#save-txt-btn");
 const saveMdBtn = getButtonElement("#save-md-btn");
-const scopeNote = document.querySelector<HTMLParagraphElement>("#scope-note");
 const savedPromptsSelect = document.querySelector<HTMLSelectElement>("#saved-prompts");
 const promptNameInput = getInputElement("#prompt-name");
 const savePromptBtn = getButtonElement("#save-prompt-btn");
 const deletePromptBtn = getButtonElement("#delete-prompt-btn");
+const noSearchInput = getInputElement("#no-search");
+const refineControl = document.querySelector<HTMLElement>("#refine-control");
+const versionNav = document.querySelector<HTMLElement>("#version-nav");
+const versionLabel = document.querySelector<HTMLSpanElement>("#version-label");
+const prevVersionBtn = getButtonElement("#prev-version");
+const nextVersionBtn = getButtonElement("#next-version");
 
 init().catch((e) => console.error("REPORT-WINDOW: initialization failed", e));
 
@@ -78,28 +86,57 @@ async function init(): Promise<void> {
       void onCreate();
     }
   });
-  abortBtn.addEventListener("click", onAbort);
   copyBtn.addEventListener("click", onCopy);
   newReportBtn.addEventListener("click", onNewReport);
   saveTxtBtn.addEventListener("click", () => saveReport("txt"));
   saveMdBtn.addEventListener("click", () => saveReport("md"));
   // Open/Reply on an inline email citation chip (event-delegated over the rendered report).
   outputArea?.addEventListener("click", onReportOutputClick);
+  // Step through report versions kept for this session.
+  prevVersionBtn.addEventListener("click", () => showVersion(historyIndex - 1));
+  nextVersionBtn.addEventListener("click", () => showVersion(historyIndex + 1));
 
   savedPromptsSelect?.addEventListener("change", onSelectSavedPrompt);
   savePromptBtn.addEventListener("click", onSavePrompt);
   deletePromptBtn.addEventListener("click", onDeleteSavedPrompt);
   await refreshSavedPrompts();
 
-  // Live progress updates streamed from the background while a report is generated.
+  // Progress updates and the final result are streamed from the background over runtime messages
+  // (not as the reply to generate-report), so a long run can never hang on a torn-down channel.
   browser.runtime.onMessage?.addListener((message: unknown) => {
-    const progressMessage = message as { type?: string; windowId?: number; progress?: AgenticProgress };
-    if (progressMessage?.type === "report-progress" && progressMessage.windowId === windowId) {
-      renderProgress(progressMessage.progress);
+    const msg = message as {
+      type?: string;
+      windowId?: number;
+      progress?: AgenticProgress;
+      report?: string;
+      error?: string;
+    };
+    if (msg?.windowId !== windowId) return;
+    if (msg.type === "report-progress") {
+      renderProgress(msg.progress);
+    } else if (msg.type === "report-result") {
+      onReportResult(msg);
     }
   });
 
   setStatus("Ready.");
+}
+
+/** Handle the finished report (or error/cancellation) pushed by the background. */
+function onReportResult(result: { report?: string; error?: string }): void {
+  // Ignore stray or duplicate results that arrive when we are not generating.
+  if (!busy) return;
+  setBusy(false);
+  if (result.error) {
+    setStatus(`Error: ${result.error}`);
+    return;
+  }
+  pushReportVersion(result.report ?? "");
+  hasReport = true;
+  newReportBtn.hidden = false;
+  // A report now exists, so reveal the "refine without search" option.
+  if (refineControl) refineControl.hidden = false;
+  setStatus("Report ready. Type a follow-up and click Create to refine it, or start a new report.");
 }
 
 function renderProgress(progress?: AgenticProgress): void {
@@ -108,12 +145,6 @@ function renderProgress(progress?: AgenticProgress): void {
   const llmLabel = `${llmCalls} LLM call${llmCalls === 1 ? "" : "s"}`;
   const toolLabel = `${toolCalls} tool call${toolCalls === 1 ? "" : "s"}`;
   progressTextEl.textContent = `${phase} · ${llmLabel} · ${toolLabel}`;
-}
-
-async function onAbort(): Promise<void> {
-  if (!busy) return;
-  await browser.runtime.sendMessage({ type: "cancel-report", windowId });
-  setStatus("Cancelling…");
 }
 
 /** Rebuild the saved-prompts dropdown from storage, optionally selecting `selectedName`. */
@@ -167,7 +198,7 @@ async function onSavePrompt(): Promise<void> {
   }
   await savePrompt(name, text);
   await refreshSavedPrompts(name);
-  setStatus(`Saved prompt "${name}".`);
+  setStatus(`Saved prompt "${name}".`, 5000);
 }
 
 /** Delete the currently selected saved prompt. */
@@ -179,23 +210,12 @@ async function onDeleteSavedPrompt(): Promise<void> {
   setStatus(`Deleted prompt "${name}".`);
 }
 
-/** Keep the folder picker and scope note consistent with the folder-only toggle. */
+/** Keep the folder picker consistent with the folder-only toggle. */
 function updateScopeControls(): void {
   const single = folderOnlyInput.checked && !!folderContext;
   // The folder picker only applies to a single-folder search.
   if (folderPickerEl) folderPickerEl.hidden = !single;
   if (!single) closeFolderList();
-  updateScopeNote();
-}
-
-function updateScopeNote(): void {
-  if (!scopeNote) return;
-  if (folderOnlyInput.checked && folderContext) {
-    const name = selectedFolder?.name ?? folderName;
-    scopeNote.textContent = `Scope: "${name}" only (use get_thread to follow replies into other folders).`;
-  } else {
-    scopeNote.textContent = "Scope: all folders.";
-  }
 }
 
 // ── Folder picker ───────────────────────────────────────────────────────────────
@@ -272,7 +292,6 @@ async function selectFolder(path: string): Promise<void> {
   selectedFolder = { accountId, path, name };
   if (selectedFolderNameEl) selectedFolderNameEl.textContent = name;
   closeFolderList();
-  updateScopeNote();
 }
 
 /** Load all folder paths, falling back to the background script if the direct API call fails. */
@@ -304,14 +323,29 @@ function setBusy(value: boolean): void {
   }
 }
 
-function setStatus(text: string): void {
+let statusClearTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Set the status line. With `autoClearMs`, revert to "Ready." after that delay (for transient confirmations). */
+function setStatus(text: string, autoClearMs?: number): void {
   if (statusEl) statusEl.textContent = text;
+  // Any new status supersedes a pending auto-clear.
+  if (statusClearTimer !== undefined) {
+    clearTimeout(statusClearTimer);
+    statusClearTimer = undefined;
+  }
+  if (autoClearMs) {
+    statusClearTimer = setTimeout(() => {
+      if (statusEl) statusEl.textContent = "Ready.";
+      statusClearTimer = undefined;
+    }, autoClearMs);
+  }
 }
 
 async function onCreate(): Promise<void> {
   if (busy) {
-    // The button acts as a stop control while a report is being generated.
-    await browser.runtime.sendMessage({ type: "cancel-report", windowId });
+    // The button acts as a stop control while a report is being generated. Fire-and-forget: the run
+    // ends by pushing a `report-result` (cancelled) message, which clears the busy state.
+    void browser.runtime.sendMessage({ type: "cancel-report", windowId }).catch(() => {});
     setStatus("Cancelling…");
     return;
   }
@@ -327,6 +361,8 @@ async function onCreate(): Promise<void> {
   const targetFolder = selectedFolder ?? folderContext;
   // With a report already present, keep talking to the same agent instead of starting over.
   const continueConversation = hasReport;
+  // Only meaningful when refining an existing report; the checkbox is disabled until then.
+  const noSearch = hasReport && noSearchInput.checked;
 
   const request: ReportRequest = {
     prompt,
@@ -338,29 +374,16 @@ async function onCreate(): Promise<void> {
   setBusy(true);
   // Progress row (spinner + live counters) now conveys generation state.
   setStatus("");
-  try {
-    const response = (await browser.runtime.sendMessage({
-      type: "generate-report",
-      windowId,
-      request,
-      continueConversation,
-    })) as {
-      report?: string;
-      error?: string;
-    };
-    if (response?.error) {
-      setStatus(`Error: ${response.error}`);
-      return;
-    }
-    renderReport(response?.report ?? "");
-    hasReport = true;
-    newReportBtn.hidden = false;
-    setStatus("Report ready. Type a follow-up and click Create to refine it, or start a new report.");
-  } catch (e) {
-    setStatus(`Error: ${(e as Error).message}`);
-  } finally {
-    setBusy(false);
-  }
+  // Fire-and-forget: the result (or error) arrives via a `report-result` message handled in
+  // onReportResult, so the UI never depends on a long-lived request channel that could be
+  // destroyed mid-generation (which would hang the report).
+  void browser.runtime
+    .sendMessage({ type: "generate-report", windowId, request, continueConversation, noSearch })
+    .catch((e: unknown) => {
+      // The message failed to even reach the background; surface it and leave the busy state.
+      setBusy(false);
+      setStatus(`Error: ${(e as Error).message}`);
+    });
 }
 
 /** Clear the current report and its agent conversation so the next Create starts from scratch. */
@@ -371,6 +394,9 @@ async function onNewReport(): Promise<void> {
   newReportBtn.hidden = true;
   clearReport();
   if (promptInput) promptInput.value = "";
+  // No report text yet again: hide and clear the "refine without search" option.
+  noSearchInput.checked = false;
+  if (refineControl) refineControl.hidden = true;
   // Reset the saved-prompt controls so a fresh report doesn't stay tied to a loaded preset.
   if (savedPromptsSelect) savedPromptsSelect.value = "";
   promptNameInput.value = "";
@@ -389,16 +415,36 @@ function localDateYmd(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-/** Render the report markdown into the output area, keeping the raw text for copy/export. */
-function renderReport(text: string): void {
-  currentReportText = text;
-  if (!outputArea) return;
-  outputArea.replaceChildren(renderReportHtml(text));
+/** Append a newly generated/refined report as a version and show it. */
+function pushReportVersion(text: string): void {
+  reportHistory.push(text);
+  showVersion(reportHistory.length - 1);
 }
 
-/** Clear the rendered report and its raw text, restoring the placeholder. */
+/** Show the report version at `index`, updating the rendered output and the version navigation. */
+function showVersion(index: number): void {
+  if (index < 0 || index >= reportHistory.length) return;
+  historyIndex = index;
+  currentReportText = reportHistory[index];
+  if (outputArea) outputArea.replaceChildren(renderReportHtml(currentReportText));
+  updateVersionNav();
+}
+
+/** Keep the ‹ N / M › version navigation in sync with the history (hidden until >1 version). */
+function updateVersionNav(): void {
+  const count = reportHistory.length;
+  if (versionNav) versionNav.hidden = count <= 1;
+  if (versionLabel) versionLabel.textContent = count ? `${historyIndex + 1} / ${count}` : "";
+  prevVersionBtn.disabled = historyIndex <= 0;
+  nextVersionBtn.disabled = historyIndex >= count - 1;
+}
+
+/** Clear the report history and raw text, restoring the placeholder. */
 function clearReport(): void {
+  reportHistory = [];
+  historyIndex = -1;
   currentReportText = "";
+  updateVersionNav();
   if (!outputArea) return;
   const placeholder = document.createElement("p");
   placeholder.className = "report-placeholder";

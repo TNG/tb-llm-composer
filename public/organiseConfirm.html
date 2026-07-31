@@ -89,10 +89,12 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
-      /* Destination dropdown per row. */
+      /* Destination dropdown per row. A fixed width keeps the layout stable: without it the select
+         sizes to the selected option's text, so changing the classification would reflow the row
+         (and resize the popup) whenever the picked folder name has a different length. */
       .move-select {
-        flex: 0 0 auto;
-        max-width: 240px;
+        flex: 0 0 220px;
+        width: 220px;
         box-sizing: border-box;
         padding: 4px 6px;
         border: 1px solid var(--border);
