@@ -4,6 +4,52 @@ import type { LlmToolDefinition, LlmToolHandler } from "./llmConnection";
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Safety ceiling on how many headers aggregate_messages will enumerate (local paging, no bodies). */
 const MAX_AGGREGATE_SCAN = 5000;
+/** IMAP message reads can stall or fail mid-stream; bound each read with this timeout. */
+const MESSAGE_READ_TIMEOUT_MS = 20_000;
+
+/**
+ * Await a mailbox read (get/getFull), rejecting if it stalls past {@link MESSAGE_READ_TIMEOUT_MS} or
+ * the run is aborted. IMAP body streaming can hang or throw ("Error while streaming message … Status
+ * …"); without this guard the whole report loop would block on one bad message and Stop could not
+ * interrupt it. Aborts reject with an AbortError so callers can propagate cancellation.
+ */
+function guardedRead<T>(operation: Promise<T>, abortSignal: AbortSignal, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    if (abortSignal.aborted) {
+      reject(new DOMException("Report generation cancelled", "AbortError"));
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout>;
+    function cleanup() {
+      clearTimeout(timer);
+      abortSignal.removeEventListener("abort", onAbort);
+    }
+    function onAbort() {
+      cleanup();
+      reject(new DOMException("Report generation cancelled", "AbortError"));
+    }
+    timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`${what} timed out after ${MESSAGE_READ_TIMEOUT_MS / 1000}s`));
+    }, MESSAGE_READ_TIMEOUT_MS);
+    abortSignal.addEventListener("abort", onAbort, { once: true });
+    operation.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
+}
+
+/** Throw an AbortError if the run has been cancelled; used to break out of paging loops promptly. */
+function throwIfAborted(abortSignal: AbortSignal): void {
+  if (abortSignal.aborted) throw new DOMException("Report generation cancelled", "AbortError");
+}
 
 /** Folder/time scope for a single report run, derived from the report window inputs. */
 export interface ReportScope {
@@ -212,16 +258,20 @@ export const reportToolDefinitions: LlmToolDefinition[] = [
 ];
 
 /** Build tool handlers bound to a specific report scope, sharing one body budget across the run. */
-export function createReportToolHandlers(scope: ReportScope): Record<string, LlmToolHandler> {
+export function createReportToolHandlers(
+  scope: ReportScope,
+  // The run's abort signal, so message reads can time out / be cancelled instead of stalling the loop.
+  abortSignal: AbortSignal = new AbortController().signal,
+): Record<string, LlmToolHandler> {
   const budget: BodyBudget = {
     bodiesRemaining: scope.maxMessageBodies,
     charsRemaining: scope.maxTotalBodyChars,
   };
   return {
-    search_messages: (args) => handleSearchMessages(args, scope),
-    get_messages: (args) => handleGetMessages(args, budget),
-    get_thread: (args) => handleGetThread(args, scope),
-    aggregate_messages: (args) => handleAggregateMessages(args, scope),
+    search_messages: (args) => handleSearchMessages(args, scope, abortSignal),
+    get_messages: (args) => handleGetMessages(args, budget, abortSignal),
+    get_thread: (args) => handleGetThread(args, scope, abortSignal),
+    aggregate_messages: (args) => handleAggregateMessages(args, scope, abortSignal),
   };
 }
 
@@ -268,6 +318,7 @@ function filtersToQueryInfo(filters: MessageFilters): QueryInfo {
 async function handleSearchMessages(
   args: Record<string, unknown>,
   scope: ReportScope,
+  abortSignal: AbortSignal,
 ): Promise<{ hits: SearchHit[]; returned: number; truncated: boolean }> {
   const startedAt = Date.now();
   const filters = buildFilters(args, scope.defaultDays);
@@ -277,7 +328,12 @@ async function handleSearchMessages(
   const folderRef = await resolveTargetFolder(scope);
   if (folderRef?.folderId) queryInfo.folderId = folderRef.folderId;
 
-  const { hits, truncated } = await collectHeaders(queryInfo, scope.maxSearchResults, filters.subjectFilter);
+  const { hits, truncated } = await collectHeaders(
+    queryInfo,
+    scope.maxSearchResults,
+    filters.subjectFilter,
+    abortSignal,
+  );
 
   console.log(
     "REPORT: search_messages completed " +
@@ -317,6 +373,7 @@ async function collectHeaders(
   queryInfo: QueryInfo,
   cap: number,
   subjectFilter: string,
+  abortSignal: AbortSignal,
 ): Promise<{ hits: SearchHit[]; truncated: boolean }> {
   const hits: SearchHit[] = [];
   const seenIds = new Set<number>();
@@ -324,6 +381,7 @@ async function collectHeaders(
 
   let page = await browser.messages.query(queryInfo);
   for (;;) {
+    throwIfAborted(abortSignal);
     for (const msg of page.messages) {
       if (msg.id === undefined || seenIds.has(msg.id)) continue;
       if (subjectFilter && !(msg.subject ?? "").toLowerCase().includes(subjectFilter)) continue;
@@ -353,6 +411,7 @@ function toHit(msg: browser.messages.MessageHeader): SearchHit {
 async function handleGetMessages(
   args: Record<string, unknown>,
   budget: BodyBudget,
+  abortSignal: AbortSignal,
 ): Promise<{
   messages: Array<{
     id: number;
@@ -391,8 +450,16 @@ async function handleGetMessages(
       continue;
     }
     try {
-      const header = await browser.messages.get(id);
-      const full = await browser.messages.getFull(id);
+      const header = await guardedRead<browser.messages.MessageHeader>(
+        browser.messages.get(id),
+        abortSignal,
+        `read message ${id}`,
+      );
+      const full = await guardedRead<browser.messages.MessagePart>(
+        browser.messages.getFull(id),
+        abortSignal,
+        `stream message ${id}`,
+      );
       const body = extractTextFromPart(full);
       messages.push({
         id,
@@ -405,10 +472,13 @@ async function handleGetMessages(
       budget.bodiesRemaining -= 1;
       budget.charsRemaining -= body.length;
     } catch (e) {
+      // Cancellation must stop the whole run; anything else (missing id, IMAP stream failure, timeout)
+      // just skips this one message so the report can proceed with what it has.
+      if ((e as Error).name === "AbortError") throw e;
       console.warn(`REPORT: get_messages could not load id=${id}:`, e);
       skipped.push({
         id,
-        reason: `No message exists with id ${id}. Only use ids returned by a recent search_messages/get_thread call.`,
+        reason: `Could not read message ${id} (${(e as Error).message}). It may be unavailable/offline — continue with the other messages.`,
       });
     }
   }
@@ -440,6 +510,7 @@ function parseMessageIds(value: string | undefined): string[] {
 async function handleGetThread(
   args: Record<string, unknown>,
   scope: ReportScope,
+  abortSignal: AbortSignal,
 ): Promise<{ messages: SearchHit[]; truncated: boolean }> {
   const startedAt = Date.now();
   const id = typeof args.id === "number" ? args.id : Number(args.id);
@@ -448,17 +519,42 @@ async function handleGetThread(
   }
 
   let header: browser.messages.MessageHeader;
-  let full: browser.messages.MessagePart;
   try {
-    header = await browser.messages.get(id);
-    full = await browser.messages.getFull(id);
+    header = await guardedRead<browser.messages.MessageHeader>(
+      browser.messages.get(id),
+      abortSignal,
+      `read message ${id}`,
+    );
   } catch (e) {
+    if ((e as Error).name === "AbortError") throw e;
+    // A timeout means the message likely exists but the read stalled — distinguish it from a
+    // genuinely invalid id so the model doesn't retry with a "better" id that won't help.
+    if (/timed out/i.test((e as Error).message)) {
+      throw new Error(
+        `Reading message ${id} timed out. The message may exist but could not be read in time; try again or pick a different message. (${(e as Error).message})`,
+      );
+    }
     throw new Error(
       `No message exists with id ${id}. Use an id returned by a recent search_messages call. (${(e as Error).message})`,
     );
   }
 
-  const headers = (full.headers ?? {}) as Record<string, string[]>;
+  // The full message is only needed to read References/In-Reply-To. IMAP body streaming can stall or
+  // fail ("Error while streaming message … Status …"); if it does, fall back to a subject-only thread
+  // lookup rather than failing the whole tool.
+  const headers: Record<string, string[]> = {};
+  try {
+    const full = await guardedRead<browser.messages.MessagePart>(
+      browser.messages.getFull(id),
+      abortSignal,
+      `stream message ${id}`,
+    );
+    Object.assign(headers, (full.headers ?? {}) as Record<string, string[]>);
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw e;
+    console.warn(`REPORT: get_thread could not stream headers for id=${id}; using subject-only lookup:`, e);
+  }
+
   const relatedIds = new Set<string>();
   for (const key of ["message-id", "references", "in-reply-to"]) {
     for (const value of headers[key] ?? []) {
@@ -474,6 +570,7 @@ async function handleGetThread(
   // 1) Precise ancestors/self: resolve each referenced Message-ID to a mailbox message.
   for (const messageId of relatedIds) {
     if (hits.length >= cap) break;
+    throwIfAborted(abortSignal);
     try {
       const page = await browser.messages.query({ headerMessageId: messageId } as QueryInfo);
       for (const msg of page.messages) {
@@ -491,7 +588,7 @@ async function handleGetThread(
   // scan server-side; we then keep only exact normalized-subject matches.
   const norm = normalizeSubject(header.subject ?? "");
   if (norm && hits.length < cap) {
-    const { hits: subjectHits } = await collectHeaders({ fullText: norm } as QueryInfo, cap * 2, "");
+    const { hits: subjectHits } = await collectHeaders({ fullText: norm } as QueryInfo, cap * 2, "", abortSignal);
     for (const hit of subjectHits) {
       if (hits.length >= cap) break;
       if (!seenIds.has(hit.id) && normalizeSubject(hit.subject) === norm) {
@@ -514,6 +611,7 @@ async function handleGetThread(
 async function handleAggregateMessages(
   args: Record<string, unknown>,
   scope: ReportScope,
+  abortSignal: AbortSignal,
 ): Promise<{
   groupBy: string;
   totalMatched: number;
@@ -536,6 +634,7 @@ async function handleAggregateMessages(
 
   let page = await browser.messages.query(queryInfo);
   outer: for (;;) {
+    throwIfAborted(abortSignal);
     for (const msg of page.messages) {
       if (msg.id === undefined || seenIds.has(msg.id)) continue;
       if (filters.subjectFilter && !(msg.subject ?? "").toLowerCase().includes(filters.subjectFilter)) continue;

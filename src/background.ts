@@ -25,7 +25,7 @@ import {
 import { notifyOnError, timedNotification } from "./notifications";
 import { getPluginOptions } from "./optionsParams";
 import { deleteFromOriginalTabCache, storeOriginalReplyText } from "./originalTabConversation";
-import { continueReport, generateReport, type ReportRequest } from "./reportGeneration";
+import { continueReport, continueReportWithoutSearch, generateReport, type ReportRequest } from "./reportGeneration";
 import type { ReportScope } from "./reportTools";
 
 import Tab = browser.tabs.Tab;
@@ -94,9 +94,11 @@ async function setOrganiseActionState(loading: boolean, percent?: number) {
 async function toggleOrganiseFolder(): Promise<void> {
   if (organiseAbortController) {
     console.log("ORGANISE: Aborting existing organise-folder run");
-    // Just signal the abort; the in-flight run resets the UI and shows its summary notification.
+    // Only signal the abort here. The in-flight run's `finally` clears organiseAbortController and
+    // restores the action icon/menu — but that cleanup is guarded by `organiseAbortController ===
+    // abortController`, so we must NOT null it here or that guard fails and the UI never resets
+    // (spinner and "Cancel Organise" entry would stick forever, making cancel look like a no-op).
     organiseAbortController.abort(new DOMException("User cancelled organise folder", "AbortError"));
-    organiseAbortController = null;
     return;
   }
 
@@ -118,6 +120,11 @@ async function toggleOrganiseFolder(): Promise<void> {
       if (confirmBeforeMoving) {
         // Classify only, then let the user confirm/adjust in a popup before anything moves.
         const plan = await planOrganiseCurrentFolder(abortController.signal, onProgress);
+        // Classification is done and the popup takes over from here, so end the "Organising…" UI NOW,
+        // while the background is still active. Deferring to `finally` is unsafe: opening the popup
+        // hands focus to the new window and MV3 may suspend the idle background before the deferred
+        // menu/icon calls flush — leaving the progress entry stuck (see endOrganiseUi callers).
+        await endOrganiseUi(abortController);
         if (plan && !abortController.signal.aborted) {
           if (plan.entries.length === 0) {
             await timedNotification("Organise Folder", "No movable emails in this folder.", 5000);
@@ -130,13 +137,19 @@ async function toggleOrganiseFolder(): Promise<void> {
         await organiseCurrentFolder(abortController.signal, onProgress);
       }
     } finally {
-      if (organiseAbortController === abortController) {
-        organiseAbortController = null;
-        await setOrganiseActionState(false);
-        await restoreActionMenu();
-      }
+      // Safety net for the automatic path and for any error/abort before the popup handoff.
+      await endOrganiseUi(abortController);
     }
   });
+}
+
+/** End the organise "in progress" UI (loading icon + progress/cancel menu entry) once per run. */
+async function endOrganiseUi(controller: AbortController): Promise<void> {
+  // Guard on controller identity so a superseding run or a duplicate call is a no-op.
+  if (organiseAbortController !== controller) return;
+  organiseAbortController = null;
+  await setOrganiseActionState(false);
+  await restoreActionMenu();
 }
 
 // ── Organise-folder confirmation popup ──────────────────────────────────────────
@@ -252,7 +265,8 @@ async function runReport(
   windowId: number,
   request: ReportRequest,
   continueConversation: boolean,
-): Promise<{ report?: string; error?: string }> {
+  noSearch: boolean,
+): Promise<void> {
   // Cancel any previous run for this window before starting a new one.
   reportAbortControllers.get(windowId)?.abort(new DOMException("Superseded by a new report", "AbortError"));
 
@@ -265,24 +279,41 @@ async function runReport(
   };
   try {
     const existing = reportSessions.get(windowId);
-    const session =
-      continueConversation && existing
-        ? await continueReport(existing, request.prompt, abortController.signal, onProgress)
-        : await generateReport(request, abortController.signal, onProgress);
+    let session: Awaited<ReturnType<typeof generateReport>>;
+    if (continueConversation && existing) {
+      // "Refine without search" rewrites the existing report via a plain chat (no tools); the normal
+      // refine continues the agentic conversation with search tools available.
+      session = noSearch
+        ? await continueReportWithoutSearch(existing, request.prompt, abortController.signal, onProgress)
+        : await continueReport(existing, request.prompt, abortController.signal, onProgress);
+    } else {
+      session = await generateReport(request, abortController.signal, onProgress);
+    }
     // Persist the conversation so the next refinement continues it.
     reportSessions.set(windowId, { messages: session.messages, scope: session.scope });
-    return { report: session.report };
+    postReportResult(windowId, { report: session.report });
   } catch (e) {
     if ((e as Error).name === "AbortError") {
-      return { error: "Report generation was cancelled." };
+      postReportResult(windowId, { error: "Report generation was cancelled." });
+    } else {
+      console.error("REPORT: generation failed:", e);
+      postReportResult(windowId, { error: (e as Error).message });
     }
-    console.error("REPORT: generation failed:", e);
-    return { error: (e as Error).message };
   } finally {
     if (reportAbortControllers.get(windowId) === abortController) {
       reportAbortControllers.delete(windowId);
     }
   }
+}
+
+/**
+ * Deliver a finished report (or error) to its window over a fire-and-forget message — NOT as the
+ * reply to the original generate-report call. Keeping the request channel open for the whole
+ * (potentially minutes-long) run risks it being torn down mid-generation ("Actor 'Conduits'
+ * destroyed…"), which would hang the popup; this decouples the result from that channel's lifetime.
+ */
+function postReportResult(windowId: number, payload: { report?: string; error?: string }): void {
+  void browser.runtime.sendMessage({ type: "report-result", windowId, ...payload }).catch(() => {});
 }
 
 // Clean up an in-flight report and its conversation when the window is closed.
@@ -318,7 +349,13 @@ type ReportFolderPayload = { accountId: string; path: string } | null;
 type RuntimeRequestMessage =
   | { type: "get-folder-paths" }
   | { type: "get-active-folder" }
-  | { type: "generate-report"; windowId: number; request: ReportRequest; continueConversation?: boolean }
+  | {
+      type: "generate-report";
+      windowId: number;
+      request: ReportRequest;
+      continueConversation?: boolean;
+      noSearch?: boolean;
+    }
   | { type: "cancel-report"; windowId: number }
   | { type: "reset-report"; windowId: number }
   | { type: "open-email"; id: number }
@@ -348,7 +385,7 @@ async function openEmail(id: number): Promise<{ ok: true } | { error: string }> 
     await browser.messageDisplay.open({ messageId: id, location: "tab", active: true });
     return { ok: true };
   } catch (e) {
-    console.warn(`REPORT: could not open email id=${id}:`, e);
+    console.error(`REPORT: could not open email id=${id}:`, e);
     return { error: "That email could not be opened — it may have been moved or deleted." };
   }
 }
@@ -359,7 +396,7 @@ async function replyToEmail(id: number): Promise<{ ok: true } | { error: string 
     await browser.compose.beginReply(id, "replyToSender");
     return { ok: true };
   } catch (e) {
-    console.warn(`REPORT: could not reply to email id=${id}:`, e);
+    console.error(`REPORT: could not reply to email id=${id}:`, e);
     return { error: "Could not start a reply — the email may have been moved or deleted." };
   }
 }
@@ -380,7 +417,15 @@ browser.runtime.onMessage.addListener((message: unknown) => {
       }));
 
     case "generate-report":
-      return runReport(message.windowId, message.request, message.continueConversation ?? false);
+      // Run detached and ack immediately; the outcome is delivered later via a `report-result`
+      // message (see postReportResult) so the popup never awaits a long-lived request channel.
+      void runReport(
+        message.windowId,
+        message.request,
+        message.continueConversation ?? false,
+        message.noSearch ?? false,
+      );
+      return Promise.resolve({ ok: true });
 
     case "cancel-report": {
       const controller = reportAbortControllers.get(message.windowId);

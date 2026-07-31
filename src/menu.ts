@@ -83,6 +83,12 @@ export async function restoreActionMenu(): Promise<void> {
   for (const menuEntry of actionMenuEntries) {
     await addMenuEntry(menuEntry);
   }
+  // Reflect the swap in an already-open menu, mirroring the progress-update path.
+  try {
+    await browser.menus.refresh();
+  } catch (error) {
+    console.info("MENU: could not refresh after restoring action entries:", error);
+  }
 }
 
 export async function addLlmActionsToMenu() {

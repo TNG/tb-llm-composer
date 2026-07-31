@@ -26,10 +26,16 @@ function dispatchRuntimeMessage(message: unknown): void {
   for (const listener of messageListeners) listener(message);
 }
 
-/** Drive the create flow so the popup stores/renders a report (sendMessageMock must resolve one). */
-async function generateReportInPopup(doc: Document, prompt: string): Promise<void> {
+/** Deliver a finished report to the popup the way the background does — a `report-result` message. */
+function deliverReport(report: string): void {
+  dispatchRuntimeMessage({ type: "report-result", windowId: 123, report });
+}
+
+/** Drive the create flow and deliver `report` back over the result channel, then wait for the render. */
+async function generateReportInPopup(doc: Document, prompt: string, report = "REPORT BODY"): Promise<void> {
   (doc.getElementById("prompt") as HTMLTextAreaElement).value = prompt;
   (doc.getElementById("create-btn") as HTMLButtonElement).click();
+  deliverReport(report);
   await waitFor(() => {
     expect(doc.querySelector("#report-output .report-placeholder")).toBeNull();
   });
@@ -113,11 +119,11 @@ afterEach(() => {
 });
 
 describe("The report popup", () => {
-  test("prefills the scope note from the folder context in the URL", async () => {
+  test("prefills the selected folder name from the folder context in the URL", async () => {
     await loadPopup(FOLDER_SEARCH);
 
-    const scopeNote = reportsDom.window.document.getElementById("scope-note");
-    expect(scopeNote?.textContent).toContain("Inbox");
+    const selectedFolder = reportsDom.window.document.getElementById("selected-folder-name");
+    expect(selectedFolder?.textContent).toContain("Inbox");
   });
 
   test("searches all folders when no folder context is provided", async () => {
@@ -126,16 +132,15 @@ describe("The report popup", () => {
     const folderOnly = reportsDom.window.document.getElementById("folder-only") as HTMLInputElement;
     expect(folderOnly.checked).toBe(false);
     expect(folderOnly.disabled).toBe(true);
-    expect(reportsDom.window.document.getElementById("scope-note")?.textContent).toContain("all folders");
   });
 
   test("requests a report and renders it in the output area", async () => {
-    sendMessageMock.mockResolvedValue({ report: "GENERATED REPORT BODY" });
     await loadPopup(FOLDER_SEARCH);
 
     const doc = reportsDom.window.document;
     (doc.getElementById("prompt") as HTMLTextAreaElement).value = "Give me a to-do list";
     (doc.getElementById("create-btn") as HTMLButtonElement).click();
+    deliverReport("GENERATED REPORT BODY");
 
     await waitFor(() => {
       expect(doc.getElementById("report-output")?.textContent).toContain("GENERATED REPORT BODY");
@@ -155,12 +160,12 @@ describe("The report popup", () => {
   });
 
   test("renders an email citation as a chip and opens/replies to it on click", async () => {
-    sendMessageMock.mockResolvedValue({ report: 'Resolved [Alice — "Re: Invoice"](email:4242).' });
     await loadPopup(FOLDER_SEARCH);
 
     const doc = reportsDom.window.document;
     (doc.getElementById("prompt") as HTMLTextAreaElement).value = "status";
     (doc.getElementById("create-btn") as HTMLButtonElement).click();
+    deliverReport('Resolved [Alice — "Re: Invoice"](email:4242).');
 
     await waitFor(() => {
       expect(doc.querySelector("#report-output .email-citation")).not.toBeNull();
@@ -173,6 +178,80 @@ describe("The report popup", () => {
     sendMessageMock.mockClear();
     (doc.querySelector("#report-output .email-reply") as HTMLButtonElement).click();
     expect(sendMessageMock).toHaveBeenCalledWith({ type: "reply-email", id: 4242 });
+  });
+
+  test("keeps report versions and steps back and forth between them", async () => {
+    await loadPopup(FOLDER_SEARCH);
+    const doc = reportsDom.window.document;
+
+    await generateReportInPopup(doc, "make a report", "FIRST VERSION");
+
+    const nav = doc.getElementById("version-nav") as HTMLElement;
+    // A single version: navigation stays hidden.
+    expect(nav.hidden).toBe(true);
+
+    (doc.getElementById("create-btn") as HTMLButtonElement).click();
+    deliverReport("SECOND VERSION");
+    await waitFor(() => {
+      expect(doc.getElementById("report-output")?.textContent).toContain("SECOND VERSION");
+    });
+
+    // Two versions now: navigation appears, showing the latest.
+    expect(nav.hidden).toBe(false);
+    expect(doc.getElementById("version-label")?.textContent).toBe("2 / 2");
+    expect((doc.getElementById("next-version") as HTMLButtonElement).disabled).toBe(true);
+
+    // Step back to the first version.
+    (doc.getElementById("prev-version") as HTMLButtonElement).click();
+    expect(doc.getElementById("report-output")?.textContent).toContain("FIRST VERSION");
+    expect(doc.getElementById("version-label")?.textContent).toBe("1 / 2");
+    expect((doc.getElementById("prev-version") as HTMLButtonElement).disabled).toBe(true);
+
+    // Step forward again.
+    (doc.getElementById("next-version") as HTMLButtonElement).click();
+    expect(doc.getElementById("report-output")?.textContent).toContain("SECOND VERSION");
+
+    // "New report" clears the history and hides the navigation.
+    (doc.getElementById("new-report-btn") as HTMLButtonElement).click();
+    await waitFor(() => {
+      expect(nav.hidden).toBe(true);
+      expect(doc.querySelector("#report-output .report-placeholder")).not.toBeNull();
+    });
+  });
+
+  test("shows 'refine without search' only after a report exists and sends the flag", async () => {
+    await loadPopup(FOLDER_SEARCH);
+    const doc = reportsDom.window.document;
+    const noSearch = doc.getElementById("no-search") as HTMLInputElement;
+    const refineControl = doc.getElementById("refine-control") as HTMLElement;
+
+    // Hidden until there is a report to refine.
+    expect(refineControl.hidden).toBe(true);
+
+    await generateReportInPopup(doc, "make a report", "V1");
+    expect(refineControl.hidden).toBe(false);
+
+    // Refine with the option checked → the generate-report message carries noSearch:true.
+    noSearch.checked = true;
+    sendMessageMock.mockClear();
+    (doc.getElementById("prompt") as HTMLTextAreaElement).value = "reorder the sections";
+    (doc.getElementById("create-btn") as HTMLButtonElement).click();
+    deliverReport("V2");
+
+    // Wait for the refine to fully complete (V2 rendered) so the popup is no longer busy.
+    await waitFor(() => {
+      expect(doc.getElementById("report-output")?.textContent).toContain("V2");
+    });
+    expect(sendMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "generate-report", continueConversation: true, noSearch: true }),
+    );
+
+    // Starting a new report hides and unchecks the option again.
+    (doc.getElementById("new-report-btn") as HTMLButtonElement).click();
+    await waitFor(() => {
+      expect(refineControl.hidden).toBe(true);
+      expect(noSearch.checked).toBe(false);
+    });
   });
 
   test("does not send a request when the prompt is empty", async () => {
@@ -188,12 +267,13 @@ describe("The report popup", () => {
   });
 
   test("shows an error status when generation fails", async () => {
-    sendMessageMock.mockResolvedValue({ error: "endpoint exploded" });
     await loadPopup(FOLDER_SEARCH);
 
     const doc = reportsDom.window.document;
     (doc.getElementById("prompt") as HTMLTextAreaElement).value = "anything";
     (doc.getElementById("create-btn") as HTMLButtonElement).click();
+    // The background reports failure over the result channel.
+    dispatchRuntimeMessage({ type: "report-result", windowId: 123, error: "endpoint exploded" });
 
     await waitFor(() => {
       expect(doc.getElementById("status")?.textContent).toContain("endpoint exploded");
@@ -201,10 +281,9 @@ describe("The report popup", () => {
   });
 
   test("saves the report as .txt with the default filename", async () => {
-    sendMessageMock.mockResolvedValue({ report: "report contents" });
     await loadPopup(FOLDER_SEARCH);
     const doc = reportsDom.window.document;
-    await generateReportInPopup(doc, "anything");
+    await generateReportInPopup(doc, "anything", "report contents");
 
     (doc.getElementById("save-txt-btn") as HTMLButtonElement).click();
 
@@ -215,10 +294,9 @@ describe("The report popup", () => {
   });
 
   test("saves the report as .md with the default filename", async () => {
-    sendMessageMock.mockResolvedValue({ report: "# report" });
     await loadPopup(FOLDER_SEARCH);
     const doc = reportsDom.window.document;
-    await generateReportInPopup(doc, "anything");
+    await generateReportInPopup(doc, "anything", "# report");
 
     (doc.getElementById("save-md-btn") as HTMLButtonElement).click();
 
@@ -239,10 +317,9 @@ describe("The report popup", () => {
   });
 
   test("copies the report to the clipboard, flattening citation links to plain text", async () => {
-    sendMessageMock.mockResolvedValue({ report: "copy [Alice](email:7) me" });
     await loadPopup(FOLDER_SEARCH);
     const doc = reportsDom.window.document;
-    await generateReportInPopup(doc, "anything");
+    await generateReportInPopup(doc, "anything", "copy [Alice](email:7) me");
 
     (doc.getElementById("copy-btn") as HTMLButtonElement).click();
 
@@ -314,23 +391,12 @@ describe("The report popup", () => {
   });
 
   test("shows live progress and lets the user abort while generating", async () => {
-    // Keep the generate-report request pending so the popup stays in the busy state.
-    let finishGenerate: (value: { report?: string; error?: string }) => void = () => {};
-    sendMessageMock.mockImplementation((message: { type?: string }) => {
-      if (message.type === "generate-report") {
-        return new Promise((resolve) => {
-          finishGenerate = resolve;
-        });
-      }
-      return Promise.resolve({});
-    });
-
     await loadPopup(FOLDER_SEARCH);
     const doc = reportsDom.window.document;
     (doc.getElementById("prompt") as HTMLTextAreaElement).value = "Give me a to-do list";
     (doc.getElementById("create-btn") as HTMLButtonElement).click();
 
-    // The progress row becomes visible while generating.
+    // The generate-report request is fire-and-forget; the popup enters the busy state immediately.
     const progress = doc.getElementById("progress") as HTMLDivElement;
     await waitFor(() => {
       expect(progress.hasAttribute("hidden")).toBe(false);
@@ -349,15 +415,15 @@ describe("The report popup", () => {
       expect(text).toContain("5 tool calls");
     });
 
-    // Clicking the Stop button aborts the in-flight report.
-    (doc.getElementById("abort-btn") as HTMLButtonElement).click();
+    // While generating, the send button acts as a stop control; clicking it aborts the report.
+    (doc.getElementById("create-btn") as HTMLButtonElement).click();
     await waitFor(() => {
       expect(sendMessageMock).toHaveBeenCalledWith(expect.objectContaining({ type: "cancel-report", windowId: 123 }));
       expect(doc.getElementById("status")?.textContent).toContain("Cancelling");
     });
 
-    // Let the (now cancelled) request settle so the popup leaves the busy state.
-    finishGenerate({ error: "Report generation was cancelled." });
+    // The background delivers a cancellation result, which leaves the busy state.
+    dispatchRuntimeMessage({ type: "report-result", windowId: 123, error: "Report generation was cancelled." });
     await waitFor(() => {
       expect(progress.hasAttribute("hidden")).toBe(true);
     });

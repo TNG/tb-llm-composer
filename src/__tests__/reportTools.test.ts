@@ -249,7 +249,7 @@ describe("reportTools", () => {
       };
 
       expect(result.messages).toHaveLength(0);
-      expect(result.skipped[0].reason).toMatch(/No message exists with id 51291/);
+      expect(result.skipped[0].reason).toMatch(/Could not read message 51291/);
     });
 
     test("throws when ids is empty", async () => {
@@ -302,6 +302,36 @@ describe("reportTools", () => {
       setBrowser({ get, getFull: vi.fn() });
       const handlers = createReportToolHandlers(BASE_SCOPE);
       await expect(handlers.get_thread({ id: 5 })).rejects.toThrow(/No message exists with id 5/);
+    });
+
+    test("falls back to a subject-only lookup when the body cannot be streamed", async () => {
+      // Header loads, but streaming the full message fails (e.g. IMAP "Error while streaming …").
+      const get = vi.fn().mockResolvedValue({ subject: "Re: Project", headerMessageId: "b@x" });
+      const getFull = vi.fn().mockRejectedValue(new Error("Error while streaming message: Status 2153054243"));
+      const query = vi.fn().mockResolvedValue({
+        messages: [
+          { id: 11, subject: "Re: Project", author: "me", recipients: [], date: new Date("2026-01-02") },
+          { id: 12, subject: "Project", author: "bob", recipients: [], date: new Date("2026-01-03") },
+        ],
+      });
+      setBrowser({ get, getFull, query });
+
+      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const result = (await handlers.get_thread({ id: 11 })) as { messages: Array<{ id: number }> };
+
+      // Despite the streaming failure, same-subject siblings are still found via the subject scan.
+      const ids = result.messages.map((m) => m.id);
+      expect(ids).toContain(11);
+      expect(ids).toContain(12);
+    });
+
+    test("aborts promptly when the run is cancelled", async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const get = vi.fn().mockResolvedValue({ subject: "x", headerMessageId: "a@x" });
+      setBrowser({ get, getFull: vi.fn(), query: vi.fn() });
+      const handlers = createReportToolHandlers(BASE_SCOPE, controller.signal);
+      await expect(handlers.get_thread({ id: 5 })).rejects.toMatchObject({ name: "AbortError" });
     });
   });
 

@@ -1,12 +1,32 @@
 import { getAllFolderPaths } from "./emailOrganising";
 import { hasEndpointPermission, requestEndpointPermission } from "./hostPermissions";
 import { notifyOnError } from "./notifications";
-import { type FolderRule, getPluginOptions } from "./optionsParams";
+import { type FolderRule, getPluginOptions, type Options } from "./optionsParams";
 import { getInputElement } from "./utils";
 
 type GetFolderPathsMessage = {
   type: "get-folder-paths";
 };
+
+/**
+ * Serialize read-modify-write updates to the stored options. Each field writer fires on a "change"
+ * event, and several can overlap (e.g. tabbing quickly between fields); without serialization two
+ * updates could both read the same options, then each write it back and clobber the other's field.
+ * Every mutation runs as one link of this chain: it reads the latest options, applies its change,
+ * then writes — only after the previous update has finished.
+ */
+let optionsWriteChain: Promise<void> = Promise.resolve();
+
+function updateStoredOptions(mutate: (options: Options) => void | Promise<void>): Promise<void> {
+  const run = optionsWriteChain.then(async () => {
+    const options = await getPluginOptions();
+    await mutate(options);
+    await browser.storage.sync.set({ options });
+  });
+  // Keep the chain alive even if one mutation rejects, so later updates still run.
+  optionsWriteChain = run.catch(() => {});
+  return run;
+}
 
 document.addEventListener("DOMContentLoaded", restoreOptions);
 document.querySelector("#url")?.addEventListener("change", updateUrl);
@@ -35,9 +55,9 @@ async function updateUrl(event: Event) {
     if (!modelUrlInput.value) {
       throw new Error("Invalid value: Model URL cannot be empty");
     }
-    const options = await getPluginOptions();
-    options.model = modelUrlInput.value;
-    await browser.storage.sync.set({ options });
+    await updateStoredOptions((options) => {
+      options.model = modelUrlInput.value;
+    });
   });
   // Reflect whether this (possibly new) endpoint origin is already permitted.
   await updateUrlPermissionStatus();
@@ -98,61 +118,62 @@ function toggleTokenVisibility() {
 
 async function updateApiToken(event: Event) {
   const apiTokenInput = event.target as HTMLInputElement;
-  const options = await getPluginOptions();
-  options.api_token = apiTokenInput.value;
-  await browser.storage.sync.set({ options });
+  await updateStoredOptions((options) => {
+    options.api_token = apiTokenInput.value;
+  });
 }
 
 async function updateTimeout(event: Event) {
   const timeoutInput = event.target as HTMLInputElement;
-  const options = await getPluginOptions();
   const timeoutSeconds = timeoutInput.valueAsNumber;
-  // Convert seconds to milliseconds, or set to undefined if 0 or empty
-  options.timeout = timeoutSeconds > 0 ? timeoutSeconds * 1000 : undefined;
-  await browser.storage.sync.set({ options });
+  await updateStoredOptions((options) => {
+    // Convert seconds to milliseconds, or set to undefined if 0 or empty
+    options.timeout = timeoutSeconds > 0 ? timeoutSeconds * 1000 : undefined;
+  });
 }
 
 async function updateLlmContext(event: Event) {
   const llmContextInput = event.target as HTMLTextAreaElement;
-  const options = await getPluginOptions();
-  options.llmContext = llmContextInput.value;
-  await browser.storage.sync.set({ options });
+  await updateStoredOptions((options) => {
+    options.llmContext = llmContextInput.value;
+  });
 }
 
 async function updateUseLastMails(event: Event) {
   const useLastMailsInput = event.target as HTMLInputElement;
-  const options = await getPluginOptions();
-  options.include_recent_mails = useLastMailsInput.checked;
-  await browser.storage.sync.set({ options });
+  await updateStoredOptions((options) => {
+    options.include_recent_mails = useLastMailsInput.checked;
+  });
 }
 
 async function updateStripThinkTag(event: Event) {
   const stripThinkTagInput = event.target as HTMLInputElement;
-  const options = await getPluginOptions();
-  options.strip_think_tag = stripThinkTagInput.checked;
-  await browser.storage.sync.set({ options });
+  await updateStoredOptions((options) => {
+    options.strip_think_tag = stripThinkTagInput.checked;
+  });
 }
 
 async function updateConfirmMovesBeforeApplying(event: Event) {
   const input = event.target as HTMLInputElement;
-  const options = await getPluginOptions();
-  options.confirmMovesBeforeApplying = input.checked;
-  await browser.storage.sync.set({ options });
+  await updateStoredOptions((options) => {
+    options.confirmMovesBeforeApplying = input.checked;
+  });
 }
 
 async function updateContextWindow(event: Event) {
   const contextWindowInput = event.target as HTMLInputElement;
-  const options = await getPluginOptions();
-  options.context_window = contextWindowInput.valueAsNumber;
-  await browser.storage.sync.set({ options });
+  await updateStoredOptions((options) => {
+    options.context_window = contextWindowInput.valueAsNumber;
+  });
 }
 
 async function updateOtherOptions(event: Event) {
   await notifyOnError(async () => {
     const otherOptionsElement = event.target as HTMLTextAreaElement;
-    const options = await getPluginOptions();
-    options.params = JSON.parse(otherOptionsElement.value);
-    await browser.storage.sync.set({ options });
+    const params = JSON.parse(otherOptionsElement.value);
+    await updateStoredOptions((options) => {
+      options.params = params;
+    });
   });
 }
 
@@ -304,9 +325,9 @@ async function applyModelToOtherOptions(model: string): Promise<void> {
     params.model = model;
     otherOptionsEl.value = JSON.stringify(params, null, 2);
 
-    const options = await getPluginOptions();
-    options.params = params;
-    await browser.storage.sync.set({ options });
+    await updateStoredOptions((options) => {
+      options.params = params;
+    });
   });
 }
 
@@ -325,9 +346,9 @@ async function updatePositiveIntOption(
   if (!Number.isFinite(value) || value < 1) {
     return;
   }
-  const options = await getPluginOptions();
-  options[key] = Math.floor(value);
-  await browser.storage.sync.set({ options });
+  await updateStoredOptions((options) => {
+    options[key] = Math.floor(value);
+  });
 }
 
 async function updateReportDefaultDays(event: Event) {
@@ -585,8 +606,9 @@ function collectFolderRules(): FolderRule[] {
 
 async function saveFolderRules() {
   await notifyOnError(async () => {
-    const options = await getPluginOptions();
-    options.folderSortingRules = collectFolderRules();
-    await browser.storage.sync.set({ options });
+    const rules = collectFolderRules();
+    await updateStoredOptions((options) => {
+      options.folderSortingRules = rules;
+    });
   });
 }

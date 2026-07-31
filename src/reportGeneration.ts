@@ -1,4 +1,13 @@
-import { type AgenticProgress, type LlmApiRequestMessage, LlmRoles, runAgenticLlm } from "./llmConnection";
+import {
+  type AgenticProgress,
+  isLlmTextCompletionResponse,
+  type LlmApiRequestMessage,
+  LlmRoles,
+  type LlmTextCompletionResponse,
+  runAgenticLlm,
+  sendContentToLlm,
+  type TgiErrorResponse,
+} from "./llmConnection";
 import { getPluginOptions } from "./optionsParams";
 import {
   assertSearchCapabilities,
@@ -150,6 +159,57 @@ export async function continueReport(
   return runReportLoop(messages, session.scope, options.reportMaxSteps, startedAt, abortSignal, onProgress);
 }
 
+/**
+ * Continue a report conversation WITHOUT search/tools: append the user's instruction and make a single
+ * plain chat completion so the model only rewrites/restructures the report it already produced. Backs the
+ * "refine current text without search" option — it spends no search budget and touches no mailbox data.
+ */
+export async function continueReportWithoutSearch(
+  session: { messages: LlmApiRequestMessage[]; scope: ReportScope },
+  prompt: string,
+  abortSignal: AbortSignal,
+  onProgress?: (progress: AgenticProgress) => void,
+): Promise<ReportSession> {
+  const startedAt = Date.now();
+  const options = await getPluginOptions();
+
+  console.log(
+    `REPORT: continuing WITHOUT search (priorMessages=${session.messages.length}, promptChars=${prompt.length})`,
+  );
+
+  const messages: LlmApiRequestMessage[] = [
+    ...session.messages,
+    {
+      role: LlmRoles.USER,
+      content:
+        "Revise the report according to the following instructions. Do NOT search or call any tools — only " +
+        "rewrite and restructure the report you already produced, reusing the information already gathered:\n" +
+        prompt,
+    },
+  ];
+
+  onProgress?.({ llmCalls: 0, toolCalls: 0, phase: "Rewriting the report…" });
+  const response = await sendContentToLlm(messages, abortSignal);
+  if (!isLlmTextCompletionResponse(response)) {
+    throw new Error(
+      "The LLM endpoint returned an error while refining the report: " +
+        `${(response as TgiErrorResponse).error?.message ?? "unknown error"}.`,
+    );
+  }
+
+  const rawReport = (response as LlmTextCompletionResponse).choices?.[0]?.message?.content ?? "";
+  const finalReport = options.strip_think_tag ? stripThinkTags(rawReport) : rawReport;
+  messages.push({ role: LlmRoles.ASSISTANT, content: rawReport });
+  onProgress?.({ llmCalls: 1, toolCalls: 0, phase: "Writing the report…" });
+
+  console.log(
+    `REPORT: no-search refinement completed (elapsedMs=${Date.now() - startedAt}, ` +
+      `rawChars=${rawReport.length}, finalChars=${finalReport.length})`,
+  );
+
+  return { report: finalReport, messages, scope: session.scope };
+}
+
 /** Shared agentic loop for both fresh and continued report runs. */
 async function runReportLoop(
   messages: LlmApiRequestMessage[],
@@ -160,7 +220,7 @@ async function runReportLoop(
   onProgress?: (progress: AgenticProgress) => void,
 ): Promise<ReportSession> {
   const options = await getPluginOptions();
-  const handlers = createReportToolHandlers(scope);
+  const handlers = createReportToolHandlers(scope, abortSignal);
   console.log(`REPORT: entering agentic loop (maxSteps=${maxSteps}, maxSearchResults=${scope.maxSearchResults})`);
 
   try {
