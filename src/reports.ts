@@ -67,6 +67,13 @@ async function init(): Promise<void> {
   folderOnlyInput.addEventListener("change", updateScopeControls);
   folderSelectBtn?.addEventListener("click", toggleFolderList);
   createBtn.addEventListener("click", onCreate);
+  // Enter sends the prompt (chat-style); Shift+Enter inserts a newline.
+  promptInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !busy) {
+      event.preventDefault();
+      void onCreate();
+    }
+  });
   abortBtn.addEventListener("click", onAbort);
   copyBtn.addEventListener("click", onCopy);
   newReportBtn.addEventListener("click", onNewReport);
@@ -358,6 +365,10 @@ async function onNewReport(): Promise<void> {
   newReportBtn.hidden = true;
   if (outputArea) outputArea.value = "";
   if (promptInput) promptInput.value = "";
+  // Reset the saved-prompt controls so a fresh report doesn't stay tied to a loaded preset.
+  if (savedPromptsSelect) savedPromptsSelect.value = "";
+  promptNameInput.value = "";
+  deletePromptBtn.disabled = true;
   createBtn.title = "Create report";
   createBtn.setAttribute("aria-label", "Create report");
   setStatus("Started a new report. Enter a request and click Create.");

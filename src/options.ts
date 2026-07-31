@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", restoreOptions);
 document.querySelector("#url")?.addEventListener("change", updateUrl);
 document.querySelector("#grant-access-btn")?.addEventListener("click", grantEndpointAccess);
 document.querySelector("#api_token")?.addEventListener("change", updateApiToken);
+document.querySelector("#toggle-token-btn")?.addEventListener("click", toggleTokenVisibility);
 document.querySelector("#timeout")?.addEventListener("change", updateTimeout);
 document.querySelector("#llm_context")?.addEventListener("change", updateLlmContext);
 document.querySelector("#use_last_mails")?.addEventListener("change", updateUseLastMails);
@@ -80,6 +81,19 @@ async function updateUrlPermissionStatus() {
   const granted = await hasEndpointPermission(modelUrl);
   statusEl.textContent = granted ? "✅" : "⚠️";
   statusEl.title = granted ? "Access granted" : 'Access not granted — click "Grant access".';
+}
+
+/** Toggle the api-token field between obscured (password) and revealed (text). */
+function toggleTokenVisibility() {
+  const tokenInput = getInputElement("#api_token");
+  const btn = document.querySelector<HTMLButtonElement>("#toggle-token-btn");
+  const revealed = tokenInput.type === "password";
+  tokenInput.type = revealed ? "text" : "password";
+  btn?.classList.toggle("revealed", revealed);
+  btn?.setAttribute("aria-pressed", String(revealed));
+  const label = revealed ? "Hide token" : "Show token";
+  btn?.setAttribute("aria-label", label);
+  btn?.setAttribute("title", label);
 }
 
 async function updateApiToken(event: Event) {
@@ -215,16 +229,22 @@ async function queryAvailableModels(): Promise<void> {
  */
 async function toggleAvailableModels(): Promise<void> {
   const listEl = document.querySelector("#models-list");
-  const statusEl = document.querySelector("#models-status");
   const btn = document.querySelector<HTMLButtonElement>("#query-models-btn");
   if (listEl && listEl.childElementCount > 0) {
-    listEl.replaceChildren();
-    if (statusEl) statusEl.textContent = "";
-    if (btn) btn.textContent = "Query available models";
+    collapseModelsList();
     return;
   }
   await queryAvailableModels();
   if (btn && listEl && listEl.childElementCount > 0) btn.textContent = "Hide available models";
+}
+
+/** Clear the models list and reset the query button to its collapsed state. */
+function collapseModelsList(): void {
+  document.querySelector("#models-list")?.replaceChildren();
+  const statusEl = document.querySelector("#models-status");
+  if (statusEl) statusEl.textContent = "";
+  const btn = document.querySelector<HTMLButtonElement>("#query-models-btn");
+  if (btn) btn.textContent = "Query available models";
 }
 
 /**
@@ -259,9 +279,11 @@ function renderModelList(container: Element, models: string[]): void {
   container.replaceChildren();
   for (const model of models) {
     container.appendChild(
-      makeClickableRow(model, `Use "${model}" (sets params.model in Other options)`, () =>
-        applyModelToOtherOptions(model),
-      ),
+      makeClickableRow(model, `Use "${model}" (sets params.model in Other options)`, () => {
+        // Selecting a model applies it and collapses the list (like picking an item from a menu).
+        void applyModelToOtherOptions(model);
+        collapseModelsList();
+      }),
     );
   }
 }
