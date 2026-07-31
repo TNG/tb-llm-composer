@@ -371,16 +371,105 @@
         /* Fill the remaining vertical space at the bottom of the popup. */
         flex: 1 1 auto;
         min-height: 120px;
-        padding: 8px;
+        padding: 8px 12px;
         border: 1px solid var(--border);
         border-radius: 4px;
         background: var(--subtle-bg);
         color: var(--fg);
         font-family: inherit;
         font-size: 13px;
-        white-space: pre-wrap;
         overflow-y: auto;
-        resize: none;
+      }
+      /* Rendered markdown: tighten the default UA block spacing for the compact popup. */
+      .report-rendered h2,
+      .report-rendered h3,
+      .report-rendered h4,
+      .report-rendered h5,
+      .report-rendered h6 {
+        margin: 12px 0 4px;
+        line-height: 1.25;
+      }
+      .report-rendered h2 {
+        font-size: 15px;
+      }
+      .report-rendered h3 {
+        font-size: 14px;
+      }
+      .report-rendered h4,
+      .report-rendered h5,
+      .report-rendered h6 {
+        font-size: 13px;
+      }
+      .report-rendered p {
+        margin: 6px 0;
+        line-height: 1.4;
+      }
+      .report-rendered ul,
+      .report-rendered ol {
+        margin: 6px 0;
+        padding-left: 22px;
+      }
+      .report-rendered li {
+        margin: 2px 0;
+        line-height: 1.4;
+      }
+      .report-rendered pre {
+        margin: 6px 0;
+        padding: 8px;
+        border-radius: 6px;
+        background: var(--hover-bg);
+        overflow-x: auto;
+      }
+      .report-rendered code {
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .report-placeholder {
+        color: var(--muted);
+      }
+      /* Inline email citation chip: label + Open/Reply glyph buttons. */
+      .email-citation {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin: 0 1px;
+        padding: 0 2px 0 6px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--field-bg);
+        vertical-align: baseline;
+        line-height: 1.6;
+      }
+      .email-citation-label {
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+        color: var(--fg);
+      }
+      .email-citation button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.4em;
+        height: 1.4em;
+        padding: 0;
+        border: none;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .email-citation button:hover {
+        background: var(--accent);
+        color: var(--accent-fg);
+      }
+      .email-citation button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
       }
       #status {
         font-size: 13px;
@@ -515,7 +604,9 @@
         </button>
       </div>
     </div>
-    <textarea id="report-output" readonly aria-labelledby="report-heading" placeholder="The generated report will appear here."></textarea>
+    <article id="report-output" class="report-rendered" aria-labelledby="report-heading">
+      <p class="report-placeholder">The generated report will appear here.</p>
+    </article>
 
     <script src="../reports.js"></script>
   </body>

@@ -321,6 +321,8 @@ type RuntimeRequestMessage =
   | { type: "generate-report"; windowId: number; request: ReportRequest; continueConversation?: boolean }
   | { type: "cancel-report"; windowId: number }
   | { type: "reset-report"; windowId: number }
+  | { type: "open-email"; id: number }
+  | { type: "reply-email"; id: number }
   | { type: "get-organise-plan"; planKey: string }
   | { type: "apply-organise-plan"; planKey: string; assignments: OrganiseAssignment[] };
 
@@ -333,9 +335,33 @@ function isRuntimeRequestMessage(value: unknown): value is RuntimeRequestMessage
     type === "generate-report" ||
     type === "cancel-report" ||
     type === "reset-report" ||
+    type === "open-email" ||
+    type === "reply-email" ||
     type === "get-organise-plan" ||
     type === "apply-organise-plan"
   );
+}
+
+/** Open a cited email in a message tab. Ids are session-scoped, so a stale id fails gracefully. */
+async function openEmail(id: number): Promise<{ ok: true } | { error: string }> {
+  try {
+    await browser.messageDisplay.open({ messageId: id, location: "tab", active: true });
+    return { ok: true };
+  } catch (e) {
+    console.warn(`REPORT: could not open email id=${id}:`, e);
+    return { error: "That email could not be opened — it may have been moved or deleted." };
+  }
+}
+
+/** Start a reply to a cited email in a new compose tab. */
+async function replyToEmail(id: number): Promise<{ ok: true } | { error: string }> {
+  try {
+    await browser.compose.beginReply(id, "replyToSender");
+    return { ok: true };
+  } catch (e) {
+    console.warn(`REPORT: could not reply to email id=${id}:`, e);
+    return { error: "Could not start a reply — the email may have been moved or deleted." };
+  }
 }
 
 // Handle requests that need background-context APIs.
@@ -368,6 +394,12 @@ browser.runtime.onMessage.addListener((message: unknown) => {
       reportSessions.delete(message.windowId);
       return Promise.resolve({ ok: true });
     }
+
+    case "open-email":
+      return openEmail(message.id);
+
+    case "reply-email":
+      return replyToEmail(message.id);
 
     case "get-organise-plan":
       return loadConfirmPlan(message.planKey).then((plan) => ({

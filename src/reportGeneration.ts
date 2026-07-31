@@ -43,8 +43,20 @@ Work agentically:
   per-report body budget is spent — write the report with what you already have.
 
 When you have enough information, stop calling tools and write the final report as your message
-content. The report must be self-contained, well-structured plain text that the user can copy
-elsewhere. Do not include tool-call chatter or your reasoning in the final report.`;
+content. The report must be self-contained and well-structured. You may use light Markdown
+(headings, bold, bullet/numbered lists). Do not include tool-call chatter or your reasoning in the
+final report.
+
+Cite the emails behind your statements so the reader can open them:
+- When a statement rests on one or more specific emails, cite each with an inline Markdown link of
+  the form [short label](email:<id>), placed right after the statement it supports.
+- <id> MUST be the numeric message id returned by search_messages / get_messages / get_thread.
+  Never invent ids; only cite emails you actually retrieved.
+- Keep the label short and human — e.g. the sender plus subject: [Alice — "Re: Invoice"](email:12345).
+- Cite the actual source message(s); if several support one point, add several links in a row.
+
+Example: The February invoice was resolved on the 3rd [Alice — "Re: Invoice"](email:12345), and
+shipping confirmed the next day [Bob — "Shipping"](email:12346).`;
 
 /** Build the scope-describing user preamble for the run. */
 function buildScopePreamble(request: ReportRequest): string {
