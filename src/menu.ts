@@ -46,16 +46,17 @@ export const cancelRequestMenuEntry: browser.menus._CreateCreateProperties = {
 
 // Shown in place of the toolbar action entries while a folder is being organised:
 // a single top-level entry that displays progress and doubles as an abort button,
-// mirroring the compose_action "Cancel Request" behaviour.
+// mirroring the compose_action "Cancel Request" behaviour. The title leads with
+// "Cancel" so it is obvious the entry aborts the run, with the live progress appended.
 export const cancelOrganiseMenuEntry: browser.menus._CreateCreateProperties = {
   id: "cancel-organise",
   contexts: ["action_menu"],
-  title: "Organising…",
+  title: "Cancel Organise",
   enabled: true,
 };
 
 function organiseProgressTitle(percent: number): string {
-  return `Organising… ${percent}%`;
+  return `Cancel Organise (${percent}%)`;
 }
 
 /** Swap the toolbar action entries for a single organise-progress/cancel entry. */
