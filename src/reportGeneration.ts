@@ -53,8 +53,8 @@ Work agentically:
 
 When you have enough information, stop calling tools and write the final report as your message
 content. The report must be self-contained and well-structured. You may use light Markdown
-(headings, bold, bullet/numbered lists). Do not include tool-call chatter or your reasoning in the
-final report.
+(headings, bold, bullet/numbered lists, and pipe tables for tabular data). Do not include tool-call
+chatter or your reasoning in the final report.
 
 Cite the emails behind your statements so the reader can open them:
 - When a statement rests on one or more specific emails, cite each with an inline Markdown link of

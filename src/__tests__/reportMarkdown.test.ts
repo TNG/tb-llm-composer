@@ -18,6 +18,40 @@ describe("renderReportHtml", () => {
     expect([...html.querySelectorAll("ol > li")].map((li) => li.textContent)).toEqual(["first", "second"]);
   });
 
+  test("renders a markdown table with a header row and body cells", () => {
+    const html = render(
+      "Summary:\n\n| Sender | Count |\n| --- | --- |\n| alice@x.com | 3 |\n| bob@y.com | 1 |\n\nDone.",
+    );
+    expect(html.querySelector("table.report-table")).not.toBeNull();
+    expect([...html.querySelectorAll("thead th")].map((c) => c.textContent)).toEqual(["Sender", "Count"]);
+    const bodyRows = [...html.querySelectorAll("tbody tr")].map((tr) =>
+      [...tr.querySelectorAll("td")].map((td) => td.textContent),
+    );
+    expect(bodyRows).toEqual([
+      ["alice@x.com", "3"],
+      ["bob@y.com", "1"],
+    ]);
+    // Surrounding paragraphs are still rendered around the table.
+    expect([...html.querySelectorAll("p")].map((p) => p.textContent)).toEqual(["Summary:", "Done."]);
+  });
+
+  test("applies column alignment from the delimiter row and renders inline markup in cells", () => {
+    const html = render("| Left | Right |\n| :--- | ---: |\n| **a** | [Z](email:7) |");
+    const [th1, th2] = [...html.querySelectorAll<HTMLTableCellElement>("th")];
+    expect(th1.style.textAlign).toBe("left");
+    expect(th2.style.textAlign).toBe("right");
+    const [td1, td2] = [...html.querySelectorAll<HTMLTableCellElement>("td")];
+    expect(td1.querySelector("strong")?.textContent).toBe("a");
+    expect(td2.style.textAlign).toBe("right");
+    expect(td2.querySelector(".email-citation .email-open")?.getAttribute("data-email-id")).toBe("7");
+  });
+
+  test("pads ragged table rows to the header width", () => {
+    const html = render("| A | B | C |\n| - | - | - |\n| 1 | 2 |");
+    const cells = [...html.querySelectorAll("tbody td")].map((td) => td.textContent);
+    expect(cells).toEqual(["1", "2", ""]);
+  });
+
   test("renders bold, italic, and inline code", () => {
     const html = render("A **bold** and _italic_ and `code` word.");
     expect(html.querySelector("strong")?.textContent).toBe("bold");

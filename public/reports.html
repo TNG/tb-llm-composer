@@ -445,6 +445,29 @@
         font-family: monospace;
         font-size: 12px;
       }
+      .report-rendered table.report-table {
+        border-collapse: collapse;
+        margin: 8px 0;
+        font-size: 12px;
+        /* Wide tables scroll horizontally rather than stretching the popup. */
+        display: block;
+        max-width: 100%;
+        overflow-x: auto;
+      }
+      .report-rendered table.report-table th,
+      .report-rendered table.report-table td {
+        border: 1px solid var(--border);
+        padding: 4px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+      .report-rendered table.report-table th {
+        background: var(--hover-bg);
+        font-weight: 600;
+      }
+      .report-rendered table.report-table tbody tr:nth-child(even) {
+        background: var(--subtle-bg);
+      }
       .report-placeholder {
         color: var(--muted);
       }

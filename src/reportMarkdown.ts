@@ -146,9 +146,81 @@ function isBlockStart(line: string): boolean {
 const BULLET = /^\s*([-*])\s+(.*)$/;
 const ORDERED = /^\s*\d+\.\s+(.*)$/;
 
+type CellAlign = "left" | "right" | "center" | "";
+
+/** Split a `| a | b |` table row into trimmed cells, honouring escaped `\|` pipes. */
+function splitTableRow(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  return trimmed.split(/(?<!\\)\|/).map((cell) => cell.replace(/\\\|/g, "|").trim());
+}
+
+/** True for a table delimiter row like `| --- | :--: |` (every cell is dashes with optional colons). */
+function isTableDelimiterRow(line: string): boolean {
+  if (!line.includes("-")) return false;
+  const cells = splitTableRow(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-+:?$/.test(cell));
+}
+
+/**
+ * A table starts where a header row is immediately followed by a delimiter row. Needs the next line,
+ * so it is detected with lookahead rather than via {@link isBlockStart}.
+ */
+function isTableStart(lines: string[], idx: number): boolean {
+  const header = lines[idx];
+  const delimiter = lines[idx + 1];
+  return Boolean(header?.includes("|")) && delimiter !== undefined && isTableDelimiterRow(delimiter);
+}
+
+/** Derive per-column alignment from the delimiter row's leading/trailing colons. */
+function parseAlignments(delimiterLine: string): CellAlign[] {
+  return splitTableRow(delimiterLine).map((cell) => {
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    if (left) return "left";
+    return "";
+  });
+}
+
+/** Build a `<td>`/`<th>` with inline-rendered content and optional text alignment. */
+function buildCell(doc: Document, tag: "th" | "td", text: string, align: CellAlign): HTMLTableCellElement {
+  const cell = doc.createElement(tag);
+  if (align) cell.style.textAlign = align;
+  cell.appendChild(inlineFragment(text, doc));
+  return cell;
+}
+
+/** Assemble a `<table>` from parsed header/body cells, padding ragged rows to the header width. */
+function buildTable(doc: Document, header: string[], rows: string[][], aligns: CellAlign[]): Node {
+  const table = doc.createElement("table");
+  table.className = "report-table";
+
+  const thead = doc.createElement("thead");
+  const headerRow = doc.createElement("tr");
+  header.forEach((text, col) => {
+    headerRow.appendChild(buildCell(doc, "th", text, aligns[col] ?? ""));
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = doc.createElement("tbody");
+  for (const row of rows) {
+    const tr = doc.createElement("tr");
+    for (let col = 0; col < header.length; col++) {
+      tr.appendChild(buildCell(doc, "td", row[col] ?? "", aligns[col] ?? ""));
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+
+  return table;
+}
+
 /**
  * Render the report's markdown subset into a DocumentFragment of safe DOM nodes. Supports headings,
- * paragraphs, unordered/ordered lists, fenced code blocks, inline emphasis/code, and email citations.
+ * paragraphs, unordered/ordered lists, tables, fenced code blocks, inline emphasis/code, and email
+ * citations.
  *
  * @param doc the Document to create nodes in — injectable so it can be unit-tested under jsdom.
  */
@@ -191,6 +263,20 @@ export function renderReportHtml(text: string, doc: Document = document): Docume
       continue;
     }
 
+    // Table: a header row followed by a delimiter row, then body rows until a non-table line.
+    if (isTableStart(lines, i)) {
+      const header = splitTableRow(lines[i]);
+      const aligns = parseAlignments(lines[i + 1]);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && !/^\s*$/.test(lines[i]) && lines[i].includes("|")) {
+        rows.push(splitTableRow(lines[i]));
+        i++;
+      }
+      frag.appendChild(buildTable(doc, header, rows, aligns));
+      continue;
+    }
+
     // List: a run of consecutive bullet or ordered items (nesting is flattened).
     if (BULLET.test(line) || ORDERED.test(line)) {
       const ordered = ORDERED.test(line) && !BULLET.test(line);
@@ -209,7 +295,7 @@ export function renderReportHtml(text: string, doc: Document = document): Docume
 
     // Paragraph: gather soft-wrapped lines until the next block starts.
     const paragraph: string[] = [];
-    while (i < lines.length && !isBlockStart(lines[i])) {
+    while (i < lines.length && !isBlockStart(lines[i]) && !isTableStart(lines, i)) {
       paragraph.push(lines[i].trim());
       i++;
     }
