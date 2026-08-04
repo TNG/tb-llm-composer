@@ -379,7 +379,13 @@ async function collectHeaders(
   const seenIds = new Set<number>();
   let truncated = false;
 
-  let page = await browser.messages.query(queryInfo);
+  // A fullText query hits the IMAP server and can stall; guard it (and each page) with the same
+  // timeout/abort protection as message reads so one bad query can't hang the whole report loop.
+  let page = await guardedRead<browser.messages.MessageList>(
+    browser.messages.query(queryInfo),
+    abortSignal,
+    "search query",
+  );
   for (;;) {
     throwIfAborted(abortSignal);
     for (const msg of page.messages) {
@@ -393,7 +399,11 @@ async function collectHeaders(
       hits.push(toHit(msg));
     }
     if (truncated || !page.id) break;
-    page = await browser.messages.continueList(page.id);
+    page = await guardedRead<browser.messages.MessageList>(
+      browser.messages.continueList(page.id),
+      abortSignal,
+      "search paging",
+    );
   }
   return { hits, truncated };
 }
@@ -540,8 +550,8 @@ async function handleGetThread(
   }
 
   // The full message is only needed to read References/In-Reply-To. IMAP body streaming can stall or
-  // fail ("Error while streaming message … Status …"); if it does, fall back to a subject-only thread
-  // lookup rather than failing the whole tool.
+  // fail ("Error while streaming message … Status …"); if it does, fall back to the header's own
+  // Message-ID alone rather than failing the whole tool.
   const headers: Record<string, string[]> = {};
   try {
     const full = await guardedRead<browser.messages.MessagePart>(
@@ -552,7 +562,7 @@ async function handleGetThread(
     Object.assign(headers, (full.headers ?? {}) as Record<string, string[]>);
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;
-    console.warn(`REPORT: get_thread could not stream headers for id=${id}; using subject-only lookup:`, e);
+    console.warn(`REPORT: get_thread could not stream headers for id=${id}; using Message-ID only:`, e);
   }
 
   const relatedIds = new Set<string>();
@@ -567,12 +577,21 @@ async function handleGetThread(
   const seenIds = new Set<number>();
   const cap = scope.maxSearchResults;
 
-  // 1) Precise ancestors/self: resolve each referenced Message-ID to a mailbox message.
+  // Resolve each referenced Message-ID (References/In-Reply-To/self) to a mailbox message. This uses
+  // indexed headerMessageId lookups only — no broad full-text subject scan, which was slow/timed out on
+  // large IMAP mailboxes. A deep thread can list many References; cap the lookups so we don't fan out.
+  let lookups = 0;
   for (const messageId of relatedIds) {
-    if (hits.length >= cap) break;
+    if (hits.length >= cap || lookups >= cap) break;
     throwIfAborted(abortSignal);
+    lookups++;
     try {
-      const page = await browser.messages.query({ headerMessageId: messageId } as QueryInfo);
+      // Guard the lookup: headerMessageId resolves against the IMAP store and can stall like any query.
+      const page = await guardedRead<browser.messages.MessageList>(
+        browser.messages.query({ headerMessageId: messageId } as QueryInfo),
+        abortSignal,
+        `thread lookup ${messageId}`,
+      );
       for (const msg of page.messages) {
         if (msg.id !== undefined && !seenIds.has(msg.id) && hits.length < cap) {
           seenIds.add(msg.id);
@@ -580,21 +599,8 @@ async function handleGetThread(
         }
       }
     } catch (e) {
+      if ((e as Error).name === "AbortError") throw e;
       console.warn(`REPORT: get_thread headerMessageId lookup failed for ${messageId}:`, e);
-    }
-  }
-
-  // 2) Siblings/replies (incl. Sent): messages sharing the normalized subject. fullText narrows the
-  // scan server-side; we then keep only exact normalized-subject matches.
-  const norm = normalizeSubject(header.subject ?? "");
-  if (norm && hits.length < cap) {
-    const { hits: subjectHits } = await collectHeaders({ fullText: norm } as QueryInfo, cap * 2, "", abortSignal);
-    for (const hit of subjectHits) {
-      if (hits.length >= cap) break;
-      if (!seenIds.has(hit.id) && normalizeSubject(hit.subject) === norm) {
-        seenIds.add(hit.id);
-        hits.push(hit);
-      }
     }
   }
 
@@ -632,7 +638,11 @@ async function handleAggregateMessages(
   let capped = false;
   const seenIds = new Set<number>();
 
-  let page = await browser.messages.query(queryInfo);
+  let page = await guardedRead<browser.messages.MessageList>(
+    browser.messages.query(queryInfo),
+    abortSignal,
+    "aggregate query",
+  );
   outer: for (;;) {
     throwIfAborted(abortSignal);
     for (const msg of page.messages) {
@@ -649,7 +659,11 @@ async function handleAggregateMessages(
       }
     }
     if (!page.id) break;
-    page = await browser.messages.continueList(page.id);
+    page = await guardedRead<browser.messages.MessageList>(
+      browser.messages.continueList(page.id),
+      abortSignal,
+      "aggregate paging",
+    );
   }
 
   const groups = [...counts.entries()].map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count);

@@ -260,7 +260,7 @@ describe("reportTools", () => {
   });
 
   describe("get_thread", () => {
-    test("collects referenced messages and same-subject siblings across folders", async () => {
+    test("collects referenced messages across folders via headerMessageId lookups only", async () => {
       const get = vi.fn().mockResolvedValue({ subject: "Re: Project", headerMessageId: "b@x" });
       const getFull = vi.fn().mockResolvedValue({
         headers: { "message-id": ["<b@x>"], references: ["<a@x>"] },
@@ -276,25 +276,21 @@ describe("reportTools", () => {
             messages: [{ id: 11, subject: "Re: Project", author: "me", recipients: [], date: new Date("2026-01-02") }],
           };
         }
-        // fullText subject scan finds a sent reply not linked by references.
-        return {
-          messages: [
-            { id: 11, subject: "Re: Project", author: "me", recipients: [], date: new Date("2026-01-02") },
-            { id: 12, subject: "RE: Project", author: "bob", recipients: [], date: new Date("2026-01-03") },
-            { id: 99, subject: "Unrelated", author: "x", recipients: [], date: new Date("2026-01-04") },
-          ],
-        };
+        return { messages: [] };
       });
       setBrowser({ get, getFull, query });
 
       const handlers = createReportToolHandlers(BASE_SCOPE);
       const result = (await handlers.get_thread({ id: 11 })) as { messages: Array<{ id: number }> };
 
+      // Only References/Message-ID linked messages are returned — no broad subject scan.
       const ids = result.messages.map((m) => m.id);
-      expect(ids).toContain(10);
-      expect(ids).toContain(11);
-      expect(ids).toContain(12);
-      expect(ids).not.toContain(99); // different normalized subject
+      expect(ids).toEqual([10, 11]);
+      // Every query was an indexed headerMessageId lookup; none was a full-text scan.
+      for (const call of query.mock.calls) {
+        expect(call[0]).toHaveProperty("headerMessageId");
+        expect(call[0]).not.toHaveProperty("fullText");
+      }
     });
 
     test("throws a clear error for a numeric id that cannot be loaded", async () => {
@@ -304,25 +300,25 @@ describe("reportTools", () => {
       await expect(handlers.get_thread({ id: 5 })).rejects.toThrow(/No message exists with id 5/);
     });
 
-    test("falls back to a subject-only lookup when the body cannot be streamed", async () => {
+    test("falls back to the header's own Message-ID when the body cannot be streamed", async () => {
       // Header loads, but streaming the full message fails (e.g. IMAP "Error while streaming …").
       const get = vi.fn().mockResolvedValue({ subject: "Re: Project", headerMessageId: "b@x" });
       const getFull = vi.fn().mockRejectedValue(new Error("Error while streaming message: Status 2153054243"));
-      const query = vi.fn().mockResolvedValue({
-        messages: [
-          { id: 11, subject: "Re: Project", author: "me", recipients: [], date: new Date("2026-01-02") },
-          { id: 12, subject: "Project", author: "bob", recipients: [], date: new Date("2026-01-03") },
-        ],
+      const query = vi.fn(async (info: Record<string, unknown>) => {
+        if (info.headerMessageId === "b@x") {
+          return {
+            messages: [{ id: 11, subject: "Re: Project", author: "me", recipients: [], date: new Date("2026-01-02") }],
+          };
+        }
+        return { messages: [] };
       });
       setBrowser({ get, getFull, query });
 
       const handlers = createReportToolHandlers(BASE_SCOPE);
       const result = (await handlers.get_thread({ id: 11 })) as { messages: Array<{ id: number }> };
 
-      // Despite the streaming failure, same-subject siblings are still found via the subject scan.
-      const ids = result.messages.map((m) => m.id);
-      expect(ids).toContain(11);
-      expect(ids).toContain(12);
+      // Without References headers, the thread still resolves via the message's own headerMessageId.
+      expect(result.messages.map((m) => m.id)).toEqual([11]);
     });
 
     test("aborts promptly when the run is cancelled", async () => {
