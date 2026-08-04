@@ -172,7 +172,8 @@ describe("The report popup", () => {
     });
 
     sendMessageMock.mockClear();
-    (doc.querySelector("#report-output .email-open") as HTMLButtonElement).click();
+    // Clicking the chip label (anywhere but the Reply button) opens the cited email.
+    (doc.querySelector("#report-output .email-citation-label") as HTMLElement).click();
     expect(sendMessageMock).toHaveBeenCalledWith({ type: "open-email", id: 4242 });
 
     sendMessageMock.mockClear();

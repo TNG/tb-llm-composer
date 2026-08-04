@@ -33,24 +33,24 @@ interface InlineMatch {
   build: (doc: Document) => Node;
 }
 
-/** Build the email-citation chip: a label plus Open/Reply buttons tagged with the message id. */
+/**
+ * Build the email-citation chip: a clickable label that opens the cited email, plus a Reply button.
+ * The chip itself carries the message id and acts as the "open" control (role=button), so there is no
+ * separate open icon — only the Reply button is a distinct action.
+ */
 function buildEmailChip(doc: Document, id: string, label: string): Node {
   const chip = doc.createElement("span");
   chip.className = "email-citation";
+  chip.dataset.emailId = id;
+  chip.setAttribute("role", "button");
+  chip.setAttribute("tabindex", "0");
+  chip.title = "Open this email";
+  chip.setAttribute("aria-label", `Open email: ${label}`);
 
   const name = doc.createElement("span");
   name.className = "email-citation-label";
   name.textContent = label;
   chip.appendChild(name);
-
-  const openBtn = doc.createElement("button");
-  openBtn.type = "button";
-  openBtn.className = "email-open";
-  openBtn.dataset.emailId = id;
-  openBtn.title = "Open this email";
-  openBtn.setAttribute("aria-label", `Open email: ${label}`);
-  openBtn.textContent = "↗";
-  chip.appendChild(openBtn);
 
   const replyBtn = doc.createElement("button");
   replyBtn.type = "button";

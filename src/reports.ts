@@ -92,6 +92,8 @@ async function init(): Promise<void> {
   saveMdBtn.addEventListener("click", () => saveReport("md"));
   // Open/Reply on an inline email citation chip (event-delegated over the rendered report).
   outputArea?.addEventListener("click", onReportOutputClick);
+  // The chip is a role=button span, so Enter/Space must be translated into an open action.
+  outputArea?.addEventListener("keydown", onReportOutputKeydown);
   // Step through report versions kept for this session.
   prevVersionBtn.addEventListener("click", () => showVersion(historyIndex - 1));
   nextVersionBtn.addEventListener("click", () => showVersion(historyIndex + 1));
@@ -455,12 +457,15 @@ function clearReport(): void {
 /** Open or reply to the email behind a clicked citation chip. */
 async function onReportOutputClick(event: MouseEvent): Promise<void> {
   const target = event.target as HTMLElement | null;
-  const button = target?.closest<HTMLButtonElement>(".email-open, .email-reply");
-  if (!button) return;
-  const id = Number(button.dataset.emailId);
+  // The Reply button replies; clicking anywhere else on the chip opens the cited email.
+  const replyBtn = target?.closest<HTMLButtonElement>(".email-reply");
+  const chip = target?.closest<HTMLElement>(".email-citation");
+  const el = replyBtn ?? chip;
+  if (!el) return;
+  const id = Number(el.dataset.emailId);
   if (!Number.isFinite(id)) return;
 
-  const reply = button.classList.contains("email-reply");
+  const reply = Boolean(replyBtn);
   const response = (await browser.runtime
     .sendMessage({ type: reply ? "reply-email" : "open-email", id })
     .catch((e: unknown) => ({ error: (e as Error).message }))) as { ok?: true; error?: string } | undefined;
@@ -469,6 +474,17 @@ async function onReportOutputClick(event: MouseEvent): Promise<void> {
   } else {
     setStatus(reply ? "Opened a reply to the cited email." : "Opened the cited email.");
   }
+}
+
+/** Activate a focused citation chip (role=button span) via Enter/Space, mirroring a click on it. */
+function onReportOutputKeydown(event: KeyboardEvent): void {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const target = event.target as HTMLElement | null;
+  const chip = target?.closest<HTMLElement>(".email-citation");
+  // Real buttons (Reply) already handle Enter/Space natively; only the chip span needs help.
+  if (!chip || target?.closest(".email-reply")) return;
+  event.preventDefault();
+  void onReportOutputClick(event as unknown as MouseEvent);
 }
 
 /** Download the current report as a text or markdown file via a temporary object URL. */

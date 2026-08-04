@@ -43,7 +43,7 @@ describe("renderReportHtml", () => {
     const [td1, td2] = [...html.querySelectorAll<HTMLTableCellElement>("td")];
     expect(td1.querySelector("strong")?.textContent).toBe("a");
     expect(td2.style.textAlign).toBe("right");
-    expect(td2.querySelector(".email-citation .email-open")?.getAttribute("data-email-id")).toBe("7");
+    expect(td2.querySelector<HTMLElement>(".email-citation")?.dataset.emailId).toBe("7");
   });
 
   test("pads ragged table rows to the header width", () => {
@@ -59,15 +59,18 @@ describe("renderReportHtml", () => {
     expect(html.querySelector("code")?.textContent).toBe("code");
   });
 
-  test("turns an email citation into a chip with Open/Reply buttons carrying the id", () => {
+  test("turns an email citation into a clickable chip plus a Reply button carrying the id", () => {
     const html = render('Resolved on Tuesday [Alice — "Re: Invoice"](email:12345).');
-    const chip = html.querySelector(".email-citation");
+    const chip = html.querySelector<HTMLElement>(".email-citation");
     expect(chip).not.toBeNull();
     expect(chip?.querySelector(".email-citation-label")?.textContent).toBe('Alice — "Re: Invoice"');
 
-    const open = chip?.querySelector<HTMLButtonElement>(".email-open");
+    // The chip itself is the "open" control (role=button carrying the id); there is no open icon.
+    expect(chip?.dataset.emailId).toBe("12345");
+    expect(chip?.getAttribute("role")).toBe("button");
+    expect(chip?.querySelector(".email-open")).toBeNull();
+
     const reply = chip?.querySelector<HTMLButtonElement>(".email-reply");
-    expect(open?.dataset.emailId).toBe("12345");
     expect(reply?.dataset.emailId).toBe("12345");
     // The surrounding prose is preserved around the chip.
     expect(html.textContent).toContain("Resolved on Tuesday");

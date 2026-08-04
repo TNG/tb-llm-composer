@@ -471,7 +471,7 @@
       .report-placeholder {
         color: var(--muted);
       }
-      /* Inline email citation chip: label + Open/Reply glyph buttons. */
+      /* Inline email citation chip: a clickable label (opens the email) + a Reply glyph button. */
       .email-citation {
         display: inline-flex;
         align-items: center;
@@ -483,6 +483,15 @@
         background: var(--field-bg);
         vertical-align: baseline;
         line-height: 1.6;
+        cursor: pointer;
+      }
+      .email-citation:hover {
+        background: var(--hover-bg);
+        border-color: var(--accent);
+      }
+      .email-citation:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
       }
       .email-citation-label {
         max-width: 220px;
