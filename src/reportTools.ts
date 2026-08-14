@@ -382,8 +382,12 @@ async function collectHeaders(
   let page = await browser.messages.query(queryInfo);
   for (;;) {
     throwIfAborted(abortSignal);
-    // query/continueList return the error string on failure; stop the scan if so.
-    if (typeof page === "string") break;
+    // query/continueList return the error string on failure; flag the result as truncated so a
+    // partial scan is not presented to the model as a complete set.
+    if (typeof page === "string") {
+      truncated = true;
+      break;
+    }
     for (const msg of page.messages) {
       if (msg.id === undefined || seenIds.has(msg.id)) continue;
       if (subjectFilter && !(msg.subject ?? "").toLowerCase().includes(subjectFilter)) continue;
@@ -638,8 +642,12 @@ async function handleAggregateMessages(
   let page = await browser.messages.query(queryInfo);
   outer: for (;;) {
     throwIfAborted(abortSignal);
-    // query/continueList return the error string on failure; stop the scan if so.
-    if (typeof page === "string") break;
+    // query/continueList return the error string on failure; flag the scan as capped so a partial
+    // aggregate is not reported as complete.
+    if (typeof page === "string") {
+      capped = true;
+      break;
+    }
     for (const msg of page.messages) {
       if (msg.id === undefined || seenIds.has(msg.id)) continue;
       if (filters.subjectFilter && !(msg.subject ?? "").toLowerCase().includes(filters.subjectFilter)) continue;

@@ -30,7 +30,7 @@ module.exports = (_env, argv) => {
             // Match tsconfig's target so esbuild's downlevelling agrees with the type-checker.
             target: "es2022",
           },
-          exclude: [/node_modules/, path.resolve(__dirname, "__tests__")],
+          exclude: [/node_modules/, path.resolve(__dirname, "src/__tests__")],
         },
       ],
     },

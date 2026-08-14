@@ -152,7 +152,7 @@ async function updateSubjectContext(event: Event) {
 
 /** Reset the LLM context textarea to the shipped default and persist it. */
 async function resetLlmContext() {
-  getInputElement("#llm_context").value = DEFAULT_OPTIONS.llmContext;
+  getInputElement<HTMLTextAreaElement>("#llm_context").value = DEFAULT_OPTIONS.llmContext;
   await updateStoredOptions((options) => {
     options.llmContext = DEFAULT_OPTIONS.llmContext;
   });
@@ -160,7 +160,7 @@ async function resetLlmContext() {
 
 /** Reset the subject context textarea to the shipped default and persist it. */
 async function resetSubjectContext() {
-  getInputElement("#subject_context").value = DEFAULT_OPTIONS.subjectContext;
+  getInputElement<HTMLTextAreaElement>("#subject_context").value = DEFAULT_OPTIONS.subjectContext;
   await updateStoredOptions((options) => {
     options.subjectContext = DEFAULT_OPTIONS.subjectContext;
   });
@@ -350,7 +350,7 @@ function renderModelList(container: Element, models: string[]): void {
 /** Upsert the chosen model into the "other options" JSON (params.model) and persist it. */
 async function applyModelToOtherOptions(model: string): Promise<void> {
   await notifyOnError(async () => {
-    const otherOptionsEl = getInputElement("#other_options");
+    const otherOptionsEl = getInputElement<HTMLTextAreaElement>("#other_options");
     let params: Record<string, unknown>;
     try {
       const parsed = JSON.parse(otherOptionsEl.value.trim() || "{}");
@@ -421,9 +421,9 @@ export async function restoreOptions(): Promise<void> {
   getInputElement("#recent_mails_count").value = `${options.recentMailsCount}`;
   getInputElement("#strip_think_tag").checked = options.strip_think_tag ?? true;
   getInputElement("#confirm_moves").checked = options.confirmMovesBeforeApplying ?? true;
-  getInputElement("#other_options").value = JSON.stringify(options.params, null, 2);
-  getInputElement("#llm_context").value = options.llmContext;
-  getInputElement("#subject_context").value = options.subjectContext;
+  getInputElement<HTMLTextAreaElement>("#other_options").value = JSON.stringify(options.params, null, 2);
+  getInputElement<HTMLTextAreaElement>("#llm_context").value = options.llmContext;
+  getInputElement<HTMLTextAreaElement>("#subject_context").value = options.subjectContext;
   getInputElement("#report_default_days").value = `${options.reportDefaultDays}`;
   getInputElement("#report_max_search_results").value = `${options.reportMaxSearchResults}`;
   getInputElement("#report_max_steps").value = `${options.reportMaxSteps}`;

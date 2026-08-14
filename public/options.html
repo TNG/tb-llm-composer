@@ -241,11 +241,23 @@
         font-style: italic;
         font-family: Georgia, "Times New Roman", serif;
         line-height: 1;
-        vertical-align: middle;
-        margin-left: 4px;
+        flex: 0 0 auto;
         cursor: help;
         color: var(--fg);
         user-select: none;
+      }
+
+      /*
+       * Any label hosting an info badge (and, in the context sections, a reset icon beside it)
+       * lays its contents out as a centred flex row. This keeps the "i" badge vertically centred
+       * on the text line and aligned with the reset icons — which are themselves flex-centred —
+       * so every icon lines up consistently regardless of the surrounding row.
+       */
+      label:has(.info-icon) {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px;
       }
 
       /* Label with a trailing action (e.g. a reset-to-default icon button) on the same line. */
