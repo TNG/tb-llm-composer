@@ -26,8 +26,7 @@
     "noFallthroughCasesInSwitch": true, // Report errors for fallthrough cases in switch statement
 
     /* Module Resolution Options */
-    "moduleResolution": "node", // Choose the module resolution strategy
-    "ignoreDeprecations": "6.0", // Keep TS6 compatibility for deprecated node10 resolution behavior
+    "moduleResolution": "bundler", // Matches how esbuild/webpack resolve modules when bundling
     "esModuleInterop": true, // Enables emit interoperability between CommonJS and ES Modules
     "forceConsistentCasingInFileNames": true, // Disallow inconsistently-cased references to the same file
     // pnpm's isolated layout keeps @types out of the default auto-include scan, so name the
@@ -38,11 +37,6 @@
     "src/**/*.ts" // Include all TypeScript files in src (and subdirectories)
   ],
   "exclude": [
-    "node_modules", // Exclude the node_modules directory
-    // Tests are run by vitest (esbuild); the type-check mirrors the bundle scope (app code only),
-    // as the webpack build did. Type-checking them additionally needs moduleResolution "bundler".
-    "**/*.spec.ts",
-    "**/*.test.ts",
-    "src/__tests__/**"
+    "node_modules" // Exclude the node_modules directory
   ]
 }

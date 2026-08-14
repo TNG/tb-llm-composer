@@ -149,7 +149,7 @@ describe("The llmActionClickHandler", () => {
     await waitFor(() => {
       expectMenuEntriesToBe("cancel");
     });
-    await handleMenuClickListener({ menuItemId: "cancel" }, MOCK_TAB);
+    await handleMenuClickListener({ menuItemId: "cancel" } as browser.menus.OnClickData, MOCK_TAB);
     await waitFor(() => {
       expectMenuEntriesToBe("compose", "summarize");
     });
