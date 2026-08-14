@@ -217,6 +217,10 @@
         height: 150px;
       }
 
+      #subject_context {
+        height: 80px;
+      }
+
       /* Round info badge: a bordered "i" that inherits the theme's text color and scales with the font. */
       .info-icon {
         display: inline-flex;
@@ -449,6 +453,13 @@
           <div class="form-group">
             <label for="llm_context">LLM Context:</label>
             <textarea id="llm_context" name="llm context window"> </textarea>
+          </div>
+          <div class="form-group">
+            <label for="subject_context">
+              Subject Context:
+              <span class="info-icon" title="System prompt used when generating a subject line. Your name and (optionally) recent mails are appended automatically.">i</span>
+            </label>
+            <textarea id="subject_context" name="subject context"> </textarea>
           </div>
           <div class="form-group checkbox-row">
             <input type="checkbox" id="use_last_mails" name="use last mails" />
