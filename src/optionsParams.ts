@@ -29,6 +29,7 @@ export interface Options {
   strip_think_tag: boolean;
   params: LlmParameters;
   llmContext: string;
+  subjectContext: string;
   timeout?: number; // Timeout in milliseconds, undefined means no timeout
   folderSortingRules: FolderRule[];
   reportMaxSteps: number; // upper bound on agentic tool-calling iterations
@@ -49,11 +50,13 @@ export const DEFAULT_OPTIONS: Options = {
   llmContext:
     "I need to write an email.\n" +
     "The email should be concise.\n" +
-    "Respond in the following format:\n" +
-    "[initial salutation and/or Recipient's Name, this part can be omitted]\n\n" +
-    "[Body of the email]\n\n" +
-    "[Salutation]\n" +
-    "[Writer's name, without the mail signature]",
+    "Structure the response as: an opening greeting (optionally with the recipient's name, or omit it if that fits the context), then the body, then a closing sign-off, then my name without the mail signature.\n" +
+    "If older messages with this person are provided, match the greeting and sign-off style, tone, and language I have used with them before.\n" +
+    "Do not include a subject line; start directly with the greeting.\n" +
+    "Respond with only the email text as plain text, with no brackets, quotes, labels, or placeholders.",
+  subjectContext:
+    "I need a concise subject for an email I am writing, in the same language as the email.\n" +
+    "Respond with only the subject line as plain text, with no brackets, quotes, or labels.",
   include_recent_mails: true,
   folderSortingRules: [],
   reportMaxSteps: 20,

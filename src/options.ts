@@ -35,6 +35,7 @@ document.querySelector("#api_token")?.addEventListener("change", updateApiToken)
 document.querySelector("#toggle-token-btn")?.addEventListener("click", toggleTokenVisibility);
 document.querySelector("#timeout")?.addEventListener("change", updateTimeout);
 document.querySelector("#llm_context")?.addEventListener("change", updateLlmContext);
+document.querySelector("#subject_context")?.addEventListener("change", updateSubjectContext);
 document.querySelector("#use_last_mails")?.addEventListener("change", updateUseLastMails);
 document.querySelector("#strip_think_tag")?.addEventListener("change", updateStripThinkTag);
 document.querySelector("#context_window")?.addEventListener("change", updateContextWindow);
@@ -136,6 +137,13 @@ async function updateLlmContext(event: Event) {
   const llmContextInput = event.target as HTMLTextAreaElement;
   await updateStoredOptions((options) => {
     options.llmContext = llmContextInput.value;
+  });
+}
+
+async function updateSubjectContext(event: Event) {
+  const subjectContextInput = event.target as HTMLTextAreaElement;
+  await updateStoredOptions((options) => {
+    options.subjectContext = subjectContextInput.value;
   });
 }
 
@@ -384,6 +392,7 @@ export async function restoreOptions(): Promise<void> {
   getInputElement("#confirm_moves").checked = options.confirmMovesBeforeApplying ?? true;
   getInputElement("#other_options").value = JSON.stringify(options.params, null, 2);
   getInputElement("#llm_context").value = options.llmContext;
+  getInputElement("#subject_context").value = options.subjectContext;
   getInputElement("#report_default_days").value = `${options.reportDefaultDays}`;
   getInputElement("#report_max_search_results").value = `${options.reportMaxSearchResults}`;
   getInputElement("#report_max_steps").value = `${options.reportMaxSteps}`;

@@ -116,12 +116,11 @@ export async function getSubjectGenerationContext(
     throw Error(`Could not find an identity for ID '${tabDetails.identityId}'`);
   }
 
+  const accountContext = `\nI am ${identity.name}.`;
   const oldMessagesContext =
     options.include_recent_mails && oldMessages.length > 0 ? buildOldMessagesContext(oldMessages) : "";
   return {
-    content: `I need a concise subject for an email I am writing, in the same language as the email. 
-      Reply in the format: [subject] 
-      I am ${identity.name}.${oldMessagesContext}`,
+    content: options.subjectContext + accountContext + oldMessagesContext,
     role: LlmRoles.SYSTEM,
   };
 }
