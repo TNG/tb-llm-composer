@@ -23,8 +23,13 @@ module.exports = (_env, argv) => {
     module: {
       rules: [
         {
+          // Transpile-only (no type-checking — that's the separate `tsc --noEmit` step in `build`).
           test: /\.ts$/,
-          use: "ts-loader",
+          loader: "esbuild-loader",
+          options: {
+            // Match tsconfig's target so esbuild's downlevelling agrees with the type-checker.
+            target: "es2022",
+          },
           exclude: [/node_modules/, path.resolve(__dirname, "__tests__")],
         },
       ],

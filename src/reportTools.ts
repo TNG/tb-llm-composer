@@ -382,6 +382,8 @@ async function collectHeaders(
   let page = await browser.messages.query(queryInfo);
   for (;;) {
     throwIfAborted(abortSignal);
+    // query/continueList return the error string on failure; stop the scan if so.
+    if (typeof page === "string") break;
     for (const msg of page.messages) {
       if (msg.id === undefined || seenIds.has(msg.id)) continue;
       if (subjectFilter && !(msg.subject ?? "").toLowerCase().includes(subjectFilter)) continue;
@@ -573,6 +575,7 @@ async function handleGetThread(
     throwIfAborted(abortSignal);
     try {
       const page = await browser.messages.query({ headerMessageId: messageId } as QueryInfo);
+      if (typeof page === "string") continue;
       for (const msg of page.messages) {
         if (msg.id !== undefined && !seenIds.has(msg.id) && hits.length < cap) {
           seenIds.add(msg.id);
@@ -635,6 +638,8 @@ async function handleAggregateMessages(
   let page = await browser.messages.query(queryInfo);
   outer: for (;;) {
     throwIfAborted(abortSignal);
+    // query/continueList return the error string on failure; stop the scan if so.
+    if (typeof page === "string") break;
     for (const msg of page.messages) {
       if (msg.id === undefined || seenIds.has(msg.id)) continue;
       if (filters.subjectFilter && !(msg.subject ?? "").toLowerCase().includes(filters.subjectFilter)) continue;

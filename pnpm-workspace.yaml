@@ -3,11 +3,12 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - esbuild@0.28.1
-  - undici@7.28.0
 
 overrides:
   picomatch: ">=4.0.4"
-  fast-uri: ">=4.1.1"
+  fast-uri: ">=4.1.2"
   ws: ">=8.20.1"
   serialize-javascript: ">=7.0.5"
   postcss: ">=8.5.18"
+  nanoid: ">=3.3.18"
+  undici: ">=7.29.0"
