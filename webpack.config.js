@@ -8,7 +8,9 @@ module.exports = (_env, argv) => {
   const isProductionMode = mode === "production";
   return {
     mode: mode,
-    devtool: "source-map",
+    // Source maps aid debugging in development but should not ship in the packaged .xpi
+    // (they dwarf the minified bundles), so emit them only for non-production builds.
+    devtool: isProductionMode ? false : "source-map",
     entry: {
       options: "./src/options.ts",
       background: "./src/background.ts",
