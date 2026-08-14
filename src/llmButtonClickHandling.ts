@@ -104,17 +104,19 @@ async function resetComposerAction(tabId: number) {
   allRequestsStatus.deleteRequestStatus(tabId);
 }
 
-async function getOldMessagesToFirstRecipient(tabDetails: browser.compose.ComposeDetails) {
+async function getOldMessagesToFirstRecipient(tabDetails: browser.compose.ComposeDetails, limit: number) {
   const recipient = getFirstRecipientMailAddress(tabDetails);
 
-  return recipient ? await getSentMessages(recipient.toString()) : [];
+  return recipient ? await getSentMessages(recipient.toString(), limit) : [];
 }
 
 export async function compose(tabId: number) {
   const tabDetails = await browser.compose.getComposeDetails(tabId);
 
-  const oldMessages = await getOldMessagesToFirstRecipient(tabDetails);
   const options = await getPluginOptions();
+  const oldMessages = options.include_recent_mails
+    ? await getOldMessagesToFirstRecipient(tabDetails, options.recentMailsCount)
+    : [];
   const emailContext = await getEmailGenerationContext(tabDetails, oldMessages, options);
 
   const previousConversation = await getOriginalTabConversation(tabId);

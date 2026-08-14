@@ -6,12 +6,12 @@ import MessagePart = browser.messages.MessagePart;
 
 import { getContentFromEmailParts } from "./emailHelpers";
 
-export async function getSentMessages(recipientEmail: string) {
+export async function getSentMessages(recipientEmail: string, limit = 10) {
   const accounts = await browser.accounts.list();
   for (const account of accounts) {
     const sentFolder = findSentFolder(account);
     if (sentFolder) {
-      const messageHeaders = await searchSentFolder(sentFolder, recipientEmail);
+      const messageHeaders = await searchSentFolder(sentFolder, recipientEmail, limit);
       const oldMessages = await Promise.all(messageHeaders.map(getMessageBody));
       const oldMessageContents: string[] = oldMessages.map((mail: MessagePart) => getContentFromEmailParts(mail.parts));
       return oldMessageContents.filter((content) => Boolean(content));

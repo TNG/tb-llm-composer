@@ -85,6 +85,13 @@
         margin-bottom: 0;
       }
 
+      /* Compact numeric input sitting inline in a checkbox row (e.g. "recent mails" count). */
+      .checkbox-row input[type="number"] {
+        flex: 0 0 auto;
+        width: 4.5em;
+        padding: 4px 6px;
+      }
+
       /* Single-line fields: label on the left, control filling the rest of the row. */
       .form-row {
         display: flex;
@@ -212,13 +219,13 @@
         resize: none;
       }
 
-      #other_options,
       #llm_context {
-        height: 150px;
+        height: 9.5em;
       }
 
+      #other_options,
       #subject_context {
-        height: 80px;
+        height: 5em;
       }
 
       /* Round info badge: a bordered "i" that inherits the theme's text color and scales with the font. */
@@ -239,6 +246,44 @@
         cursor: help;
         color: var(--fg);
         user-select: none;
+      }
+
+      /* Label with a trailing action (e.g. a reset-to-default icon button) on the same line. */
+      .label-with-action {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 5px;
+      }
+
+      .label-with-action label {
+        margin-bottom: 0;
+      }
+
+      /* Icon-only reset button: neutral, transparent until hover (like the token eye toggle). */
+      .reset-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        background: transparent;
+        border: none;
+        border-radius: 4px;
+        color: var(--muted, GrayText);
+        cursor: pointer;
+      }
+
+      .reset-btn:hover {
+        background: var(--subtle-bg);
+        color: var(--fg, CanvasText);
+      }
+
+      .reset-btn svg {
+        width: 16px;
+        height: 16px;
+        display: block;
       }
 
       .folder-path-badge {
@@ -412,7 +457,7 @@
     <div class="settings-container">
       <form id="settingsForm">
         <div class="settings-section">
-          <h2>LLM API Settings</h2>
+          <h2>API</h2>
           <div class="form-group form-row">
             <div class="url-label-group">
               <label for="url">URL:</label>
@@ -446,29 +491,25 @@
             </label>
             <input type="number" id="timeout" name="timeout" min="0" step="1" placeholder="No timeout" />
           </div>
-        </div>
-
-        <div class="settings-section">
-          <h2>Context</h2>
-          <div class="form-group">
-            <label for="llm_context">LLM Context:</label>
-            <textarea id="llm_context" name="llm context window"> </textarea>
+          <div class="form-group form-row">
+            <label for="context_window">Context window:</label>
+            <input type="number" id="context_window" name="context window" min="1"/>
           </div>
           <div class="form-group">
-            <label for="subject_context">
-              Subject Context:
-              <span class="info-icon" title="System prompt used when generating a subject line. Your name and (optionally) recent mails are appended automatically.">i</span>
-            </label>
-            <textarea id="subject_context" name="subject context"> </textarea>
+            <div class="other-options-header">
+              <label for="other_options">
+                Other options (json):
+                <span class="info-icon" title="These are options added as 'params' in the request body when calling the LLM endpoint configured above. See the documentation of that endpoint for available options. 'params.messages' is added/overwritten by the plugin. Typically a 'model' key can be used to select different models if available.">i</span>
+              </label>
+              <span id="models-status" class="models-status push-right"></span>
+              <button type="button" id="query-models-btn"
+                title="Query the endpoint's available models (GET {base}/models)">
+                Query available models
+              </button>
+            </div>
+            <div id="models-list" class="model-list"></div>
+            <textarea id="other_options" name="other option window"> </textarea>
           </div>
-          <div class="form-group checkbox-row">
-            <input type="checkbox" id="use_last_mails" name="use last mails" />
-            <label for="use_last_mails">Use last few mails to same recipient as context</label>
-          </div>
-        </div>
-
-        <div class="settings-section">
-          <h2>Response</h2>
           <div class="form-group checkbox-row">
             <input type="checkbox" id="strip_think_tag" name="strip think tag" />
             <label for="strip_think_tag">
@@ -479,11 +520,44 @@
         </div>
 
         <div class="settings-section">
+          <h2>Write</h2>
+          <div class="form-group">
+            <div class="label-with-action">
+              <label for="llm_context">LLM Context:</label>
+              <button type="button" id="reset-llm-context-btn" class="reset-btn" title="Reset to default" aria-label="Reset LLM context to default">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="1 4 1 10 7 10" />
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                </svg>
+              </button>
+            </div>
+            <textarea id="llm_context" name="llm context window"> </textarea>
+          </div>
+          <div class="form-group checkbox-row">
+            <input type="checkbox" id="use_last_mails" name="use last mails" />
+            <label for="use_last_mails">Use last few mails to same recipient as context</label>
+            <input type="number" id="recent_mails_count" name="recent mails count" min="1" step="1"
+              title="How many recent sent mails to the recipient to feed as writing-style context." />
+          </div>
+          <div class="form-group">
+            <div class="label-with-action">
+              <label for="subject_context">
+                Subject Context:
+                <span class="info-icon" title="System prompt used when generating a subject line. Your name and (optionally) recent mails are appended automatically.">i</span>
+              </label>
+              <button type="button" id="reset-subject-context-btn" class="reset-btn" title="Reset to default" aria-label="Reset subject context to default">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="1 4 1 10 7 10" />
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                </svg>
+              </button>
+            </div>
+            <textarea id="subject_context" name="subject context"> </textarea>
+          </div>
+        </div>
+
+        <div class="settings-section">
           <h2>Organise Folder</h2>
-          <p style="font-size:13px;color:var(--muted);margin-bottom:8px;">
-            Define folders and descriptions so the LLM can organise emails and move them automatically.
-            Emails that do not clearly match any folder are kept in place.
-          </p>
           <div class="folder-rule-header">
             <span>Folder path</span>
             <span></span><!-- badge column -->
@@ -510,9 +584,6 @@
 
         <div class="settings-section">
           <h2>Reports</h2>
-          <p style="font-size:13px;color:var(--muted);margin-bottom:8px;">
-            Settings for the agentic "Create Report" feature (action button → Create Report…).
-          </p>
           <div class="form-group form-row">
             <label for="report_default_days">Default days in the past:</label>
             <input type="number" id="report_default_days" name="report default days" min="1" step="1" />
@@ -547,28 +618,6 @@
           </div>
         </div>
 
-        <div class="settings-section">
-          <h2>Model settings</h2>
-          <div class="form-group">
-            <div class="form-row">
-              <label for="context_window">Context window:</label>
-              <input type="number" id="context_window" name="context window" min="1"/>
-            </div>
-            <div class="other-options-header">
-              <label for="other_options">
-                Other options (json):
-                <span class="info-icon" title="These are options added as 'params' in the request body when calling the LLM endpoint configured above. See the documentation of that endpoint for available options. 'params.messages' is added/overwritten by the plugin. Typically a 'model' key can be used to select different models if available.">i</span>
-              </label>
-              <span id="models-status" class="models-status push-right"></span>
-              <button type="button" id="query-models-btn"
-                title="Query the endpoint's available models (GET {base}/models)">
-                Query available models
-              </button>
-            </div>
-            <div id="models-list" class="model-list"></div>
-            <textarea id="other_options" name="other option window"> </textarea>
-          </div>
-        </div>
       </form>
     </div>
     <!--suppress HtmlUnknownTarget generated from ../src/options.ts-->

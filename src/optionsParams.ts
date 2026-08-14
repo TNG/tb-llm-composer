@@ -26,6 +26,7 @@ export interface Options {
   api_token?: string;
   context_window: number;
   include_recent_mails: boolean;
+  recentMailsCount: number; // how many recent sent mails to the recipient to feed as style context
   strip_think_tag: boolean;
   params: LlmParameters;
   llmContext: string;
@@ -58,6 +59,7 @@ export const DEFAULT_OPTIONS: Options = {
     "I need a concise subject for an email I am writing, in the same language as the email.\n" +
     "Respond with only the subject line as plain text, with no brackets, quotes, or labels.",
   include_recent_mails: true,
+  recentMailsCount: 2,
   folderSortingRules: [],
   reportMaxSteps: 20,
   reportMaxSearchResults: 50,
