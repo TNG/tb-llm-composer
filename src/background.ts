@@ -201,7 +201,7 @@ async function openConfirmWindow(plan: OrganisePlan): Promise<void> {
   const win = await browser.windows.create({
     type: "popup",
     url: confirmUrl.href,
-    width: 620,
+    width: 930,
     height: 680,
   });
   if (win.id !== undefined) {
@@ -256,7 +256,7 @@ async function openReportWindow(): Promise<void> {
   await browser.windows.create({
     type: "popup",
     url: reportsUrl,
-    width: 640,
+    width: 930,
     height: 720,
   });
 }
