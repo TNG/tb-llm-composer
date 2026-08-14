@@ -1,7 +1,7 @@
 import { getAllFolderPaths } from "./emailOrganising";
 import { hasEndpointPermission, requestEndpointPermission } from "./hostPermissions";
 import { notifyOnError } from "./notifications";
-import { type FolderRule, getPluginOptions, type Options } from "./optionsParams";
+import { DEFAULT_OPTIONS, type FolderRule, getPluginOptions, type Options } from "./optionsParams";
 import { getInputElement } from "./utils";
 
 type GetFolderPathsMessage = {
@@ -35,8 +35,11 @@ document.querySelector("#api_token")?.addEventListener("change", updateApiToken)
 document.querySelector("#toggle-token-btn")?.addEventListener("click", toggleTokenVisibility);
 document.querySelector("#timeout")?.addEventListener("change", updateTimeout);
 document.querySelector("#llm_context")?.addEventListener("change", updateLlmContext);
+document.querySelector("#reset-llm-context-btn")?.addEventListener("click", resetLlmContext);
 document.querySelector("#subject_context")?.addEventListener("change", updateSubjectContext);
+document.querySelector("#reset-subject-context-btn")?.addEventListener("click", resetSubjectContext);
 document.querySelector("#use_last_mails")?.addEventListener("change", updateUseLastMails);
+document.querySelector("#recent_mails_count")?.addEventListener("change", updateRecentMailsCount);
 document.querySelector("#strip_think_tag")?.addEventListener("change", updateStripThinkTag);
 document.querySelector("#context_window")?.addEventListener("change", updateContextWindow);
 document.querySelector("#other_options")?.addEventListener("change", updateOtherOptions);
@@ -147,10 +150,37 @@ async function updateSubjectContext(event: Event) {
   });
 }
 
+/** Reset the LLM context textarea to the shipped default and persist it. */
+async function resetLlmContext() {
+  getInputElement("#llm_context").value = DEFAULT_OPTIONS.llmContext;
+  await updateStoredOptions((options) => {
+    options.llmContext = DEFAULT_OPTIONS.llmContext;
+  });
+}
+
+/** Reset the subject context textarea to the shipped default and persist it. */
+async function resetSubjectContext() {
+  getInputElement("#subject_context").value = DEFAULT_OPTIONS.subjectContext;
+  await updateStoredOptions((options) => {
+    options.subjectContext = DEFAULT_OPTIONS.subjectContext;
+  });
+}
+
 async function updateUseLastMails(event: Event) {
   const useLastMailsInput = event.target as HTMLInputElement;
   await updateStoredOptions((options) => {
     options.include_recent_mails = useLastMailsInput.checked;
+  });
+}
+
+async function updateRecentMailsCount(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const value = input.valueAsNumber;
+  if (!Number.isFinite(value) || value < 1) {
+    return;
+  }
+  await updateStoredOptions((options) => {
+    options.recentMailsCount = Math.floor(value);
   });
 }
 
@@ -388,6 +418,7 @@ export async function restoreOptions(): Promise<void> {
   getInputElement("#timeout").value = options.timeout ? `${options.timeout / 1000}` : "";
   getInputElement("#context_window").value = `${options.context_window}`;
   getInputElement("#use_last_mails").checked = options.include_recent_mails;
+  getInputElement("#recent_mails_count").value = `${options.recentMailsCount}`;
   getInputElement("#strip_think_tag").checked = options.strip_think_tag ?? true;
   getInputElement("#confirm_moves").checked = options.confirmMovesBeforeApplying ?? true;
   getInputElement("#other_options").value = JSON.stringify(options.params, null, 2);
