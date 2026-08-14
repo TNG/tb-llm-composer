@@ -1,5 +1,5 @@
-export function getInputElement(selector: string): HTMLInputElement {
-  const inputElement = document.querySelector(selector) as HTMLInputElement | null;
+export function getInputElement<T extends HTMLElement = HTMLInputElement>(selector: string): T {
+  const inputElement = document.querySelector(selector) as T | null;
   if (!inputElement) {
     throw Error(`Selector "${selector}" could not be found. Contact devs`);
   }
