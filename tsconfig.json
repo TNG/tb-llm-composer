@@ -7,6 +7,7 @@
     "outDir": "./dist", // Redirect output structure to the directory
     "rootDir": "./src", // Specify the root directory of input files
     "removeComments": true, // Do not emit comments to output
+    "isolatedModules": true, // Guarantee each file transpiles standalone (required by esbuild's per-file transpile)
     "strict": true, // Enable all strict type-checking options
 
     /* Strict Type-Checking Options */
@@ -28,13 +29,20 @@
     "moduleResolution": "node", // Choose the module resolution strategy
     "ignoreDeprecations": "6.0", // Keep TS6 compatibility for deprecated node10 resolution behavior
     "esModuleInterop": true, // Enables emit interoperability between CommonJS and ES Modules
-    "forceConsistentCasingInFileNames": true // Disallow inconsistently-cased references to the same file
+    "forceConsistentCasingInFileNames": true, // Disallow inconsistently-cased references to the same file
+    // pnpm's isolated layout keeps @types out of the default auto-include scan, so name the
+    // ambient globals we rely on explicitly (otherwise `browser`/`messenger` resolve to `any`).
+    "types": ["thunderbird-webext-browser"]
   },
   "include": [
     "src/**/*.ts" // Include all TypeScript files in src (and subdirectories)
   ],
   "exclude": [
     "node_modules", // Exclude the node_modules directory
-    "**/*.spec.ts" // Exclude test files
+    // Tests are run by vitest (esbuild); the type-check mirrors the bundle scope (app code only),
+    // as the webpack build did. Type-checking them additionally needs moduleResolution "bundler".
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "src/__tests__/**"
   ]
 }

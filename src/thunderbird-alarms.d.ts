@@ -1,28 +1,10 @@
 /**
  * Type declarations for the alarms API.
  * This API is available in Thunderbird MV3 extensions with the "alarms" permission
- * but is not included in @types/thunderbird-webext-browser.
+ * but is not included in @types/thunderbird-webext-browser. Everything else on the
+ * `browser` namespace is provided by that package; this file only adds `alarms`.
  */
 declare namespace browser {
-  export import _manifest = messenger._manifest;
-  export import accounts = messenger.accounts;
-  export import action = messenger.action;
-  export import commands = messenger.commands;
-  export import compose = messenger.compose;
-  export import composeAction = messenger.composeAction;
-  export import folders = messenger.folders;
-  export import identities = messenger.identities;
-  export import mailTabs = messenger.mailTabs;
-  export import menus = messenger.menus;
-  export import messageDisplay = messenger.messageDisplay;
-  export import messages = messenger.messages;
-  export import notifications = messenger.notifications;
-  export import permissions = messenger.permissions;
-  export import runtime = messenger.runtime;
-  export import storage = messenger.storage;
-  export import tabs = messenger.tabs;
-  export import windows = messenger.windows;
-
   export namespace alarms {
     interface Alarm {
       name: string;
@@ -34,22 +16,10 @@ declare namespace browser {
       alarmInfo: { when?: number; delayInMinutes?: number; periodInMinutes?: number },
     ): void;
     function clear(name: string): Promise<boolean>;
-    const onAlarm: WebExtEvent<(alarm: Alarm) => void>;
-  }
-}
-
-declare namespace messenger {
-  export namespace alarms {
-    interface Alarm {
-      name: string;
-      scheduledTime: number;
-      periodInMinutes?: number;
-    }
-    function create(
-      name: string,
-      alarmInfo: { when?: number; delayInMinutes?: number; periodInMinutes?: number },
-    ): void;
-    function clear(name: string): Promise<boolean>;
-    const onAlarm: WebExtEvent<(alarm: Alarm) => void>;
+    const onAlarm: {
+      addListener(callback: (alarm: Alarm) => void): void;
+      removeListener(callback: (alarm: Alarm) => void): void;
+      hasListener(callback: (alarm: Alarm) => void): boolean;
+    };
   }
 }
