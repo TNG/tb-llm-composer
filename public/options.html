@@ -461,6 +461,13 @@
         color: var(--muted);
       }
 
+      /* Sits under the URL input, aligned with it (label column is 200px + 8px gap). */
+      .url-hint {
+        display: block;
+        margin: -6px 0 10px 208px;
+        overflow-wrap: anywhere;
+      }
+
       /*
        * Discovered models / available folder paths. Each row is itself the clickable control
        * (applies the model, or copies the path) — it highlights on hover/focus.
@@ -516,8 +523,10 @@
               <button type="button" id="grant-access-btn" class="push-right">Grant access</button>
               <span id="url-permission-status" class="folder-path-badge"></span>
             </div>
-            <input type="text" id="url" name="URL" />
+            <input type="text" id="url" name="URL" placeholder="https://your-llm.example.com/v1" />
           </div>
+          <!-- Shows the chat route we actually call, since the field also accepts the plain API base. -->
+          <div id="url-resolved-hint" class="models-status url-hint"></div>
           <div class="form-group form-row">
             <label for="api_token">Api token:</label>
             <div class="input-with-toggle">

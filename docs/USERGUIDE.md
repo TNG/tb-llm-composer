@@ -148,7 +148,7 @@ Open the options page: **Hamburger Menu → Add-ons and Themes → LLM Composer 
 
 | Setting | Meaning |
 | --- | --- |
-| **URL** | The OpenAI-compatible chat-completions endpoint. **Grant access** authorises the extension to reach this host (required). |
+| **URL** | The OpenAI-compatible endpoint — either the full chat route (`https://host/v1/chat/completions`) or just the API base (`https://host/v1`), in which case `/chat/completions` is appended for you. **Grant access** authorises the extension to reach this host (required). |
 | **Api token** | Bearer token; leave empty for public endpoints. |
 | **Request timeout (seconds)** | Abort requests after this long. `0`/empty = no timeout. |
 
