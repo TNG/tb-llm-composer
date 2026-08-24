@@ -62,6 +62,22 @@
         border-radius: 6px;
         background: var(--subtle-bg);
       }
+      /* Header introducing the rows the model proposed for one destination folder. Sticky so the
+         destination stays visible while scrolling through a long group. */
+      .move-group {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--fg);
+        background: var(--hover-bg);
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       .move-row {
         display: flex;
         align-items: center;
