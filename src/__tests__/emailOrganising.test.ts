@@ -24,6 +24,12 @@ vi.mock("../notifications", () => ({
   timedNotification: timedNotificationMock,
 }));
 
+// Extra options merged over the defaults by the mocked getPluginOptions; reset before each test so a
+// test can opt into e.g. pre-filter rules without affecting the others.
+const { optionOverrides } = vi.hoisted(() => ({
+  optionOverrides: { value: {} as Record<string, unknown> },
+}));
+
 vi.mock("../optionsParams", async () => {
   const actual = await vi.importActual<typeof import("../optionsParams")>("../optionsParams");
   return {
@@ -31,6 +37,7 @@ vi.mock("../optionsParams", async () => {
     getPluginOptions: vi.fn(async () => ({
       ...actual.DEFAULT_OPTIONS,
       folderSortingRules: [{ folderPath: "/target", description: "Target folder" }],
+      ...optionOverrides.value,
     })),
   };
 });
@@ -43,6 +50,7 @@ describe("emailOrganising", () => {
   beforeEach(() => {
     timedNotificationMock.mockReset();
     sendContentToLlmMock.mockReset();
+    optionOverrides.value = {};
   });
 
   afterAll(() => {
@@ -473,5 +481,106 @@ describe("emailOrganising", () => {
       "Aborted. Moved 1 email(s) so far. 14 email(s) kept in place.",
       10000,
     );
+  });
+
+  /** Build a browser stub with two messages in /inbox and a resolvable /newsletters target folder. */
+  function stubBrowserWithTwoMessages(messagesMove: ReturnType<typeof vi.fn>) {
+    global.browser = {
+      accounts: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: "acc-1",
+            rootFolder: { id: "root-id", accountId: "acc-1", path: "/", name: "root" },
+            folders: [
+              { id: "target-id", accountId: "acc-1", path: "/target", name: "Target" },
+              { id: "news-id", accountId: "acc-1", path: "/newsletters", name: "Newsletters" },
+            ],
+          },
+        ]),
+      },
+      mailTabs: {
+        query: vi
+          .fn()
+          .mockResolvedValue([
+            { displayedFolder: { id: "folder-id", accountId: "acc-1", path: "/inbox", name: "Inbox" } },
+          ]),
+      },
+      messages: {
+        list: vi.fn().mockResolvedValue({
+          id: undefined,
+          messages: [
+            { id: 1, author: "news@example.com", subject: "Weekly digest" },
+            { id: 2, author: "alice@corp.test", subject: "Quarterly report" },
+          ],
+        }),
+        continueList: vi.fn(),
+        getFull: vi.fn().mockResolvedValue({ contentType: "text/plain", body: "body text" }),
+        move: messagesMove,
+      },
+      folders: { getSubFolders: vi.fn() },
+    } as unknown as typeof browser;
+  }
+
+  test("pre-filters move matching mail and keep it away from the LLM", async () => {
+    optionOverrides.value = {
+      preFilterRules: [
+        { field: "from", operator: "contains", value: "news@example.com", targetFolderPath: "/newsletters" },
+      ],
+    };
+    const messagesMove = vi.fn().mockResolvedValue(undefined);
+    stubBrowserWithTwoMessages(messagesMove);
+
+    sendContentToLlmMock.mockResolvedValue({
+      status: 1,
+      id: "mock-response-id",
+      created: 1,
+      model: "mock-model",
+      choices: [{ message: { role: "system", content: '{"classifications":[{"id":2,"folder":1}]}' } }],
+    });
+
+    const result = await organiseCurrentFolder(new AbortController().signal);
+
+    // The newsletter was moved by the pre-filter, before any LLM call.
+    expect(messagesMove).toHaveBeenNthCalledWith(1, [1], "news-id");
+    // Only the remaining message was classified.
+    const promptSent = sendContentToLlmMock.mock.calls[0][0][1].content as string;
+    expect(promptSent).toContain("Quarterly report");
+    expect(promptSent).not.toContain("Weekly digest");
+    // Both moves are reflected in the run's tallies.
+    expect(result).toEqual({ moved: 2, keptInPlace: 0, errors: 0, aborted: false });
+  });
+
+  test("a pre-filter without a target folder keeps the mail in place and skips the LLM", async () => {
+    optionOverrides.value = {
+      preFilterRules: [{ field: "subject", operator: "contains", value: "digest", targetFolderPath: "" }],
+    };
+    const messagesMove = vi.fn().mockResolvedValue(undefined);
+    stubBrowserWithTwoMessages(messagesMove);
+
+    sendContentToLlmMock.mockResolvedValue({
+      status: 1,
+      id: "mock-response-id",
+      created: 1,
+      model: "mock-model",
+      choices: [{ message: { role: "system", content: '{"classifications":[{"id":2,"folder":null}]}' } }],
+    });
+
+    const result = await organiseCurrentFolder(new AbortController().signal);
+
+    expect(messagesMove).not.toHaveBeenCalled();
+    expect(sendContentToLlmMock.mock.calls[0][0][1].content).not.toContain("Weekly digest");
+    expect(result).toEqual({ moved: 0, keptInPlace: 2, errors: 0, aborted: false });
+  });
+
+  test("an unresolvable pre-filter target folder fails the run with an actionable message", async () => {
+    optionOverrides.value = {
+      preFilterRules: [{ field: "from", operator: "contains", value: "news@", targetFolderPath: "/nope" }],
+    };
+    stubBrowserWithTwoMessages(vi.fn());
+
+    await expect(organiseCurrentFolder(new AbortController().signal)).rejects.toThrow(
+      /Could not find these folder paths: \/nope/,
+    );
+    expect(sendContentToLlmMock).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,8 @@
 import { getAllFolderPaths } from "./emailOrganising";
 import { hasEndpointPermission, requestEndpointPermission } from "./hostPermissions";
 import { notifyOnError } from "./notifications";
-import { DEFAULT_OPTIONS, type FolderRule, getPluginOptions, type Options } from "./optionsParams";
+import { DEFAULT_OPTIONS, type FolderRule, getPluginOptions, type Options, type PreFilterRule } from "./optionsParams";
+import { PRE_FILTER_FIELDS, PRE_FILTER_OPERATORS, toPreFilterField, toPreFilterOperator } from "./preFilters";
 import { getInputElement } from "./utils";
 
 type GetFolderPathsMessage = {
@@ -50,6 +51,7 @@ document.querySelector("#report_max_message_bodies")?.addEventListener("change",
 document.querySelector("#report_max_total_body_chars")?.addEventListener("change", updateReportMaxTotalBodyChars);
 document.querySelector("#confirm_moves")?.addEventListener("change", updateConfirmMovesBeforeApplying);
 document.querySelector("#add-folder-rule-btn")?.addEventListener("click", addFolderRuleRow);
+document.querySelector("#add-prefilter-rule-btn")?.addEventListener("click", addPreFilterRuleRow);
 document.querySelector("#refresh-folder-paths-btn")?.addEventListener("click", toggleFolderPaths);
 document.querySelector("#query-models-btn")?.addEventListener("click", toggleAvailableModels);
 
@@ -432,14 +434,19 @@ export async function restoreOptions(): Promise<void> {
 
   const rules = options.folderSortingRules ?? [];
   const list = document.querySelector("#folder-rules-list");
+  const preFilterList = document.querySelector("#prefilter-rules-list");
   if (!list) return;
   list.innerHTML = "";
+  if (preFilterList) preFilterList.innerHTML = "";
 
   await primeFolderPaths();
 
   const knownPaths = getKnownPaths();
   for (const rule of rules) {
     appendFolderRuleRow(rule.folderPath, rule.description, knownPaths);
+  }
+  for (const rule of options.preFilterRules ?? []) {
+    appendPreFilterRuleRow(rule, knownPaths);
   }
 }
 
@@ -559,6 +566,11 @@ function revalidateAllRows(knownPaths: string[]) {
     const badge = row.querySelector<HTMLSpanElement>(".folder-path-badge");
     if (pathInput && badge) applyBadge(badge, pathInput.value.trim(), knownPaths);
   }
+  for (const row of document.querySelectorAll<HTMLDivElement>(".prefilter-rule-row")) {
+    const pathInput = row.querySelector<HTMLInputElement>(".pf-target");
+    const badge = row.querySelector<HTMLSpanElement>(".folder-path-badge");
+    if (pathInput && badge) applyBadge(badge, pathInput.value.trim(), knownPaths);
+  }
 }
 
 // ── Organise-folder rules ──────────────────────────────────────────────────────
@@ -649,6 +661,101 @@ async function saveFolderRules() {
     const rules = collectFolderRules();
     await updateStoredOptions((options) => {
       options.folderSortingRules = rules;
+    });
+  });
+}
+
+// ── Pre-filter rules ──────────────────────────────────────────────────────────
+// Deterministic rules applied before classification; matched mail never reaches the LLM.
+
+function makeSelect(className: string, choices: ReadonlyArray<{ value: string; label: string }>, selected: string) {
+  const select = document.createElement("select");
+  select.className = className;
+  for (const choice of choices) {
+    const option = document.createElement("option");
+    option.value = choice.value;
+    option.textContent = choice.label;
+    select.appendChild(option);
+  }
+  select.value = selected;
+  select.addEventListener("change", savePreFilterRules);
+  return select;
+}
+
+function appendPreFilterRuleRow(rule: PreFilterRule, knownPaths: string[] = []) {
+  const list = document.querySelector("#prefilter-rules-list");
+  if (!list) return;
+  const row = document.createElement("div");
+  row.className = "prefilter-rule-row";
+
+  row.appendChild(makeSelect("pf-field", PRE_FILTER_FIELDS, toPreFilterField(rule.field)));
+  row.appendChild(makeSelect("pf-operator", PRE_FILTER_OPERATORS, toPreFilterOperator(rule.operator)));
+
+  const valueInput = document.createElement("input");
+  valueInput.type = "text";
+  valueInput.className = "pf-value";
+  valueInput.placeholder = "newsletter@example.com";
+  valueInput.value = rule.value;
+  valueInput.addEventListener("change", savePreFilterRules);
+  row.appendChild(valueInput);
+
+  const targetInput = document.createElement("input");
+  targetInput.type = "text";
+  targetInput.className = "pf-target";
+  targetInput.setAttribute("list", "folder-paths-datalist");
+  targetInput.placeholder = "/INBOX/Newsletters (empty = keep in place)";
+  targetInput.value = rule.targetFolderPath;
+  row.appendChild(targetInput);
+
+  const badge = document.createElement("span");
+  badge.className = "folder-path-badge";
+  applyBadge(badge, rule.targetFolderPath.trim(), knownPaths);
+  row.appendChild(badge);
+
+  targetInput.addEventListener("input", () => applyBadge(badge, targetInput.value.trim(), getKnownPaths()));
+  targetInput.addEventListener("change", () => {
+    applyBadge(badge, targetInput.value.trim(), getKnownPaths());
+    void savePreFilterRules();
+  });
+
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "remove-rule-btn";
+  removeBtn.textContent = "✕";
+  removeBtn.addEventListener("click", () => {
+    row.remove();
+    void savePreFilterRules();
+  });
+  row.appendChild(removeBtn);
+
+  list.appendChild(row);
+}
+
+function addPreFilterRuleRow() {
+  appendPreFilterRuleRow({ field: "from", operator: "contains", value: "", targetFolderPath: "" }, getKnownPaths());
+}
+
+function collectPreFilterRules(): PreFilterRule[] {
+  const rules: PreFilterRule[] = [];
+  for (const row of document.querySelectorAll<HTMLDivElement>(".prefilter-rule-row")) {
+    const value = row.querySelector<HTMLInputElement>(".pf-value")?.value.trim() ?? "";
+    // A rule with no value would match nothing (or everything, for "does not contain") — drop it.
+    if (!value) continue;
+    rules.push({
+      field: toPreFilterField(row.querySelector<HTMLSelectElement>(".pf-field")?.value ?? ""),
+      operator: toPreFilterOperator(row.querySelector<HTMLSelectElement>(".pf-operator")?.value ?? ""),
+      value,
+      targetFolderPath: row.querySelector<HTMLInputElement>(".pf-target")?.value.trim() ?? "",
+    });
+  }
+  return rules;
+}
+
+async function savePreFilterRules() {
+  await notifyOnError(async () => {
+    const rules = collectPreFilterRules();
+    await updateStoredOptions((options) => {
+      options.preFilterRules = rules;
     });
   });
 }

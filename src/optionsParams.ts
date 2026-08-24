@@ -21,6 +21,25 @@ export interface FolderRule {
   description: string; // free-text description for the LLM
 }
 
+/** Message field a pre-filter rule matches against. */
+export type PreFilterField = "from" | "to" | "subject" | "body";
+
+/** How a pre-filter rule compares its `value` against the chosen field (all case-insensitive). */
+export type PreFilterOperator = "contains" | "notContains" | "is" | "regex";
+
+/**
+ * A deterministic rule applied to a folder's messages *before* anything is sent to the LLM.
+ * Thunderbird's own message filters cannot be invoked from a WebExtension, so these mirror the
+ * useful subset locally: matched messages are moved to `targetFolderPath` (or, when that is empty,
+ * simply left where they are) and never reach the classifier.
+ */
+export interface PreFilterRule {
+  field: PreFilterField;
+  operator: PreFilterOperator;
+  value: string;
+  targetFolderPath: string; // e.g. "/INBOX/Newsletters"; "" = keep in place, just skip the LLM
+}
+
 export interface Options {
   model: string;
   api_token?: string;
@@ -33,6 +52,7 @@ export interface Options {
   subjectContext: string;
   timeout?: number; // Timeout in milliseconds, undefined means no timeout
   folderSortingRules: FolderRule[];
+  preFilterRules: PreFilterRule[]; // run before classification; matched mails skip the LLM
   reportMaxSteps: number; // upper bound on agentic tool-calling iterations
   reportMaxSearchResults: number; // cap on messages returned by a single search_messages call
   reportMaxMessageBodies: number; // cap on full message bodies fetched per report run (via get_messages)
@@ -61,6 +81,7 @@ export const DEFAULT_OPTIONS: Options = {
   include_recent_mails: true,
   recentMailsCount: 2,
   folderSortingRules: [],
+  preFilterRules: [],
   reportMaxSteps: 20,
   reportMaxSearchResults: 50,
   reportMaxMessageBodies: 25,

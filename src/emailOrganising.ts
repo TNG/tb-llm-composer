@@ -1,6 +1,7 @@
 import { isLlmTextCompletionResponse, LlmRoles, sendContentToLlm } from "./llmConnection";
 import { timedNotification } from "./notifications";
-import { type FolderRule, getPluginOptions } from "./optionsParams";
+import { type FolderRule, getPluginOptions, type PreFilterRule } from "./optionsParams";
+import { findMatchingPreFilterRule, type PreFilterCandidate } from "./preFilters";
 import { stripHtml } from "./utils";
 
 const BATCH_ORGANISING_SYSTEM_PROMPT = `You are an email organisation assistant.
@@ -342,17 +343,23 @@ interface PreparedOrganise {
   rules: FolderRule[];
   resolvedFolders: Array<browser.folders.MailFolder | null>;
   source: MoveSource | null;
+  /** Messages left for the LLM — those handled by pre-filters have already been dealt with. */
   messages: MessageForOrganising[];
+  /** What the pre-filter pass did before any LLM call (zeroes when no rules matched). */
+  preFiltered: OrganiseResult;
 }
 
 /**
  * Validate configuration, resolve destination folders, read the displayed folder's messages, and load
- * their (cleaned) bodies. Throws with an actionable message for misconfiguration; returns null (after a
- * notification) when there is nothing to organise.
+ * their (cleaned) bodies, then run the deterministic pre-filter rules so matched mail never reaches the
+ * LLM. Throws with an actionable message for misconfiguration; returns null (after a notification) when
+ * there is nothing to organise.
  */
-async function prepareOrganise(): Promise<PreparedOrganise | null> {
+async function prepareOrganise(abortSignal: AbortSignal): Promise<PreparedOrganise | null> {
   const options = await getPluginOptions();
   const rules = options.folderSortingRules ?? [];
+  // A rule with an empty value would match nothing (or, for "does not contain", everything) — drop it.
+  const preFilterRules = (options.preFilterRules ?? []).filter((rule) => rule.value.trim().length > 0);
 
   if (rules.length === 0) {
     throw new Error("No folder organisation rules configured. Please add rules in the extension options.");
@@ -363,9 +370,17 @@ async function prepareOrganise(): Promise<PreparedOrganise | null> {
     rules.map((r: FolderRule) => resolveFolderPath(r.folderPath)),
   );
 
-  const unresolvedPaths = rules
-    .filter((_: FolderRule, i: number) => resolvedFolders[i] === null)
-    .map((r: FolderRule) => r.folderPath);
+  // Pre-filter targets are resolved separately: they are addressed by path (not by rule index) and a
+  // rule with no target means "keep in place", which needs no folder at all.
+  const preFilterTargetPaths = Array.from(
+    new Set(preFilterRules.map((rule) => rule.targetFolderPath.trim()).filter((path) => path.length > 0)),
+  );
+  const resolvedPreFilterTargets = await Promise.all(preFilterTargetPaths.map((path) => resolveFolderPath(path)));
+
+  const unresolvedPaths = [
+    ...rules.filter((_: FolderRule, i: number) => resolvedFolders[i] === null).map((r: FolderRule) => r.folderPath),
+    ...preFilterTargetPaths.filter((_, i) => resolvedPreFilterTargets[i] === null),
+  ];
   if (unresolvedPaths.length > 0) {
     const available = await getAllFolderPaths();
     console.warn("ORGANISE: Could not resolve folder paths:", unresolvedPaths);
@@ -373,7 +388,7 @@ async function prepareOrganise(): Promise<PreparedOrganise | null> {
     throw new Error(
       `Could not find these folder paths: ${unresolvedPaths.join(", ")}\n\n` +
         `Available paths:\n${available.join("\n")}\n\n` +
-        `Please update your folder organisation rules in the extension options.`,
+        `Please update your organise rules (folder or pre-filter) in the extension options.`,
     );
   }
 
@@ -434,7 +449,97 @@ async function prepareOrganise(): Promise<PreparedOrganise | null> {
       ? { accountId: sourceFolder.accountId, path: sourceFolder.path, name: sourceFolder.name ?? sourceFolder.path }
       : null;
 
-  return { rules, resolvedFolders, source, messages };
+  const preFilter = await applyPreFilters(
+    messages,
+    preFilterRules,
+    preFilterTargetPaths,
+    resolvedPreFilterTargets,
+    source?.path,
+    abortSignal,
+  );
+
+  return { rules, resolvedFolders, source, messages: preFilter.remaining, preFiltered: preFilter.result };
+}
+
+function toPreFilterCandidate(entry: MessageForOrganising): PreFilterCandidate {
+  return {
+    from: entry.sender,
+    to: (entry.message.recipients ?? []).join(", "),
+    subject: entry.subject,
+    body: entry.body,
+  };
+}
+
+/**
+ * Apply the user's deterministic pre-filter rules before any LLM call. A matched message is moved to
+ * its rule's target folder — or just left where it is when the rule has no target — and is dropped
+ * from the set handed to the classifier either way. First matching rule wins.
+ */
+async function applyPreFilters(
+  messages: MessageForOrganising[],
+  rules: PreFilterRule[],
+  targetPaths: string[],
+  resolvedTargets: Array<browser.folders.MailFolder | null>,
+  sourceFolderPath: string | undefined,
+  abortSignal: AbortSignal,
+): Promise<{ remaining: MessageForOrganising[]; result: OrganiseResult }> {
+  const empty: OrganiseResult = { moved: 0, keptInPlace: 0, errors: 0, aborted: false };
+  if (rules.length === 0) {
+    return { remaining: messages, result: empty };
+  }
+
+  const remaining: MessageForOrganising[] = [];
+  const decisions: OrganiseAssignment[] = [];
+  let keptInPlace = 0;
+  let errors = 0;
+
+  for (const entry of messages) {
+    const rule = findMatchingPreFilterRule(rules, toPreFilterCandidate(entry));
+    if (!rule) {
+      remaining.push(entry);
+      continue;
+    }
+
+    const targetPath = rule.targetFolderPath.trim();
+    if (!targetPath) {
+      keptInPlace++;
+      continue;
+    }
+    if (entry.message.id === undefined) {
+      console.warn(`ORGANISE: Pre-filtered message without id cannot be moved (subject: "${entry.subject}")`);
+      errors++;
+      continue;
+    }
+
+    const folderIndex = targetPaths.indexOf(targetPath);
+    if (folderIndex === -1) {
+      console.warn("ORGANISE: Pre-filter target folder not resolved:", targetPath);
+      errors++;
+      continue;
+    }
+    decisions.push({ messageId: entry.message.id, folderIndex });
+  }
+
+  const moveResult = await executeMoves(decisions, resolvedTargets, sourceFolderPath, abortSignal);
+  const result: OrganiseResult = {
+    moved: moveResult.moved,
+    keptInPlace: keptInPlace + moveResult.keptInPlace,
+    errors: errors + moveResult.errors,
+    aborted: moveResult.aborted,
+  };
+
+  const handled = result.moved + result.keptInPlace + result.errors;
+  if (handled > 0) {
+    console.log(`ORGANISE: pre-filters handled ${handled} message(s); ${remaining.length} left for the LLM`);
+    await timedNotification(
+      "Organise Folder — Pre-filters",
+      `${handled} email(s) handled by pre-filter rules (${result.moved} moved, ${result.keptInPlace} kept in place). ` +
+        `${remaining.length} email(s) go to the LLM.`,
+      8000,
+    );
+  }
+
+  return { remaining, result };
 }
 
 /**
@@ -446,18 +551,19 @@ export async function organiseCurrentFolder(
   abortSignal: AbortSignal,
   onProgress?: (percent: number) => void | Promise<void>,
 ): Promise<OrganiseResult> {
-  const prepared = await prepareOrganise();
+  const prepared = await prepareOrganise(abortSignal);
   if (!prepared) {
     return { moved: 0, keptInPlace: 0, errors: 0, aborted: false };
   }
-  const { rules, resolvedFolders, source, messages } = prepared;
+  const { rules, resolvedFolders, source, messages, preFiltered } = prepared;
 
   const chunks = chunk(messages, BATCH_SIZE);
-  let moved = 0;
-  let keptInPlace = 0;
-  let errors = 0;
+  // Seed the tallies with what the pre-filter pass already did, so the summary covers the whole run.
+  let moved = preFiltered.moved;
+  let keptInPlace = preFiltered.keptInPlace;
+  let errors = preFiltered.errors;
   let processed = 0;
-  let aborted = false;
+  let aborted = preFiltered.aborted;
   const classifyState: ClassifyRunState = { jsonModeSupported: true };
 
   await reportProgress(onProgress, 0);
@@ -524,10 +630,12 @@ export async function planOrganiseCurrentFolder(
   abortSignal: AbortSignal,
   onProgress?: (percent: number) => void | Promise<void>,
 ): Promise<OrganisePlan | null> {
-  const prepared = await prepareOrganise();
+  const prepared = await prepareOrganise(abortSignal);
   if (!prepared) {
     return null;
   }
+  // Pre-filter moves have already been applied and reported by prepareOrganise; the plan only covers
+  // what is left for the LLM to classify.
   const { rules, resolvedFolders, source, messages } = prepared;
 
   const chunks = chunk(messages, BATCH_SIZE);
