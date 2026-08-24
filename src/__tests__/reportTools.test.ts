@@ -325,6 +325,54 @@ describe("reportTools", () => {
       expect(ids).toContain(12);
     });
 
+    test("does not hang when a reference lookup stalls, and still returns the message itself", async () => {
+      vi.useFakeTimers();
+      try {
+        const get = vi.fn().mockResolvedValue({
+          id: 11,
+          subject: "Re: Project",
+          headerMessageId: "b@x",
+          author: "me",
+          recipients: [],
+          date: new Date("2026-01-02"),
+        });
+        const getFull = vi.fn().mockResolvedValue({ headers: { "message-id": ["<b@x>"], references: ["<a@x>"] } });
+        // Both headerMessageId lookups never settle (the IMAP search hangs); the subject scan works.
+        const query = vi.fn(async (info: Record<string, unknown>) => {
+          if (info.headerMessageId) return new Promise(() => {});
+          return { messages: [] };
+        });
+        setBrowser({ get, getFull, query });
+
+        const handlers = createReportToolHandlers(BASE_SCOPE);
+        const pending = handlers.get_thread({ id: 11 }) as Promise<{ messages: Array<{ id: number }> }>;
+        // One 25s query timeout per stalled lookup (own message-id + one reference).
+        await vi.advanceTimersByTimeAsync(60_000);
+
+        const result = await pending;
+        expect(result.messages.map((m) => m.id)).toEqual([11]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("caps how many referenced ids are resolved for a long thread", async () => {
+      const references = Array.from({ length: 40 }, (_, i) => `<r${i}@x>`).join(" ");
+      const get = vi.fn().mockResolvedValue({ id: 11, subject: "Project", headerMessageId: "b@x" });
+      const getFull = vi.fn().mockResolvedValue({ headers: { "message-id": ["<b@x>"], references: [references] } });
+      const query = vi.fn().mockResolvedValue({ messages: [] });
+      setBrowser({ get, getFull, query });
+
+      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const result = (await handlers.get_thread({ id: 11 })) as { truncated: boolean };
+
+      const lookups = query.mock.calls.filter((c) => (c[0] as Record<string, unknown>).headerMessageId);
+      expect(lookups.length).toBe(13); // 12 nearest ancestors + own message-id
+      // The nearest ancestors are kept, the oldest ones dropped.
+      expect(lookups.at(-1)?.[0]).toEqual({ headerMessageId: "r39@x" });
+      expect(result.truncated).toBe(true); // dropped references are reported, not hidden
+    });
+
     test("aborts promptly when the run is cancelled", async () => {
       const controller = new AbortController();
       controller.abort();
