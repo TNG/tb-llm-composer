@@ -6,6 +6,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_AGGREGATE_SCAN = 5000;
 /** IMAP message reads can stall or fail mid-stream; bound each read with this timeout. */
 const MESSAGE_READ_TIMEOUT_MS = 20_000;
+/** Searches (query/continueList) can hang on IMAP/Gloda; bound every page with this timeout. */
+const QUERY_TIMEOUT_MS = 25_000;
+/**
+ * How many References/In-Reply-To ids get_thread resolves with individual queries. Long threads carry
+ * dozens of ids and each lookup is a full mailbox search, so only the nearest ancestors are resolved.
+ */
+const MAX_THREAD_REFERENCE_LOOKUPS = 12;
 
 /**
  * Await a mailbox read (get/getFull), rejecting if it stalls past {@link MESSAGE_READ_TIMEOUT_MS} or
@@ -13,7 +20,12 @@ const MESSAGE_READ_TIMEOUT_MS = 20_000;
  * …"); without this guard the whole report loop would block on one bad message and Stop could not
  * interrupt it. Aborts reject with an AbortError so callers can propagate cancellation.
  */
-function guardedRead<T>(operation: Promise<T>, abortSignal: AbortSignal, what: string): Promise<T> {
+function guardedRead<T>(
+  operation: Promise<T>,
+  abortSignal: AbortSignal,
+  what: string,
+  timeoutMs: number = MESSAGE_READ_TIMEOUT_MS,
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     if (abortSignal.aborted) {
       reject(new DOMException("Report generation cancelled", "AbortError"));
@@ -30,8 +42,8 @@ function guardedRead<T>(operation: Promise<T>, abortSignal: AbortSignal, what: s
     }
     timer = setTimeout(() => {
       cleanup();
-      reject(new Error(`${what} timed out after ${MESSAGE_READ_TIMEOUT_MS / 1000}s`));
-    }, MESSAGE_READ_TIMEOUT_MS);
+      reject(new Error(`${what} timed out after ${timeoutMs / 1000}s`));
+    }, timeoutMs);
     abortSignal.addEventListener("abort", onAbort, { once: true });
     operation.then(
       (value) => {
@@ -49,6 +61,27 @@ function guardedRead<T>(operation: Promise<T>, abortSignal: AbortSignal, what: s
 /** Throw an AbortError if the run has been cancelled; used to break out of paging loops promptly. */
 function throwIfAborted(abortSignal: AbortSignal): void {
   if (abortSignal.aborted) throw new DOMException("Report generation cancelled", "AbortError");
+}
+
+type MessagePage = Awaited<ReturnType<typeof browser.messages.query>>;
+
+/**
+ * Run one search page (query/continueList) under a timeout + abort guard. Returns `null` when the page
+ * stalled or failed, so callers can return a partial (truncated) result instead of the whole report
+ * run hanging on a single unresponsive search. Cancellation still propagates as an AbortError.
+ */
+async function guardedQuery(
+  run: () => Promise<MessagePage>,
+  abortSignal: AbortSignal,
+  what: string,
+): Promise<MessagePage | null> {
+  try {
+    return await guardedRead<MessagePage>(run(), abortSignal, what, QUERY_TIMEOUT_MS);
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw e;
+    console.warn(`REPORT: ${what} failed:`, e);
+    return null;
+  }
 }
 
 /** Folder/time scope for a single report run, derived from the report window inputs. */
@@ -379,12 +412,12 @@ async function collectHeaders(
   const seenIds = new Set<number>();
   let truncated = false;
 
-  let page = await browser.messages.query(queryInfo);
+  let page = await guardedQuery(() => browser.messages.query(queryInfo), abortSignal, "search messages");
   for (;;) {
     throwIfAborted(abortSignal);
-    // query/continueList return the error string on failure; flag the result as truncated so a
-    // partial scan is not presented to the model as a complete set.
-    if (typeof page === "string") {
+    // query/continueList return the error string on failure, and guardedQuery yields null when a page
+    // stalls; flag the result as truncated so a partial scan is not presented as a complete set.
+    if (page === null || typeof page === "string") {
       truncated = true;
       break;
     }
@@ -399,7 +432,8 @@ async function collectHeaders(
       hits.push(toHit(msg));
     }
     if (truncated || !page.id) break;
-    page = await browser.messages.continueList(page.id);
+    const listId = page.id;
+    page = await guardedQuery(() => browser.messages.continueList(listId), abortSignal, "continue message search");
   }
   return { hits, truncated };
 }
@@ -561,42 +595,62 @@ async function handleGetThread(
     console.warn(`REPORT: get_thread could not stream headers for id=${id}; using subject-only lookup:`, e);
   }
 
-  const relatedIds = new Set<string>();
-  for (const key of ["message-id", "references", "in-reply-to"]) {
+  const selfIds = new Set<string>();
+  for (const value of headers["message-id"] ?? []) {
+    for (const mid of parseMessageIds(value)) selfIds.add(mid);
+  }
+  if (header.headerMessageId) selfIds.add(header.headerMessageId);
+
+  // References lists ancestors oldest-first and can hold dozens of ids; each one costs a full mailbox
+  // search, so keep only the nearest ancestors (the tail) within the lookup budget.
+  const ancestorIds: string[] = [];
+  for (const key of ["references", "in-reply-to"]) {
     for (const value of headers[key] ?? []) {
-      for (const mid of parseMessageIds(value)) relatedIds.add(mid);
+      for (const mid of parseMessageIds(value)) {
+        if (!selfIds.has(mid) && !ancestorIds.includes(mid)) ancestorIds.push(mid);
+      }
     }
   }
-  if (header.headerMessageId) relatedIds.add(header.headerMessageId);
+  const droppedRefs = Math.max(0, ancestorIds.length - MAX_THREAD_REFERENCE_LOOKUPS);
+  const lookupIds = [...selfIds, ...ancestorIds.slice(droppedRefs)];
 
   const hits: SearchHit[] = [];
   const seenIds = new Set<number>();
   const cap = scope.maxSearchResults;
 
-  // 1) Precise ancestors/self: resolve each referenced Message-ID to a mailbox message.
-  for (const messageId of relatedIds) {
+  // The requested message always belongs to its own thread; seeding it keeps the result useful even if
+  // every lookup below stalls or comes back empty.
+  if (typeof header.id === "number") {
+    seenIds.add(header.id);
+    hits.push(toHit(header));
+  }
+
+  // 1) Precise ancestors/self: resolve each referenced Message-ID to a mailbox message. Each lookup is
+  // guarded, so one unresponsive search degrades the thread instead of wedging the report run.
+  for (const messageId of lookupIds) {
     if (hits.length >= cap) break;
-    throwIfAborted(abortSignal);
-    try {
-      const page = await browser.messages.query({ headerMessageId: messageId } as QueryInfo);
-      if (typeof page === "string") continue;
-      for (const msg of page.messages) {
-        if (msg.id !== undefined && !seenIds.has(msg.id) && hits.length < cap) {
-          seenIds.add(msg.id);
-          hits.push(toHit(msg));
-        }
+    const page = await guardedQuery(
+      () => browser.messages.query({ headerMessageId: messageId } as QueryInfo),
+      abortSignal,
+      `thread lookup for ${messageId}`,
+    );
+    if (page === null || typeof page === "string") continue;
+    for (const msg of page.messages) {
+      if (msg.id !== undefined && !seenIds.has(msg.id) && hits.length < cap) {
+        seenIds.add(msg.id);
+        hits.push(toHit(msg));
       }
-    } catch (e) {
-      console.warn(`REPORT: get_thread headerMessageId lookup failed for ${messageId}:`, e);
     }
   }
 
   // 2) Siblings/replies (incl. Sent): messages sharing the normalized subject. fullText narrows the
   // scan server-side; we then keep only exact normalized-subject matches.
   const norm = normalizeSubject(header.subject ?? "");
+  let subjectTruncated = false;
   if (norm && hits.length < cap) {
-    const { hits: subjectHits } = await collectHeaders({ fullText: norm } as QueryInfo, cap * 2, "", abortSignal);
-    for (const hit of subjectHits) {
+    const scan = await collectHeaders({ fullText: norm } as QueryInfo, cap * 2, "", abortSignal);
+    subjectTruncated = scan.truncated;
+    for (const hit of scan.hits) {
       if (hits.length >= cap) break;
       if (!seenIds.has(hit.id) && normalizeSubject(hit.subject) === norm) {
         seenIds.add(hit.id);
@@ -606,11 +660,11 @@ async function handleGetThread(
   }
 
   hits.sort((a, b) => a.date.localeCompare(b.date));
-  const truncated = hits.length >= cap;
+  const truncated = hits.length >= cap || droppedRefs > 0 || subjectTruncated;
 
   console.log(
-    `REPORT: get_thread id=${id} related=${relatedIds.size} messages=${hits.length} truncated=${truncated} ` +
-      `elapsedMs=${Date.now() - startedAt}`,
+    `REPORT: get_thread id=${id} lookups=${lookupIds.length} droppedRefs=${droppedRefs} ` +
+      `messages=${hits.length} truncated=${truncated} elapsedMs=${Date.now() - startedAt}`,
   );
   return { messages: hits, truncated };
 }
@@ -639,12 +693,12 @@ async function handleAggregateMessages(
   let capped = false;
   const seenIds = new Set<number>();
 
-  let page = await browser.messages.query(queryInfo);
+  let page = await guardedQuery(() => browser.messages.query(queryInfo), abortSignal, "aggregate search");
   outer: for (;;) {
     throwIfAborted(abortSignal);
-    // query/continueList return the error string on failure; flag the scan as capped so a partial
-    // aggregate is not reported as complete.
-    if (typeof page === "string") {
+    // query/continueList return the error string on failure, and guardedQuery yields null on a stalled
+    // page; flag the scan as capped so a partial aggregate is not reported as complete.
+    if (page === null || typeof page === "string") {
       capped = true;
       break;
     }
@@ -662,7 +716,8 @@ async function handleAggregateMessages(
       }
     }
     if (!page.id) break;
-    page = await browser.messages.continueList(page.id);
+    const listId = page.id;
+    page = await guardedQuery(() => browser.messages.continueList(listId), abortSignal, "continue aggregate search");
   }
 
   const groups = [...counts.entries()].map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count);
