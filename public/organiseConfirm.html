@@ -65,9 +65,9 @@
         flex: 0 0 auto;
       }
       /* Scrollable list filling the remaining height. `flex-basis: 0` (not `auto`) makes its size
-         depend only on the free space, never on how many rows the current page happens to have, and
-         a reserved scrollbar gutter stops the rows from shifting sideways when a short page needs no
-         scrollbar. Together these keep every page pixel-identical. */
+         depend only on the free space, never on how many rows and group headers the current page
+         happens to have, and a reserved scrollbar gutter stops the rows from shifting sideways when a
+         short page needs no scrollbar. Together these keep every page pixel-identical. */
       #move-list {
         flex: 1 1 0;
         min-height: 120px;
@@ -76,6 +76,22 @@
         border: 1px solid var(--border);
         border-radius: 6px;
         background: var(--subtle-bg);
+      }
+      /* Header introducing the rows the model proposed for one destination folder. Sticky so the
+         destination stays visible while scrolling through a long group. */
+      .move-group {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--fg);
+        background: var(--hover-bg);
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       /* Fixed row height so a row can never be taller or shorter than its neighbours. */
       .move-row {

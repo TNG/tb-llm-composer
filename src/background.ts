@@ -185,6 +185,26 @@ async function deleteConfirmPlan(planKey: string): Promise<void> {
   await confirmPlanStore.remove(confirmPlanStorageKey(planKey));
 }
 
+/**
+ * Open an extension popup window at a fixed size.
+ *
+ * Thunderbird applies the size persisted for extension popup windows shortly *after* the window
+ * appears, so a window created with explicit dimensions visibly jumps to a different (usually
+ * smaller) size on its first display. Re-asserting the requested size once the window exists — and
+ * once more on the next turns of the event loop, after the restore has run — keeps what the user
+ * sees matching what we asked for.
+ */
+async function createPopupWindow(url: string, width: number, height: number): Promise<browser.windows.Window> {
+  const win = await browser.windows.create({ type: "popup", url, width, height });
+  const windowId = win.id;
+  if (windowId !== undefined) {
+    const reassert = () => browser.windows.update(windowId, { width, height }).catch(() => {});
+    await reassert();
+    setTimeout(reassert, 300);
+  }
+  return win;
+}
+
 /** Open the confirmation popup for a plan and persist it so the window can fetch and apply it. */
 async function openConfirmWindow(plan: OrganisePlan): Promise<void> {
   // organiseConfirm.html sits next to the options page in public/. Resolve it relative to the options
@@ -198,12 +218,7 @@ async function openConfirmWindow(plan: OrganisePlan): Promise<void> {
   confirmUrl.searchParams.set("planKey", planKey);
   await saveConfirmPlan(planKey, { entries: plan.entries, folders: plan.folders, source: plan.source });
 
-  const win = await browser.windows.create({
-    type: "popup",
-    url: confirmUrl.href,
-    width: 930,
-    height: 680,
-  });
+  const win = await createPopupWindow(confirmUrl.href, 930, 680);
   if (win.id !== undefined) {
     confirmPlanKeysByWindow.set(win.id, planKey);
   }
@@ -253,12 +268,7 @@ async function openReportWindow(): Promise<void> {
   const optionsPage = browser.runtime.getManifest().options_ui?.page ?? "public/options.html";
   const reportsUrl = new URL(`reports.html?${params.toString()}`, browser.runtime.getURL(optionsPage)).href;
 
-  await browser.windows.create({
-    type: "popup",
-    url: reportsUrl,
-    width: 930,
-    height: 720,
-  });
+  await createPopupWindow(reportsUrl, 930, 720);
 }
 
 async function runReport(

@@ -72,9 +72,22 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Sort key for an entry's group: folders in their configured order, "keep in place" last. */
+function groupRank(folderIndex: number | null): number {
+  return folderIndex === null ? planFolders.length : folderIndex;
+}
+
+function groupLabel(folderIndex: number | null): string {
+  if (folderIndex === null) return "Keep in place";
+  const folder = planFolders[folderIndex];
+  return folder ? folder.name || folder.path : "Keep in place";
+}
+
 function render(plan: OrganisePlanResponse): void {
-  planEntries = plan.entries;
   planFolders = plan.folders;
+  // Group the emails by the destination the model proposed. Sorting happens once, here: later manual
+  // changes only update the assignment map, so rows never jump around under the user's cursor.
+  planEntries = [...plan.entries].sort((a, b) => groupRank(a.proposedFolderIndex) - groupRank(b.proposedFolderIndex));
   currentPage = 0;
   assignmentsByMessageId.clear();
   for (const entry of planEntries) {
@@ -116,7 +129,15 @@ function renderPage(): void {
 
   const start = currentPage * PAGE_SIZE;
   const pageEntries = planEntries.slice(start, start + PAGE_SIZE);
+  // A header precedes each non-empty group; the group spanning a page break is re-labelled at the top
+  // of the next page so every row on screen stays attributable to a destination.
+  let lastRank: number | undefined;
   for (const entry of pageEntries) {
+    const rank = groupRank(entry.proposedFolderIndex);
+    if (rank !== lastRank) {
+      listEl.appendChild(buildGroupHeader(entry.proposedFolderIndex));
+      lastRank = rank;
+    }
     listEl.appendChild(buildRow(entry));
   }
   listEl.scrollTop = 0;
@@ -132,6 +153,17 @@ function renderPage(): void {
     prevBtn.disabled = currentPage === 0;
     nextBtn.disabled = currentPage >= pages - 1;
   }
+}
+
+/** Build the sticky header introducing the rows the model assigned to one destination. */
+function buildGroupHeader(folderIndex: number | null): HTMLDivElement {
+  const header = document.createElement("div");
+  header.className = "move-group";
+  header.textContent = groupLabel(folderIndex);
+  if (folderIndex !== null) {
+    header.title = planFolders[folderIndex]?.path ?? "";
+  }
+  return header;
 }
 
 /** Build one row: subject + author plus a destination dropdown reflecting the current assignment. */
