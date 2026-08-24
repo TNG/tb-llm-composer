@@ -358,6 +358,46 @@
       .folder-rule-header span:first-child { flex: 1; }
       .folder-rule-header span:last-child { flex: 2; }
 
+      /* Pre-filter rows: field / operator / value / target folder / badge / remove. */
+      .prefilter-rule-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+        align-items: center;
+      }
+
+      .prefilter-rule-row input,
+      .prefilter-rule-row select {
+        padding: 6px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--field-bg);
+        color: var(--field-fg);
+        font: inherit;
+        min-width: 0;
+      }
+
+      .prefilter-rule-header {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 4px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      /* Column widths shared by the header and the rows. */
+      .prefilter-rule-row .pf-field,   .prefilter-rule-header .pf-field   { flex: 0 0 110px; }
+      .prefilter-rule-row .pf-operator,.prefilter-rule-header .pf-operator{ flex: 0 0 170px; }
+      .prefilter-rule-row .pf-value,   .prefilter-rule-header .pf-value   { flex: 2; }
+      .prefilter-rule-row .pf-target,  .prefilter-rule-header .pf-target  { flex: 2; }
+      .prefilter-rule-header .pf-badge { flex: 0 0 16px; }
+
+      /* Sub-heading inside a settings section (e.g. "Pre-filter rules"). */
+      .settings-section h3 {
+        font-size: 14px;
+        margin: 18px 0 6px;
+      }
+
       @-webkit-keyframes fadein {
         from {
           bottom: 0;
@@ -570,6 +610,31 @@
 
         <div class="settings-section">
           <h2>Organise Folder</h2>
+
+          <h3>
+            Pre-filter rules
+            <span class="info-icon" title="Deterministic rules applied to the folder before anything is sent to the LLM, so matched emails never reach the model — cheaper and predictable for newsletters, CI mail, and the like.&#10;&#10;A matching email is moved to the target folder; leave the target empty to keep it where it is. Rules are evaluated top to bottom and the first match wins.&#10;&#10;Thunderbird's own message filters cannot be triggered by an add-on — set those up separately under Tools ▸ Message Filters.">i</span>
+          </h3>
+          <div class="prefilter-rule-header">
+            <span class="pf-field">Field</span>
+            <span class="pf-operator">
+              Operator
+              <span class="info-icon" title="&quot;matches regex&quot; is case-insensitive and unanchored, so it already matches substrings: the pattern invoice matches &quot;Your invoice is ready&quot;.&#10;&#10;Anchor it when you mean the whole value: ^\[CI\] matches only subjects starting with [CI], and \.pdf$ only ones ending in .pdf.&#10;&#10;For a plain substring with no special characters, prefer &quot;contains&quot;.">i</span>
+            </span>
+            <span class="pf-value">Value</span>
+            <span class="pf-target">Move to folder (optional)</span>
+            <span class="pf-badge"></span><!-- badge column -->
+            <span></span><!-- remove column -->
+          </div>
+          <div id="prefilter-rules-list"></div>
+          <div class="inline-controls" style="margin-top:4px;">
+            <button type="button" id="add-prefilter-rule-btn">+ Add Pre-filter</button>
+          </div>
+
+          <h3>
+            LLM folder rules
+            <span class="info-icon" title="Destination folders offered to the LLM, each with a description it uses to classify the remaining emails.">i</span>
+          </h3>
           <div class="folder-rule-header">
             <span>Folder path</span>
             <span></span><!-- badge column -->
