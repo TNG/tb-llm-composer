@@ -239,6 +239,25 @@ describe("The options page", () => {
     expect(permissionsRequestMock).not.toHaveBeenCalled();
   });
 
+  test("hints the resolved chat URL when only the API base is entered", async () => {
+    const doc = optionsDom.window.document;
+    const urlInput = doc.getElementById("url") as HTMLInputElement;
+    const hint = doc.getElementById("url-resolved-hint") as HTMLElement;
+
+    urlInput.value = "https://my-llm.com/v1";
+    urlInput.dispatchEvent(new optionsDom.window.Event("change"));
+    await waitFor(() => {
+      expect(hint.textContent).toContain("https://my-llm.com/v1/chat/completions");
+    });
+
+    // A complete chat URL needs no hint.
+    urlInput.value = "https://my-llm.com/v1/chat/completions";
+    urlInput.dispatchEvent(new optionsDom.window.Event("change"));
+    await waitFor(() => {
+      expect(hint.textContent).toBe("");
+    });
+  });
+
   test("lists available folder paths and copies a path when its row is clicked", async () => {
     const win = optionsDom.window;
     const doc = win.document;

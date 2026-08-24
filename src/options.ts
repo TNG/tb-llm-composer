@@ -1,4 +1,5 @@
 import { getAllFolderPaths } from "./emailOrganising";
+import { chatCompletionsEndpoint, modelsEndpoint } from "./endpointUrls";
 import { hasEndpointPermission, requestEndpointPermission } from "./hostPermissions";
 import { notifyOnError } from "./notifications";
 import { DEFAULT_OPTIONS, type FolderRule, getPluginOptions, type Options, type PreFilterRule } from "./optionsParams";
@@ -67,6 +68,19 @@ async function updateUrl(event: Event) {
   });
   // Reflect whether this (possibly new) endpoint origin is already permitted.
   await updateUrlPermissionStatus();
+  updateResolvedUrlHint();
+}
+
+/**
+ * The URL field accepts either the full chat route or just the API base, so show which URL the
+ * plugin will actually POST to — otherwise a base URL looks like it was silently ignored.
+ */
+function updateResolvedUrlHint() {
+  const hintEl = document.querySelector<HTMLElement>("#url-resolved-hint");
+  if (!hintEl) return;
+  const modelUrl = getInputElement("#url").value.trim();
+  const resolved = chatCompletionsEndpoint(modelUrl);
+  hintEl.textContent = !modelUrl || resolved === modelUrl ? "" : `Requests go to ${resolved}`;
 }
 
 /**
@@ -219,19 +233,6 @@ async function updateOtherOptions(event: Event) {
 
 // ── Model discovery ────────────────────────────────────────────────────────────
 
-/**
- * Derive the OpenAI-style `/models` endpoint from the configured chat URL. A standard chat URL
- * ends in `/chat/completions`; we swap that for `/models`, preserving any prefix (e.g. `/openai/v1`).
- * Otherwise we treat the URL as the API base and append `/models`.
- */
-function deriveModelsEndpoint(chatUrl: string): string {
-  const trimmed = chatUrl.trim().replace(/\/+$/, "");
-  if (/\/chat\/completions$/.test(trimmed)) {
-    return trimmed.replace(/\/chat\/completions$/, "/models");
-  }
-  return `${trimmed}/models`;
-}
-
 /** Extract model ids from an OpenAI-style models response (`{data:[{id}]}`), tolerating variants. */
 function extractModelIds(body: unknown): string[] {
   const list = Array.isArray(body)
@@ -257,7 +258,7 @@ async function queryAvailableModels(): Promise<void> {
     return;
   }
 
-  const modelsUrl = deriveModelsEndpoint(chatUrl);
+  const modelsUrl = modelsEndpoint(chatUrl);
   if (!(await hasEndpointPermission(modelsUrl))) {
     if (statusEl) statusEl.textContent = 'Access not granted — click "Grant access" above, then retry.';
     return;
@@ -416,6 +417,7 @@ export async function restoreOptions(): Promise<void> {
 
   getInputElement("#url").value = options.model;
   await updateUrlPermissionStatus();
+  updateResolvedUrlHint();
   getInputElement("#api_token").value = options.api_token || "";
   getInputElement("#timeout").value = options.timeout ? `${options.timeout / 1000}` : "";
   getInputElement("#context_window").value = `${options.context_window}`;

@@ -78,6 +78,14 @@ describe("Testing sentContentToLlm", () => {
     expect(result).toEqual(mockResponseBody);
   });
 
+  test("appends the chat route when the options hold only the API base URL", async () => {
+    mockBrowserAndFetch({ responseBody: getMockResponseBody(), options: { model: "https://mock.llm.test/v1" } });
+
+    await sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal);
+
+    expect(global.fetch).toHaveBeenCalledWith(MOCK_MODEL_URL, expect.objectContaining({ method: "POST" }));
+  });
+
   test("error response", async () => {
     mockBrowserAndFetch({ responseBody: "NOT_OK_RESPONSE", options: { model: MOCK_MODEL_URL } });
 
