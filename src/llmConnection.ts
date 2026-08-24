@@ -1,3 +1,4 @@
+import { chatCompletionsEndpoint } from "./endpointUrls";
 import { hasEndpointPermission } from "./hostPermissions";
 import { startKeepAlive, stopKeepAlive } from "./keepAlive";
 import { getPluginOptions, type LlmParameters } from "./optionsParams";
@@ -156,12 +157,14 @@ export async function sendContentToLlm(
 }
 
 async function callLlmApi(
-  url: string,
+  configuredUrl: string,
   requestBody: LlmApiRequestBody,
   signal: AbortSignal,
   token?: string,
   timeout?: number,
 ): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
+  // The options page accepts either the full chat URL or just the API base; resolve it here.
+  const url = chatCompletionsEndpoint(configuredUrl);
   const headers: { [key: string]: string } = {
     "Content-Type": "application/json",
   };
