@@ -66,6 +66,51 @@ describe("renderReportHtml", () => {
     // Emphasis inside a code fence must not be parsed.
     expect(code?.querySelector("strong")).toBeNull();
   });
+  test("renders a pipe table with a header and body rows", () => {
+    const html = render(
+      "| # | Item | Status |\n|---|------|--------|\n| 1 | **Rename** | Pending |\n| 2 | Ship | Done |",
+    );
+    const table = html.querySelector("table.report-table");
+    expect(table).not.toBeNull();
+    expect([...html.querySelectorAll("thead th")].map((th) => th.textContent)).toEqual(["#", "Item", "Status"]);
+    const rows = [...html.querySelectorAll("tbody tr")].map((tr) =>
+      [...tr.querySelectorAll("td")].map((td) => td.textContent),
+    );
+    expect(rows).toEqual([
+      ["1", "Rename", "Pending"],
+      ["2", "Ship", "Done"],
+    ]);
+    // Inline markup still applies inside cells.
+    expect(table?.querySelector("tbody strong")?.textContent).toBe("Rename");
+  });
+
+  test("applies delimiter-row alignment and normalises ragged rows", () => {
+    const html = render("| A | B | C |\n| :--- | :---: | ---: |\n| only |\n| 1 | 2 | 3 | 4 |");
+    const headers = [...html.querySelectorAll("th")];
+    expect(headers.map((th) => (th as HTMLElement).style.textAlign)).toEqual(["left", "center", "right"]);
+    const rows = [...html.querySelectorAll("tbody tr")].map((tr) => tr.querySelectorAll("td").length);
+    // A short row is padded and an over-long one truncated, so every row matches the header.
+    expect(rows).toEqual([3, 3]);
+    expect(html.querySelectorAll("tbody tr")[1].textContent).toBe("123");
+  });
+
+  test("does not treat a paragraph containing pipes as a table", () => {
+    const html = render("Use the a | b syntax.\nIt is not a table.");
+    expect(html.querySelector("table")).toBeNull();
+    expect(html.querySelector("p")?.textContent).toBe("Use the a | b syntax. It is not a table.");
+  });
+
+  test("does not treat a header and delimiter row with different column counts as a table", () => {
+    const html = render("Costs | risks | owners\n---|---\nstill text");
+    expect(html.querySelector("table")).toBeNull();
+    expect(html.querySelector("p")?.textContent).toBe("Costs | risks | owners ---|--- still text");
+  });
+
+  test("separates a table from the paragraph directly above it", () => {
+    const html = render("Summary of items:\n| A | B |\n|---|---|\n| 1 | 2 |");
+    expect(html.querySelector("p")?.textContent).toBe("Summary of items:");
+    expect(html.querySelectorAll("tbody td").length).toBe(2);
+  });
 });
 
 describe("stripCitations", () => {
