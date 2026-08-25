@@ -42,7 +42,7 @@ vi.mock("../optionsParams", async () => {
   };
 });
 
-import { organiseCurrentFolder } from "../emailOrganising";
+import { organiseCurrentFolder, planOrganiseCurrentFolder } from "../emailOrganising";
 
 const originalBrowser = global.browser;
 
@@ -570,6 +570,39 @@ describe("emailOrganising", () => {
     expect(messagesMove).not.toHaveBeenCalled();
     expect(sendContentToLlmMock.mock.calls[0][0][1].content).not.toContain("Weekly digest");
     expect(result).toEqual({ moved: 0, keptInPlace: 2, errors: 0, aborted: false });
+  });
+
+  test("planning does not move pre-filtered mail; it lands in the plan pre-assigned to its target", async () => {
+    optionOverrides.value = {
+      preFilterRules: [
+        { field: "from", operator: "contains", value: "news@example.com", targetFolderPath: "/newsletters" },
+      ],
+    };
+    const messagesMove = vi.fn().mockResolvedValue(undefined);
+    stubBrowserWithTwoMessages(messagesMove);
+
+    sendContentToLlmMock.mockResolvedValue({
+      status: 1,
+      id: "mock-response-id",
+      created: 1,
+      model: "mock-model",
+      choices: [{ message: { role: "system", content: '{"classifications":[{"id":2,"folder":1}]}' } }],
+    });
+
+    const plan = await planOrganiseCurrentFolder(new AbortController().signal);
+
+    // Nothing may move before the user confirms — not even a deterministic pre-filter match.
+    expect(messagesMove).not.toHaveBeenCalled();
+    // The pre-filter target is not an organise rule, so it gets its own slot appended to the folders.
+    expect(plan?.folders).toEqual([
+      { path: "/target", name: "Target" },
+      { path: "/newsletters", name: "Newsletters" },
+    ]);
+    const newsletter = plan?.entries.find((entry) => entry.messageId === 1);
+    expect(newsletter?.proposedFolderIndex).toBe(1);
+    expect(plan?.resolvedFolders[1]).toMatchObject({ id: "news-id" });
+    // The pre-filtered message still never reaches the classifier.
+    expect(sendContentToLlmMock.mock.calls[0][0][1].content).not.toContain("Weekly digest");
   });
 
   test("an unresolvable pre-filter target folder fails the run with an actionable message", async () => {

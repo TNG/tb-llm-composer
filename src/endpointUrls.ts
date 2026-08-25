@@ -35,11 +35,15 @@ export function chatCompletionsEndpoint(endpointUrl: string): string {
 
 /**
  * The OpenAI-style `/models` URL for the configured endpoint: strips the chat route (preserving any
- * prefix, e.g. `/openai/v1`) and appends `/models`.
+ * prefix, e.g. `/openai/v1`) and appends `/models`. The bare legacy `/completions` route is stripped
+ * too — `chatCompletionsEndpoint` honours that spelling, so it is a form users can have configured.
  */
 export function modelsEndpoint(endpointUrl: string): string {
   const { base, suffix } = trimUrl(endpointUrl);
   if (!base) return endpointUrl.trim();
-  const apiBase = base.replace(/\/chat\/completions$/, "").replace(/\/chat$/, "");
+  const apiBase = base
+    .replace(/\/chat\/completions$/, "")
+    .replace(/\/completions$/, "")
+    .replace(/\/chat$/, "");
   return `${apiBase}/models${suffix}`;
 }

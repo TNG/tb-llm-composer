@@ -338,15 +338,28 @@ export async function moveMessagesToFolder(
   await browser.messages.move(messageIds, fallbackFolder);
 }
 
+/** A message a pre-filter rule claimed, with the destination that rule asks for. */
+interface PreFilterMatch {
+  entry: MessageForOrganising;
+  /** The rule's target folder path, or null when the rule means "keep in place". */
+  targetPath: string | null;
+}
+
 /** Shared setup for both organise paths: everything needed before classification. */
 interface PreparedOrganise {
   rules: FolderRule[];
   resolvedFolders: Array<browser.folders.MailFolder | null>;
   source: MoveSource | null;
-  /** Messages left for the LLM — those handled by pre-filters have already been dealt with. */
+  /** Messages left for the LLM — those claimed by pre-filters are in `preFilterMatches` instead. */
   messages: MessageForOrganising[];
-  /** What the pre-filter pass did before any LLM call (zeroes when no rules matched). */
-  preFiltered: OrganiseResult;
+  /**
+   * Messages claimed by pre-filter rules. Matching is side-effect free: each organise path decides
+   * when to act on them — immediately, or only after the user confirms the plan.
+   */
+  preFilterMatches: PreFilterMatch[];
+  /** Distinct pre-filter target paths, index-aligned with `resolvedPreFilterTargets`. */
+  preFilterTargetPaths: string[];
+  resolvedPreFilterTargets: Array<browser.folders.MailFolder | null>;
 }
 
 /**
@@ -355,7 +368,7 @@ interface PreparedOrganise {
  * LLM. Throws with an actionable message for misconfiguration; returns null (after a notification) when
  * there is nothing to organise.
  */
-async function prepareOrganise(abortSignal: AbortSignal): Promise<PreparedOrganise | null> {
+async function prepareOrganise(): Promise<PreparedOrganise | null> {
   const options = await getPluginOptions();
   const rules = options.folderSortingRules ?? [];
   // A rule with an empty value would match nothing (or, for "does not contain", everything) — drop it.
@@ -449,16 +462,17 @@ async function prepareOrganise(abortSignal: AbortSignal): Promise<PreparedOrgani
       ? { accountId: sourceFolder.accountId, path: sourceFolder.path, name: sourceFolder.name ?? sourceFolder.path }
       : null;
 
-  const preFilter = await applyPreFilters(
-    messages,
-    preFilterRules,
+  const preFilter = matchPreFilters(messages, preFilterRules);
+
+  return {
+    rules,
+    resolvedFolders,
+    source,
+    messages: preFilter.remaining,
+    preFilterMatches: preFilter.matches,
     preFilterTargetPaths,
     resolvedPreFilterTargets,
-    source?.path,
-    abortSignal,
-  );
-
-  return { rules, resolvedFolders, source, messages: preFilter.remaining, preFiltered: preFilter.result };
+  };
 }
 
 function toPreFilterCandidate(entry: MessageForOrganising): PreFilterCandidate {
@@ -471,27 +485,21 @@ function toPreFilterCandidate(entry: MessageForOrganising): PreFilterCandidate {
 }
 
 /**
- * Apply the user's deterministic pre-filter rules before any LLM call. A matched message is moved to
- * its rule's target folder — or just left where it is when the rule has no target — and is dropped
- * from the set handed to the classifier either way. First matching rule wins.
+ * Match the user's deterministic pre-filter rules against the folder's messages before any LLM call.
+ * A matched message is dropped from the set handed to the classifier and returned as a match instead.
+ * First matching rule wins. This only decides — nothing moves here, so the caller controls whether the
+ * moves happen straight away or wait for the user's confirmation.
  */
-async function applyPreFilters(
+function matchPreFilters(
   messages: MessageForOrganising[],
   rules: PreFilterRule[],
-  targetPaths: string[],
-  resolvedTargets: Array<browser.folders.MailFolder | null>,
-  sourceFolderPath: string | undefined,
-  abortSignal: AbortSignal,
-): Promise<{ remaining: MessageForOrganising[]; result: OrganiseResult }> {
-  const empty: OrganiseResult = { moved: 0, keptInPlace: 0, errors: 0, aborted: false };
+): { remaining: MessageForOrganising[]; matches: PreFilterMatch[] } {
   if (rules.length === 0) {
-    return { remaining: messages, result: empty };
+    return { remaining: messages, matches: [] };
   }
 
   const remaining: MessageForOrganising[] = [];
-  const decisions: OrganiseAssignment[] = [];
-  let keptInPlace = 0;
-  let errors = 0;
+  const matches: PreFilterMatch[] = [];
 
   for (const entry of messages) {
     const rule = findMatchingPreFilterRule(rules, toPreFilterCandidate(entry));
@@ -499,8 +507,36 @@ async function applyPreFilters(
       remaining.push(entry);
       continue;
     }
-
     const targetPath = rule.targetFolderPath.trim();
+    matches.push({ entry, targetPath: targetPath || null });
+  }
+
+  return { remaining, matches };
+}
+
+/**
+ * Move pre-filter matches to their rule's target folder right away. Used by the non-confirming path
+ * only; when the user has opted into confirming moves, the matches go into the plan instead (see
+ * {@link planOrganiseCurrentFolder}) so nothing moves before they click OK.
+ */
+async function applyPreFilterMoves(
+  matches: PreFilterMatch[],
+  targetPaths: string[],
+  resolvedTargets: Array<browser.folders.MailFolder | null>,
+  sourceFolderPath: string | undefined,
+  abortSignal: AbortSignal,
+  remainingCount: number,
+): Promise<OrganiseResult> {
+  const empty: OrganiseResult = { moved: 0, keptInPlace: 0, errors: 0, aborted: false };
+  if (matches.length === 0) {
+    return empty;
+  }
+
+  const decisions: OrganiseAssignment[] = [];
+  let keptInPlace = 0;
+  let errors = 0;
+
+  for (const { entry, targetPath } of matches) {
     if (!targetPath) {
       keptInPlace++;
       continue;
@@ -530,16 +566,16 @@ async function applyPreFilters(
 
   const handled = result.moved + result.keptInPlace + result.errors;
   if (handled > 0) {
-    console.log(`ORGANISE: pre-filters handled ${handled} message(s); ${remaining.length} left for the LLM`);
+    console.log(`ORGANISE: pre-filters handled ${handled} message(s); ${remainingCount} left for the LLM`);
     await timedNotification(
       "Organise Folder — Pre-filters",
       `${handled} email(s) handled by pre-filter rules (${result.moved} moved, ${result.keptInPlace} kept in place). ` +
-        `${remaining.length} email(s) go to the LLM.`,
+        `${remainingCount} email(s) go to the LLM.`,
       8000,
     );
   }
 
-  return { remaining, result };
+  return result;
 }
 
 /**
@@ -551,11 +587,21 @@ export async function organiseCurrentFolder(
   abortSignal: AbortSignal,
   onProgress?: (percent: number) => void | Promise<void>,
 ): Promise<OrganiseResult> {
-  const prepared = await prepareOrganise(abortSignal);
+  const prepared = await prepareOrganise();
   if (!prepared) {
     return { moved: 0, keptInPlace: 0, errors: 0, aborted: false };
   }
-  const { rules, resolvedFolders, source, messages, preFiltered } = prepared;
+  const { rules, resolvedFolders, source, messages } = prepared;
+
+  // This path does not ask for confirmation, so pre-filter matches move straight away.
+  const preFiltered = await applyPreFilterMoves(
+    prepared.preFilterMatches,
+    prepared.preFilterTargetPaths,
+    prepared.resolvedPreFilterTargets,
+    source?.path,
+    abortSignal,
+    messages.length,
+  );
 
   const chunks = chunk(messages, BATCH_SIZE);
   // Seed the tallies with what the pre-filter pass already did, so the summary covers the whole run.
@@ -630,12 +676,12 @@ export async function planOrganiseCurrentFolder(
   abortSignal: AbortSignal,
   onProgress?: (percent: number) => void | Promise<void>,
 ): Promise<OrganisePlan | null> {
-  const prepared = await prepareOrganise(abortSignal);
+  const prepared = await prepareOrganise();
   if (!prepared) {
     return null;
   }
-  // Pre-filter moves have already been applied and reported by prepareOrganise; the plan only covers
-  // what is left for the LLM to classify.
+  // The user opted into confirming moves, so pre-filtered mail must not move yet either: it goes into
+  // the plan alongside the LLM's proposals and is applied only when the user clicks OK.
   const { rules, resolvedFolders, source, messages } = prepared;
 
   const chunks = chunk(messages, BATCH_SIZE);
@@ -671,6 +717,20 @@ export async function planOrganiseCurrentFolder(
     path: rule.folderPath,
     name: resolvedFolders[index]?.name ?? rule.folderPath,
   }));
+  // The popup addresses destinations by index into `folders`, so a pre-filter target that is not also
+  // an organise rule needs its own slot appended (index-aligned with `planResolvedFolders`).
+  const planResolvedFolders = [...resolvedFolders];
+  const indexByPath = new Map<string, number>();
+  rules.forEach((rule, index) => {
+    const path = rule.folderPath.trim();
+    if (!indexByPath.has(path)) indexByPath.set(path, index);
+  });
+  prepared.preFilterTargetPaths.forEach((path, index) => {
+    if (indexByPath.has(path)) return;
+    indexByPath.set(path, folders.length);
+    folders.push({ path, name: prepared.resolvedPreFilterTargets[index]?.name ?? path });
+    planResolvedFolders.push(prepared.resolvedPreFilterTargets[index]);
+  });
 
   // Only movable messages (those with an id) can appear in the plan.
   const entries: OrganisePlanEntry[] = messages
@@ -682,7 +742,18 @@ export async function planOrganiseCurrentFolder(
       proposedFolderIndex: assignments.get(entry.refId) ?? null,
     }));
 
-  return { entries, folders, resolvedFolders, source };
+  // Pre-filtered mail is listed too, pre-assigned to its rule's target, so the user sees (and can
+  // override) every move before anything happens.
+  const preFilterEntries: OrganisePlanEntry[] = prepared.preFilterMatches
+    .filter((match) => match.entry.message.id !== undefined)
+    .map((match) => ({
+      messageId: match.entry.message.id as number,
+      author: match.entry.sender,
+      subject: match.entry.subject,
+      proposedFolderIndex: match.targetPath === null ? null : (indexByPath.get(match.targetPath) ?? null),
+    }));
+
+  return { entries: [...preFilterEntries, ...entries], folders, resolvedFolders: planResolvedFolders, source };
 }
 
 /** Apply the user-confirmed assignments from the confirmation popup and show a summary notification. */
