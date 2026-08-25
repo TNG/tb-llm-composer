@@ -445,6 +445,28 @@
         font-family: monospace;
         font-size: 12px;
       }
+      /* Report tables: readable in a narrow popup, so they scroll sideways rather than squeezing. */
+      .report-rendered .report-table {
+        display: block;
+        width: max-content;
+        max-width: 100%;
+        margin: 8px 0;
+        overflow-x: auto;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      .report-rendered .report-table th,
+      .report-rendered .report-table td {
+        padding: 4px 8px;
+        border: 1px solid var(--border);
+        text-align: left;
+        vertical-align: top;
+        line-height: 1.4;
+      }
+      .report-rendered .report-table th {
+        background: var(--hover-bg);
+        font-weight: 600;
+      }
       .report-placeholder {
         color: var(--muted);
       }
