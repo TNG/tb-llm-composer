@@ -59,6 +59,10 @@ describe("modelsEndpoint", () => {
     expect(modelsEndpoint("https://my-llm.com/v1/chat")).toEqual("https://my-llm.com/v1/models");
   });
 
+  test("strips the legacy /completions route", () => {
+    expect(modelsEndpoint("https://my-llm.com/v1/completions")).toEqual("https://my-llm.com/v1/models");
+  });
+
   test("preserves a query string", () => {
     expect(modelsEndpoint("https://my-llm.com/v1/chat/completions?api-version=2024-02-01")).toEqual(
       "https://my-llm.com/v1/models?api-version=2024-02-01",
