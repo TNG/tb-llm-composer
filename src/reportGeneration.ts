@@ -160,6 +160,41 @@ export async function continueReport(
 }
 
 /**
+ * Rebuild a minimal session from a report the popup is still displaying. The background is an MV3
+ * event page, so its in-memory conversation is lost whenever it is suspended between runs (i.e. while
+ * the user reads the report and types a follow-up). Without this, a refinement would silently restart
+ * a full agentic search instead of refining the text on screen. The tool history is gone, so the
+ * reconstruction carries only the scope and the report itself as the last assistant turn.
+ */
+export async function rebuildSessionFromReport(
+  request: ReportRequest,
+  reportText: string,
+): Promise<{ messages: LlmApiRequestMessage[]; scope: ReportScope }> {
+  const options = await getPluginOptions();
+  const scope: ReportScope = {
+    folderOnly: request.folderOnly,
+    folder: request.folder,
+    defaultDays: request.days,
+    maxSearchResults: options.reportMaxSearchResults,
+    maxMessageBodies: options.reportMaxMessageBodies,
+    maxTotalBodyChars: options.reportMaxTotalBodyChars,
+  };
+  const messages: LlmApiRequestMessage[] = [
+    { role: LlmRoles.SYSTEM, content: REPORT_SYSTEM_PROMPT },
+    { role: LlmRoles.USER, content: buildScopePreamble(request) },
+    {
+      role: LlmRoles.USER,
+      content:
+        "This is the report you produced earlier in this session. The details you gathered to write it " +
+        "are no longer in the conversation, so treat the report text itself as the source of truth.",
+    },
+    { role: LlmRoles.ASSISTANT, content: reportText },
+  ];
+  console.log(`REPORT: rebuilt lost session from displayed report (reportChars=${reportText.length})`);
+  return { messages, scope };
+}
+
+/**
  * Continue a report conversation WITHOUT search/tools: append the user's instruction and make a single
  * plain chat completion so the model only rewrites/restructures the report it already produced. Backs the
  * "refine current text without search" option — it spends no search budget and touches no mailbox data.

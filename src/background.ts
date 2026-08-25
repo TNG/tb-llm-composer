@@ -25,7 +25,13 @@ import {
 import { notifyOnError, timedNotification } from "./notifications";
 import { getPluginOptions } from "./optionsParams";
 import { deleteFromOriginalTabCache, storeOriginalReplyText } from "./originalTabConversation";
-import { continueReport, continueReportWithoutSearch, generateReport, type ReportRequest } from "./reportGeneration";
+import {
+  continueReport,
+  continueReportWithoutSearch,
+  generateReport,
+  type ReportRequest,
+  rebuildSessionFromReport,
+} from "./reportGeneration";
 import type { ReportScope } from "./reportTools";
 
 import Tab = browser.tabs.Tab;
@@ -276,6 +282,7 @@ async function runReport(
   request: ReportRequest,
   continueConversation: boolean,
   noSearch: boolean,
+  currentReport?: string,
 ): Promise<void> {
   // Cancel any previous run for this window before starting a new one.
   reportAbortControllers.get(windowId)?.abort(new DOMException("Superseded by a new report", "AbortError"));
@@ -288,7 +295,14 @@ async function runReport(
     void browser.runtime.sendMessage({ type: "report-progress", windowId, progress }).catch(() => {});
   };
   try {
-    const existing = reportSessions.get(windowId);
+    // This event page can be suspended between runs, dropping the in-memory conversation. When that
+    // happens the popup still holds the report text, so rebuild a session from it rather than silently
+    // restarting a full agentic search — which would ignore the report the user asked us to refine.
+    const existing =
+      reportSessions.get(windowId) ??
+      (continueConversation && currentReport?.trim()
+        ? await rebuildSessionFromReport(request, currentReport)
+        : undefined);
     let session: Awaited<ReturnType<typeof generateReport>>;
     if (continueConversation && existing) {
       // "Refine without search" rewrites the existing report via a plain chat (no tools); the normal
@@ -365,6 +379,8 @@ type RuntimeRequestMessage =
       request: ReportRequest;
       continueConversation?: boolean;
       noSearch?: boolean;
+      /** The report currently shown in the popup, used to rebuild a session lost to a suspend. */
+      currentReport?: string;
     }
   | { type: "cancel-report"; windowId: number }
   | { type: "reset-report"; windowId: number }
@@ -434,6 +450,7 @@ browser.runtime.onMessage.addListener((message: unknown) => {
         message.request,
         message.continueConversation ?? false,
         message.noSearch ?? false,
+        message.currentReport,
       );
       return Promise.resolve({ ok: true });
 
