@@ -131,7 +131,14 @@ function onReportResult(result: { report?: string; error?: string }): void {
     setStatus(`Error: ${result.error}`);
     return;
   }
-  pushReportVersion(result.report ?? "");
+  const report = result.report ?? "";
+  // An empty report would render as a blank panel and refuse to copy/save, so never announce it as
+  // ready — and never push it as a version, which would bury the report the user already has.
+  if (!report.trim()) {
+    setStatus("The model returned an empty report. Nothing was changed — try again or adjust your request.");
+    return;
+  }
+  pushReportVersion(report);
   hasReport = true;
   newReportBtn.hidden = false;
   // A report now exists, so reveal the "refine without search" option.

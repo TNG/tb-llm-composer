@@ -234,6 +234,7 @@ export async function continueReportWithoutSearch(
 
   const rawReport = (response as LlmTextCompletionResponse).choices?.[0]?.message?.content ?? "";
   const finalReport = options.strip_think_tag ? stripThinkTags(rawReport) : rawReport;
+  assertNonEmptyReport(rawReport, finalReport);
   messages.push({ role: LlmRoles.ASSISTANT, content: rawReport });
   onProgress?.({ llmCalls: 1, toolCalls: 0, phase: "Writing the report…" });
 
@@ -243,6 +244,22 @@ export async function continueReportWithoutSearch(
   );
 
   return { report: finalReport, messages, scope: session.scope };
+}
+
+/**
+ * Fail loudly when a run produces no report text. `content` is optional in a chat completion, and
+ * think-tag stripping can empty an otherwise non-empty reply, so a run can "succeed" with nothing to
+ * show — which would surface as a ready-looking report window that renders and saves nothing.
+ */
+function assertNonEmptyReport(rawReport: string, finalReport: string): void {
+  if (finalReport.trim()) return;
+  throw new Error(
+    rawReport.trim()
+      ? "The model replied with reasoning only (<think>…</think>) and no report text. Disable " +
+          "'Strip think tags' in the options to keep that text, or try the request again."
+      : "The model returned an empty report. It most likely hit its output-length limit or declined " +
+          "the request — try a narrower time window or a simpler request.",
+  );
 }
 
 /** Shared agentic loop for both fresh and continued report runs. */
@@ -268,6 +285,7 @@ async function runReportLoop(
       onProgress,
     );
     const finalReport = options.strip_think_tag ? stripThinkTags(rawReport) : rawReport;
+    assertNonEmptyReport(rawReport, finalReport);
 
     console.log(
       "REPORT: generation completed " +
