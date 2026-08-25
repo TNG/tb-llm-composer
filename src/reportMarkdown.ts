@@ -129,14 +129,92 @@ function inlineFragment(text: string, doc: Document): DocumentFragment {
   return frag;
 }
 
+type CellAlignment = "left" | "center" | "right" | null;
+
+/**
+ * Split one table row into its cells. The leading/trailing pipes GFM allows are optional, and `\|`
+ * escapes a literal pipe inside a cell.
+ */
+function splitTableRow(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  const cells: string[] = [];
+  let current = "";
+  for (let i = 0; i < trimmed.length; i++) {
+    const char = trimmed[i];
+    if (char === "\\" && trimmed[i + 1] === "|") {
+      current += "|";
+      i++;
+    } else if (char === "|") {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+/**
+ * Per-column alignment from a table's delimiter row (`|---|:---:|---:|`), or null when the line is
+ * not a delimiter row — which is also what decides whether the line above it opens a table at all.
+ */
+function parseTableAlignments(line: string | undefined): CellAlignment[] | null {
+  if (line === undefined || !line.includes("|")) return null;
+  const cells = splitTableRow(line);
+  const alignments: CellAlignment[] = [];
+  for (const cell of cells) {
+    if (!/^:?-+:?$/.test(cell)) return null;
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    alignments.push(left && right ? "center" : right ? "right" : left ? "left" : null);
+  }
+  return alignments;
+}
+
+/**
+ * True when `lines[index]` is a table header followed by a delimiter row. As GFM requires, the
+ * delimiter row must have exactly as many cells as the header; otherwise the two lines are just text.
+ */
+function isTableStart(lines: string[], index: number): boolean {
+  if (!lines[index].includes("|")) return false;
+  const alignments = parseTableAlignments(lines[index + 1]);
+  return alignments !== null && alignments.length === splitTableRow(lines[index]).length;
+}
+
+/**
+ * Build one table row, padded/truncated to the header's column count. Cell content goes through the
+ * inline renderer, so citations and emphasis work inside cells; alignment is the only style applied
+ * and comes from the fixed set above, never from the model's text.
+ */
+function buildTableRow(
+  doc: Document,
+  cells: string[],
+  columns: number,
+  alignments: CellAlignment[],
+  tag: "th" | "td",
+): HTMLTableRowElement {
+  const row = doc.createElement("tr");
+  for (let column = 0; column < columns; column++) {
+    const cell = doc.createElement(tag);
+    cell.appendChild(inlineFragment(cells[column] ?? "", doc));
+    const alignment = alignments[column];
+    if (alignment) cell.style.textAlign = alignment;
+    row.appendChild(cell);
+  }
+  return row;
+}
+
 /** True for a line that opens a new block, so paragraph accumulation stops before it. */
-function isBlockStart(line: string): boolean {
+function isBlockStart(lines: string[], index: number): boolean {
+  const line = lines[index];
   return (
     /^\s*$/.test(line) ||
     /^\s*#{1,6}\s+/.test(line) ||
     /^\s*([-*])\s+/.test(line) ||
     /^\s*\d+\.\s+/.test(line) ||
-    /^\s*```/.test(line)
+    /^\s*```/.test(line) ||
+    isTableStart(lines, index)
   );
 }
 
@@ -204,9 +282,33 @@ export function renderReportHtml(text: string, doc: Document = document): Docume
       continue;
     }
 
+    // Table: a header row, a delimiter row fixing the alignments, then body rows until a line that
+    // is no longer part of the table. Short rows are padded and extra cells dropped, as GFM says.
+    const alignments = isTableStart(lines, i) ? (parseTableAlignments(lines[i + 1]) as CellAlignment[]) : null;
+    if (alignments) {
+      const headerCells = splitTableRow(line);
+      const columns = headerCells.length;
+      const table = doc.createElement("table");
+      table.className = "report-table";
+
+      const thead = doc.createElement("thead");
+      thead.appendChild(buildTableRow(doc, headerCells, columns, alignments, "th"));
+      table.appendChild(thead);
+
+      i += 2; // consume the header and the delimiter row
+      const tbody = doc.createElement("tbody");
+      while (i < lines.length && lines[i].includes("|") && !/^\s*$/.test(lines[i])) {
+        tbody.appendChild(buildTableRow(doc, splitTableRow(lines[i]), columns, alignments, "td"));
+        i++;
+      }
+      if (tbody.childNodes.length > 0) table.appendChild(tbody);
+      frag.appendChild(table);
+      continue;
+    }
+
     // Paragraph: gather soft-wrapped lines until the next block starts.
     const paragraph: string[] = [];
-    while (i < lines.length && !isBlockStart(lines[i])) {
+    while (i < lines.length && !isBlockStart(lines, i)) {
       paragraph.push(lines[i].trim());
       i++;
     }
