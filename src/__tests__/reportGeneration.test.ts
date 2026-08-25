@@ -26,7 +26,7 @@ vi.mock("../optionsParams", async () => {
 });
 
 import { getPluginOptions } from "../optionsParams";
-import { continueReport, generateReport, type ReportRequest } from "../reportGeneration";
+import { continueReport, generateReport, type ReportRequest, rebuildSessionFromReport } from "../reportGeneration";
 
 const abortSignal = new AbortController().signal;
 
@@ -118,6 +118,22 @@ describe("reportGeneration", () => {
     const lastMessage = messages[messages.length - 1];
     expect(lastMessage.role).toBe("user");
     expect(lastMessage.content).toContain("Add deadlines");
+  });
+
+  test("rebuilds a lost session with the displayed report as the last assistant turn", async () => {
+    const session = await rebuildSessionFromReport(BASE_REQUEST, "Previous report body");
+
+    const last = session.messages[session.messages.length - 1];
+    expect(last).toEqual({ role: "assistant", content: "Previous report body" });
+    expect(session.messages[0].role).toBe("system");
+    // The scope the refinement inherits still matches the request.
+    expect(session.scope).toMatchObject({
+      folderOnly: true,
+      folder: { accountId: "a", path: "/INBOX" },
+      defaultDays: 14,
+    });
+    // Rebuilding is pure prompt assembly — it must not kick off an agentic run.
+    expect(runAgenticLlmMock).not.toHaveBeenCalled();
   });
 
   test("strips <think> tags from the report by default", async () => {
