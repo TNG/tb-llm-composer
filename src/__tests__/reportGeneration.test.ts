@@ -136,6 +136,16 @@ describe("reportGeneration", () => {
     expect(runAgenticLlmMock).not.toHaveBeenCalled();
   });
 
+  test("fails instead of returning an empty report", async () => {
+    runAgenticLlmMock.mockResolvedValue(agenticResult(""));
+    await expect(generateReport(BASE_REQUEST, abortSignal)).rejects.toThrow(/returned an empty report/);
+  });
+
+  test("says so when think-tag stripping leaves nothing behind", async () => {
+    runAgenticLlmMock.mockResolvedValue(agenticResult("<think>only reasoning</think>"));
+    await expect(generateReport(BASE_REQUEST, abortSignal)).rejects.toThrow(/reasoning only/);
+  });
+
   test("strips <think> tags from the report by default", async () => {
     runAgenticLlmMock.mockResolvedValue(agenticResult("<think>reasoning</think>Clean report"));
     const session = await generateReport(BASE_REQUEST, abortSignal);
