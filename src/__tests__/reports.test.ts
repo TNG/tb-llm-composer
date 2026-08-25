@@ -219,6 +219,38 @@ describe("The report popup", () => {
     });
   });
 
+  test("does not claim a report is ready when an empty one arrives", async () => {
+    await loadPopup(FOLDER_SEARCH);
+    const doc = reportsDom.window.document;
+
+    (doc.getElementById("prompt") as HTMLTextAreaElement).value = "make a report";
+    (doc.getElementById("create-btn") as HTMLButtonElement).click();
+    deliverReport("   ");
+
+    await waitFor(() => {
+      expect(doc.getElementById("status")?.textContent).toContain("empty report");
+    });
+    // Nothing to show and nothing to save: the placeholder stays and no version is recorded.
+    expect(doc.querySelector("#report-output .report-placeholder")).not.toBeNull();
+    expect(doc.getElementById("version-label")?.textContent).toBe("");
+  });
+
+  test("keeps the existing report when a refinement comes back empty", async () => {
+    await loadPopup(FOLDER_SEARCH);
+    const doc = reportsDom.window.document;
+
+    await generateReportInPopup(doc, "make a report", "FIRST VERSION");
+    (doc.getElementById("prompt") as HTMLTextAreaElement).value = "reorder the sections";
+    (doc.getElementById("create-btn") as HTMLButtonElement).click();
+    deliverReport("");
+
+    await waitFor(() => {
+      expect(doc.getElementById("status")?.textContent).toContain("empty report");
+    });
+    // The report the user already had must survive an empty refinement.
+    expect(doc.getElementById("report-output")?.textContent).toContain("FIRST VERSION");
+  });
+
   test("shows 'refine without search' only after a report exists and sends the flag", async () => {
     await loadPopup(FOLDER_SEARCH);
     const doc = reportsDom.window.document;
