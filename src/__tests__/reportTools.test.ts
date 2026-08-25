@@ -345,12 +345,17 @@ describe("reportTools", () => {
         setBrowser({ get, getFull, query });
 
         const handlers = createReportToolHandlers(BASE_SCOPE);
-        const pending = handlers.get_thread({ id: 11 }) as Promise<{ messages: Array<{ id: number }> }>;
+        const pending = handlers.get_thread({ id: 11 }) as Promise<{
+          messages: Array<{ id: number }>;
+          truncated: boolean;
+        }>;
         // One 25s query timeout per stalled lookup (own message-id + one reference).
         await vi.advanceTimersByTimeAsync(60_000);
 
         const result = await pending;
         expect(result.messages.map((m) => m.id)).toEqual([11]);
+        // The ancestor could not be resolved, so the thread is incomplete and must say so.
+        expect(result.truncated).toBe(true);
       } finally {
         vi.useRealTimers();
       }

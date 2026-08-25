@@ -77,10 +77,15 @@ function groupRank(folderIndex: number | null): number {
   return folderIndex === null ? planFolders.length : folderIndex;
 }
 
+/**
+ * Header text for a group. Groups are formed from each entry's INITIAL proposal and never re-sorted,
+ * so a row the user has since reassigned stays put — "Proposed:" keeps the header honest about what it
+ * describes; the row's own dropdown is the current destination.
+ */
 function groupLabel(folderIndex: number | null): string {
-  if (folderIndex === null) return "Keep in place";
+  if (folderIndex === null) return "Proposed: Keep in place";
   const folder = planFolders[folderIndex];
-  return folder ? folder.name || folder.path : "Keep in place";
+  return folder ? `Proposed: ${folder.name || folder.path}` : "Proposed: Keep in place";
 }
 
 function render(plan: OrganisePlanResponse): void {

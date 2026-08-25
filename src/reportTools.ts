@@ -627,6 +627,7 @@ async function handleGetThread(
 
   // 1) Precise ancestors/self: resolve each referenced Message-ID to a mailbox message. Each lookup is
   // guarded, so one unresponsive search degrades the thread instead of wedging the report run.
+  let lookupFailed = false;
   for (const messageId of lookupIds) {
     if (hits.length >= cap) break;
     const page = await guardedQuery(
@@ -634,7 +635,12 @@ async function handleGetThread(
       abortSignal,
       `thread lookup for ${messageId}`,
     );
-    if (page === null || typeof page === "string") continue;
+    // query returns the error string on failure and guardedQuery yields null on a stalled page: the
+    // thread is missing an ancestor either way, so it must not be reported as complete.
+    if (page === null || typeof page === "string") {
+      lookupFailed = true;
+      continue;
+    }
     for (const msg of page.messages) {
       if (msg.id !== undefined && !seenIds.has(msg.id) && hits.length < cap) {
         seenIds.add(msg.id);
@@ -660,10 +666,11 @@ async function handleGetThread(
   }
 
   hits.sort((a, b) => a.date.localeCompare(b.date));
-  const truncated = hits.length >= cap || droppedRefs > 0 || subjectTruncated;
+  const truncated = hits.length >= cap || droppedRefs > 0 || subjectTruncated || lookupFailed;
 
   console.log(
     `REPORT: get_thread id=${id} lookups=${lookupIds.length} droppedRefs=${droppedRefs} ` +
+      `lookupFailed=${lookupFailed} ` +
       `messages=${hits.length} truncated=${truncated} elapsedMs=${Date.now() - startedAt}`,
   );
   return { messages: hits, truncated };
