@@ -378,7 +378,17 @@ async function onCreate(): Promise<void> {
   // onReportResult, so the UI never depends on a long-lived request channel that could be
   // destroyed mid-generation (which would hang the report).
   void browser.runtime
-    .sendMessage({ type: "generate-report", windowId, request, continueConversation, noSearch })
+    // The displayed report travels with the request: the background is an event page and may have
+    // been suspended since the last run, losing its conversation. Sending the text lets it refine
+    // what the user sees instead of falling back to generating a brand-new report.
+    .sendMessage({
+      type: "generate-report",
+      windowId,
+      request,
+      continueConversation,
+      noSearch,
+      currentReport: continueConversation ? currentReportText : undefined,
+    })
     .catch((e: unknown) => {
       // The message failed to even reach the background; surface it and leave the busy state.
       setBusy(false);
