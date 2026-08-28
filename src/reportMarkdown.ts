@@ -38,8 +38,9 @@ function buildEmailChip(doc: Document, id: string, label: string): Node {
   const chip = doc.createElement("span");
   chip.className = "email-citation";
 
-  // The label itself is the "open" control: the whole chip (everything but the reply button)
-  // opens the cited email, so there is no separate arrow glyph.
+  // The label itself is the "open" control, so the whole chip body — everything but the Reply
+  // button — opens the cited email and there is no separate arrow glyph. Using a real <button>
+  // (rather than a role=button span) keeps native focus and Enter/Space handling.
   const openBtn = doc.createElement("button");
   openBtn.type = "button";
   openBtn.className = "email-citation-label email-open";
