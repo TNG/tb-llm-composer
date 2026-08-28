@@ -448,28 +448,42 @@
       .report-placeholder {
         color: var(--muted);
       }
-      /* Inline email citation chip: label + Open/Reply glyph buttons. */
+      /* Inline email citation chip: the label opens the email, the trailing glyph replies to it. */
       .email-citation {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
+        gap: 2px;
         margin: 0 1px;
-        padding: 0 2px 0 6px;
+        padding: 0 2px 0 0;
         border: 1px solid var(--border);
         border-radius: 999px;
         background: var(--field-bg);
         vertical-align: baseline;
         line-height: 1.6;
       }
+      /* The label is a button so the whole chip body — not just a small glyph — opens the email. */
       .email-citation-label {
+        display: inline-block;
         max-width: 220px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        padding: 0 4px 0 8px;
+        margin: 0;
+        border: none;
+        border-radius: 999px 0 0 999px;
+        background: transparent;
+        font-family: inherit;
         font-size: 12px;
+        line-height: inherit;
         color: var(--fg);
+        cursor: pointer;
       }
-      .email-citation button {
+      .email-citation-label:hover {
+        background: var(--accent);
+        color: var(--accent-fg);
+      }
+      .email-citation .email-reply {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -484,7 +498,7 @@
         line-height: 1;
         cursor: pointer;
       }
-      .email-citation button:hover {
+      .email-citation .email-reply:hover {
         background: var(--accent);
         color: var(--accent-fg);
       }

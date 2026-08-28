@@ -122,7 +122,7 @@ keeping token use in check. A live counter shows LLM/tool calls while it works; 
 **After a report is generated**
 
 - **Linked emails** — the report cites the emails behind its statements as inline chips.
-  Click **↗** on a chip to open that email in a tab, or **↩** to start a reply to it.
+  Click a chip to open that email in a tab, or its **↩** button to start a reply to it.
   (The links work within the current Thunderbird session.)
 - **Refine** — type a follow-up instruction and send again; the report continues the
   same conversation (e.g. *"group these by sender"*).
