@@ -1,4 +1,5 @@
 import type { OrganiseAssignment, OrganiseFolderOption, OrganisePlanEntry } from "./emailOrganising";
+import { rememberPopupSize } from "./popupSize";
 import { getButtonElement } from "./utils";
 
 interface OrganisePlanResponse {
@@ -14,7 +15,10 @@ const PAGE_SIZE = 20;
 // Handoff key set by the background when opening this window; identifies the plan to load/apply.
 const planKey = new URLSearchParams(location.search).get("planKey") ?? "";
 let windowId: number | undefined;
+// Every entry in the plan, including pre-filter matches — this is what OK applies.
 let planEntries: OrganisePlanEntry[] = [];
+// The subset shown as reviewable rows: the LLM's proposals only, grouped by destination.
+let listedEntries: OrganisePlanEntry[] = [];
 let planFolders: OrganiseFolderOption[] = [];
 let currentPage = 0;
 // The confirmed destination per message id (null = keep in place). Persisted across page changes so
@@ -24,6 +28,7 @@ const assignmentsByMessageId = new Map<number, number | null>();
 const listEl = document.querySelector<HTMLDivElement>("#move-list");
 const statusEl = document.querySelector<HTMLParagraphElement>("#status");
 const subtitleEl = document.querySelector<HTMLParagraphElement>("#subtitle");
+const preFilterSummaryEl = document.querySelector<HTMLParagraphElement>("#prefilter-summary");
 const pagerEl = document.querySelector<HTMLDivElement>("#pager");
 const pagerTextEl = document.querySelector<HTMLSpanElement>("#pager-text");
 const applyBtn = getButtonElement("#apply-btn");
@@ -39,6 +44,9 @@ init().catch((e) => {
 async function init(): Promise<void> {
   const current = await browser.windows.getCurrent();
   windowId = current.id;
+
+  // Reopen at whatever size this window ends up with, so the next open never has to be corrected.
+  rememberPopupSize("organiseConfirm");
 
   applyBtn.addEventListener("click", () => void onApply());
   cancelBtn.addEventListener("click", () => void browser.windows.remove(windowId as number).catch(() => {}));
@@ -88,11 +96,55 @@ function groupLabel(folderIndex: number | null): string {
   return folder ? `Proposed: ${folder.name || folder.path}` : "Proposed: Keep in place";
 }
 
+function folderLabel(folderIndex: number): string {
+  const folder = planFolders[folderIndex];
+  return folder ? folder.name || folder.path : "an unknown folder";
+}
+
+/**
+ * Summarise what the deterministic pre-filter rules claimed as a single line ("3 to Newsletters,
+ * 1 kept in place"). Those decisions need no review — the rules are the user's own and exact — so
+ * they stay out of the row list, which is reserved for the LLM's guesses.
+ */
+function renderPreFilterSummary(entries: OrganisePlanEntry[]): void {
+  if (!preFilterSummaryEl) return;
+  if (entries.length === 0) {
+    preFilterSummaryEl.hidden = true;
+    preFilterSummaryEl.textContent = "";
+    return;
+  }
+
+  const countByFolder = new Map<number, number>();
+  let keptInPlace = 0;
+  for (const entry of entries) {
+    if (entry.proposedFolderIndex === null) {
+      keptInPlace++;
+      continue;
+    }
+    countByFolder.set(entry.proposedFolderIndex, (countByFolder.get(entry.proposedFolderIndex) ?? 0) + 1);
+  }
+
+  const parts = Array.from(countByFolder.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([folderIndex, count]) => `${count} to ${folderLabel(folderIndex)}`);
+  if (keptInPlace > 0) parts.push(`${keptInPlace} kept in place`);
+
+  preFilterSummaryEl.textContent = `Pre-filter rules matched ${entries.length} email${
+    entries.length === 1 ? "" : "s"
+  }: ${parts.join(", ")}. They move when you click OK.`;
+  preFilterSummaryEl.hidden = false;
+}
+
 function render(plan: OrganisePlanResponse): void {
   planFolders = plan.folders;
+  // Every entry is applied on OK, but only the LLM's proposals are listed for review; pre-filter
+  // matches are deterministic and get the summary line above the list instead.
+  planEntries = plan.entries;
   // Group the emails by the destination the model proposed. Sorting happens once, here: later manual
   // changes only update the assignment map, so rows never jump around under the user's cursor.
-  planEntries = [...plan.entries].sort((a, b) => groupRank(a.proposedFolderIndex) - groupRank(b.proposedFolderIndex));
+  listedEntries = plan.entries
+    .filter((entry) => !entry.viaPreFilter)
+    .sort((a, b) => groupRank(a.proposedFolderIndex) - groupRank(b.proposedFolderIndex));
   currentPage = 0;
   assignmentsByMessageId.clear();
   for (const entry of planEntries) {
@@ -105,11 +157,21 @@ function render(plan: OrganisePlanResponse): void {
       "Close this window to cancel — nothing moves until you confirm.";
   }
 
-  if (planEntries.length === 0) {
+  renderPreFilterSummary(plan.entries.filter((entry) => entry.viaPreFilter));
+
+  if (listedEntries.length === 0) {
     if (listEl) listEl.replaceChildren();
-    setStatus(plan.found ? "No movable emails to show." : "This organisation plan is no longer available.");
-    applyBtn.disabled = true;
     if (pagerEl) pagerEl.hidden = true;
+    if (!plan.found) {
+      setStatus("This organisation plan is no longer available.");
+      applyBtn.disabled = true;
+    } else if (planEntries.length === 0) {
+      setStatus("No movable emails to show.");
+      applyBtn.disabled = true;
+    } else {
+      // Nothing for the LLM to propose, but the pre-filter moves above still need confirming.
+      setStatus("Every email was handled by your pre-filter rules.");
+    }
     return;
   }
 
@@ -117,7 +179,7 @@ function render(plan: OrganisePlanResponse): void {
 }
 
 function pageCount(): number {
-  return Math.max(1, Math.ceil(planEntries.length / PAGE_SIZE));
+  return Math.max(1, Math.ceil(listedEntries.length / PAGE_SIZE));
 }
 
 function goToPage(page: number): void {
@@ -133,7 +195,7 @@ function renderPage(): void {
   listEl.replaceChildren();
 
   const start = currentPage * PAGE_SIZE;
-  const pageEntries = planEntries.slice(start, start + PAGE_SIZE);
+  const pageEntries = listedEntries.slice(start, start + PAGE_SIZE);
   // A header precedes each non-empty group; the group spanning a page break is re-labelled at the top
   // of the next page so every row on screen stays attributable to a destination.
   let lastRank: number | undefined;
@@ -147,7 +209,7 @@ function renderPage(): void {
   }
   listEl.scrollTop = 0;
 
-  const total = planEntries.length;
+  const total = listedEntries.length;
   const to = Math.min(start + PAGE_SIZE, total);
   setStatus(`Showing ${start + 1}–${to} of ${total} email${total === 1 ? "" : "s"}.`);
 

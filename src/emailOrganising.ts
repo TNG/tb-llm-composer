@@ -57,6 +57,8 @@ export interface OrganisePlanEntry {
   author: string;
   subject: string;
   proposedFolderIndex: number | null;
+  /** True when a deterministic pre-filter rule claimed this email, so it never reached the LLM. */
+  viaPreFilter: boolean;
 }
 
 /**
@@ -149,11 +151,7 @@ function parseBatchOrganisingResponse(
 
     // Must be a whole number: a fractional index resolves to no folder at all downstream, so it would
     // be counted as a move error instead of being recognised here as an unusable classification.
-    if (
-      typeof maybeFolder === "number" &&
-      maybeFolder >= 1 &&
-      maybeFolder <= rulesCount
-    ) {
+    if (typeof maybeFolder === "number" && maybeFolder >= 1 && maybeFolder <= rulesCount) {
       result.set(maybeId, maybeFolder - 1);
     }
   }
@@ -746,6 +744,7 @@ export async function planOrganiseCurrentFolder(
       author: entry.sender,
       subject: entry.subject,
       proposedFolderIndex: assignments.get(entry.refId) ?? null,
+      viaPreFilter: false,
     }));
 
   // Pre-filtered mail is listed too, pre-assigned to its rule's target, so the user sees (and can
@@ -757,6 +756,7 @@ export async function planOrganiseCurrentFolder(
       author: match.entry.sender,
       subject: match.entry.subject,
       proposedFolderIndex: match.targetPath === null ? null : (indexByPath.get(match.targetPath) ?? null),
+      viaPreFilter: true,
     }));
 
   return { entries: [...preFilterEntries, ...entries], folders, resolvedFolders: planResolvedFolders, source };
