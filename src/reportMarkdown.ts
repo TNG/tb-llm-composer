@@ -137,7 +137,11 @@ type CellAlignment = "left" | "center" | "right" | null;
  * escapes a literal pipe inside a cell.
  */
 function splitTableRow(line: string): string[] {
-  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  // Only an unescaped terminal pipe is the row's closing delimiter; `\|` is a literal pipe ending a cell.
+  const trimmed = line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/(?<!\\)\|$/, "");
   const cells: string[] = [];
   let current = "";
   for (let i = 0; i < trimmed.length; i++) {

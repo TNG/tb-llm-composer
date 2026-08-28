@@ -381,6 +381,60 @@ describe("emailOrganising", () => {
     );
   });
 
+  test("rejects a fractional folder index instead of turning it into an unusable move", async () => {
+    const messagesMove = vi.fn().mockResolvedValue(undefined);
+
+    sendContentToLlmMock.mockResolvedValue({
+      status: 1,
+      id: "mock-response-id",
+      created: 1,
+      model: "mock-model",
+      // 1.5 is inside the valid range but is not a folder: it must not become index 0.5.
+      choices: [{ message: { role: "system", content: '{"classifications":[{"id":15,"folder":1.5}]}' } }],
+    });
+
+    global.browser = {
+      accounts: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: "acc-1",
+            rootFolder: { id: "root-id", accountId: "acc-1", path: "/", name: "root" },
+            folders: [{ id: "target-id", accountId: "acc-1", path: "/target", name: "Target" }],
+          },
+        ]),
+      },
+      mailTabs: {
+        query: vi.fn().mockResolvedValue([
+          {
+            displayedFolder: { id: "folder-id", accountId: "acc-1", path: "/inbox", name: "Inbox" },
+          },
+        ]),
+      },
+      messages: {
+        list: vi.fn().mockResolvedValue({
+          id: undefined,
+          messages: [{ id: 15, author: "alice@example.com", subject: "Quarterly report" }],
+        }),
+        continueList: vi.fn(),
+        getFull: vi.fn().mockResolvedValue({ contentType: "text/plain", body: "Please process this message" }),
+        move: messagesMove,
+      },
+      folders: {
+        getSubFolders: vi.fn(),
+      },
+    } as unknown as typeof browser;
+
+    await organiseCurrentFolder(new AbortController().signal);
+
+    // The email stays put; the absent error clause shows it was not counted as a failed move either.
+    expect(messagesMove).not.toHaveBeenCalled();
+    expect(timedNotificationMock).toHaveBeenCalledWith(
+      "Organise Folder Complete",
+      "Moved 0 email(s). 1 email(s) kept in place.",
+      10000,
+    );
+  });
+
   /** Build a browser mock backed by `messageCount` messages (ids 1..N) in the source folder. */
   function buildMultiMessageBrowser(messageCount: number, messagesMove: ReturnType<typeof vi.fn>) {
     const messages = Array.from({ length: messageCount }, (_, i) => ({
