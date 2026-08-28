@@ -54,8 +54,8 @@
         margin: 0 0 8px;
       }
       /* Everything except the list keeps its natural height. Without `flex: 0 0 auto` these are
-         shrinkable, so on a full page (content taller than the window) the browser compresses the
-         heading, status line, pager and footer — and lets them spring back on a short last page.
+         shrinkable, so on a page whose rows overflow the window the browser compresses the heading,
+         status line, pager and footer — and lets them spring back on a page that happens to fit.
          That is what made the dialog "jump" when paging. */
       h1,
       .subtitle,
