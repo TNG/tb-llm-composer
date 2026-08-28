@@ -53,19 +53,37 @@
         min-height: 18px;
         margin: 0 0 8px;
       }
-      /* Scrollable list filling the remaining height. */
+      /* Everything except the list keeps its natural height. Without `flex: 0 0 auto` these are
+         shrinkable, so on a full page (content taller than the window) the browser compresses the
+         heading, status line, pager and footer — and lets them spring back on a short last page.
+         That is what made the dialog "jump" when paging. */
+      h1,
+      .subtitle,
+      #status,
+      .pager,
+      .footer {
+        flex: 0 0 auto;
+      }
+      /* Scrollable list filling the remaining height. `flex-basis: 0` (not `auto`) makes its size
+         depend only on the free space, never on how many rows the current page happens to have, and
+         a reserved scrollbar gutter stops the rows from shifting sideways when a short page needs no
+         scrollbar. Together these keep every page pixel-identical. */
       #move-list {
-        flex: 1 1 auto;
+        flex: 1 1 0;
         min-height: 120px;
         overflow-y: auto;
+        scrollbar-gutter: stable;
         border: 1px solid var(--border);
         border-radius: 6px;
         background: var(--subtle-bg);
       }
+      /* Fixed row height so a row can never be taller or shorter than its neighbours. */
       .move-row {
         display: flex;
         align-items: center;
         gap: 10px;
+        height: 52px;
+        box-sizing: border-box;
         padding: 8px 10px;
         border-bottom: 1px solid var(--border);
       }
@@ -78,12 +96,14 @@
       }
       .move-subject {
         font-size: 13px;
+        line-height: 1.35;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
       .move-author {
         font-size: 12px;
+        line-height: 1.35;
         color: var(--muted);
         white-space: nowrap;
         overflow: hidden;

@@ -25,14 +25,17 @@ describe("renderReportHtml", () => {
     expect(html.querySelector("code")?.textContent).toBe("code");
   });
 
-  test("turns an email citation into a chip with Open/Reply buttons carrying the id", () => {
+  test("turns an email citation into a chip whose label opens and whose button replies", () => {
     const html = render('Resolved on Tuesday [Alice — "Re: Invoice"](email:12345).');
     const chip = html.querySelector(".email-citation");
     expect(chip).not.toBeNull();
-    expect(chip?.querySelector(".email-citation-label")?.textContent).toBe('Alice — "Re: Invoice"');
 
     const open = chip?.querySelector<HTMLButtonElement>(".email-open");
     const reply = chip?.querySelector<HTMLButtonElement>(".email-reply");
+    // The label itself is the open control, so there is no separate arrow glyph on the chip.
+    expect(open?.textContent).toBe('Alice — "Re: Invoice"');
+    expect(open?.classList.contains("email-citation-label")).toBe(true);
+    expect(chip?.querySelectorAll("button")).toHaveLength(2);
     expect(open?.dataset.emailId).toBe("12345");
     expect(reply?.dataset.emailId).toBe("12345");
     // The surrounding prose is preserved around the chip.
