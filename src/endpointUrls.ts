@@ -37,6 +37,10 @@ export function chatCompletionsEndpoint(endpointUrl: string): string {
  * The OpenAI-style `/models` URL for the configured endpoint: strips the chat route (preserving any
  * prefix, e.g. `/openai/v1`) and appends `/models`. The bare legacy `/completions` route is stripped
  * too — `chatCompletionsEndpoint` honours that spelling, so it is a form users can have configured.
+ *
+ * Azure's classic route is deployment-scoped (`…/openai/deployments/<name>/chat/completions`) but its
+ * model list is not: it lives on the resource at `…/openai/models`. Drop the deployment segment as
+ * well, or the derived URL would point at a route that does not exist.
  */
 export function modelsEndpoint(endpointUrl: string): string {
   const { base, suffix } = trimUrl(endpointUrl);
@@ -44,6 +48,7 @@ export function modelsEndpoint(endpointUrl: string): string {
   const apiBase = base
     .replace(/\/chat\/completions$/, "")
     .replace(/\/completions$/, "")
-    .replace(/\/chat$/, "");
+    .replace(/\/chat$/, "")
+    .replace(/\/deployments\/[^/]+$/, "");
   return `${apiBase}/models${suffix}`;
 }

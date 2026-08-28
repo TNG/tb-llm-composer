@@ -68,4 +68,17 @@ describe("modelsEndpoint", () => {
       "https://my-llm.com/v1/models?api-version=2024-02-01",
     );
   });
+
+  test("derives the resource-scoped list from an Azure deployment URL", () => {
+    // Azure's model list lives on the resource, not on the deployment, so the deployment segment goes.
+    expect(
+      modelsEndpoint("https://x.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-02-01"),
+    ).toEqual("https://x.openai.azure.com/openai/models?api-version=2024-02-01");
+  });
+
+  test("derives the resource-scoped list from an Azure deployment base", () => {
+    expect(modelsEndpoint("https://x.openai.azure.com/openai/deployments/gpt-4o?api-version=2024-02-01")).toEqual(
+      "https://x.openai.azure.com/openai/models?api-version=2024-02-01",
+    );
+  });
 });

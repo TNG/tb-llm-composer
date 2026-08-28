@@ -147,7 +147,13 @@ function parseBatchOrganisingResponse(
       continue;
     }
 
-    if (typeof maybeFolder === "number" && maybeFolder >= 1 && maybeFolder <= rulesCount) {
+    // Must be a whole number: a fractional index resolves to no folder at all downstream, so it would
+    // be counted as a move error instead of being recognised here as an unusable classification.
+    if (
+      typeof maybeFolder === "number" &&
+      maybeFolder >= 1 &&
+      maybeFolder <= rulesCount
+    ) {
       result.set(maybeId, maybeFolder - 1);
     }
   }

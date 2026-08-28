@@ -94,6 +94,14 @@ describe("renderReportHtml", () => {
     expect(html.querySelectorAll("tbody tr")[1].textContent).toBe("123");
   });
 
+  test("keeps an escaped pipe that ends the last cell of a row", () => {
+    // The second row omits the optional closing delimiter, so its last character is the escape itself.
+    const html = render("| Key | Note |\n|---|---|\n| a | Note \\| |\n| b | Ends with \\|");
+    const cells = [...html.querySelectorAll("tbody td")].map((td) => td.textContent);
+    // The trailing `\|` is a literal pipe in the cell, not the row's closing delimiter.
+    expect(cells).toEqual(["a", "Note |", "b", "Ends with |"]);
+  });
+
   test("does not treat a paragraph containing pipes as a table", () => {
     const html = render("Use the a | b syntax.\nIt is not a table.");
     expect(html.querySelector("table")).toBeNull();
