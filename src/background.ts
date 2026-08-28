@@ -25,6 +25,7 @@ import {
 import { notifyOnError, timedNotification } from "./notifications";
 import { getPluginOptions } from "./optionsParams";
 import { deleteFromOriginalTabCache, storeOriginalReplyText } from "./originalTabConversation";
+import { getRememberedPopupSize, type PopupName } from "./popupSize";
 import {
   continueReport,
   continueReportWithoutSearch,
@@ -192,23 +193,20 @@ async function deleteConfirmPlan(planKey: string): Promise<void> {
 }
 
 /**
- * Open an extension popup window at a fixed size.
+ * Open an extension popup window at the size it was last seen with (see popupSize.ts).
  *
- * Thunderbird applies the size persisted for extension popup windows shortly *after* the window
- * appears, so a window created with explicit dimensions visibly jumps to a different (usually
- * smaller) size on its first display. Re-asserting the requested size once the window exists — and
- * once more on the next turns of the event loop, after the restore has run — keeps what the user
- * sees matching what we asked for.
+ * Do not "correct" the size with `windows.update` afterwards: Thunderbird applies its own persisted
+ * size after the window is on screen, and a late second resize is exactly what makes the window jump
+ * under the user's cursor. Asking for the remembered size instead means there is nothing to correct.
  */
-async function createPopupWindow(url: string, width: number, height: number): Promise<browser.windows.Window> {
-  const win = await browser.windows.create({ type: "popup", url, width, height });
-  const windowId = win.id;
-  if (windowId !== undefined) {
-    const reassert = () => browser.windows.update(windowId, { width, height }).catch(() => {});
-    await reassert();
-    setTimeout(reassert, 300);
-  }
-  return win;
+async function createPopupWindow(
+  name: PopupName,
+  url: string,
+  width: number,
+  height: number,
+): Promise<browser.windows.Window> {
+  const size = await getRememberedPopupSize(name, { width, height });
+  return browser.windows.create({ type: "popup", url, ...size });
 }
 
 /** Open the confirmation popup for a plan and persist it so the window can fetch and apply it. */
@@ -224,7 +222,7 @@ async function openConfirmWindow(plan: OrganisePlan): Promise<void> {
   confirmUrl.searchParams.set("planKey", planKey);
   await saveConfirmPlan(planKey, { entries: plan.entries, folders: plan.folders, source: plan.source });
 
-  const win = await createPopupWindow(confirmUrl.href, 930, 680);
+  const win = await createPopupWindow("organiseConfirm", confirmUrl.href, 930, 680);
   if (win.id !== undefined) {
     confirmPlanKeysByWindow.set(win.id, planKey);
   }
@@ -274,7 +272,7 @@ async function openReportWindow(): Promise<void> {
   const optionsPage = browser.runtime.getManifest().options_ui?.page ?? "public/options.html";
   const reportsUrl = new URL(`reports.html?${params.toString()}`, browser.runtime.getURL(optionsPage)).href;
 
-  await createPopupWindow(reportsUrl, 930, 720);
+  await createPopupWindow("report", reportsUrl, 930, 720);
 }
 
 async function runReport(

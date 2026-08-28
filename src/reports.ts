@@ -1,6 +1,7 @@
 import { getAllFolderPaths, resolveFolderPath } from "./emailOrganising";
 import type { AgenticProgress } from "./llmConnection";
 import { getPluginOptions } from "./optionsParams";
+import { rememberPopupSize } from "./popupSize";
 import type { ReportRequest } from "./reportGeneration";
 import { renderReportHtml, stripCitations } from "./reportMarkdown";
 import { deletePrompt, getSavedPrompts, savePrompt } from "./reportPrompts";
@@ -64,6 +65,9 @@ init().catch((e) => console.error("REPORT-WINDOW: initialization failed", e));
 async function init(): Promise<void> {
   const current = await browser.windows.getCurrent();
   windowId = current.id;
+
+  // Reopen at whatever size this window ends up with, so the next open never has to be corrected.
+  rememberPopupSize("report");
 
   const options = await getPluginOptions();
   daysInput.value = `${options.reportDefaultDays}`;

@@ -654,6 +654,9 @@ describe("emailOrganising", () => {
     ]);
     const newsletter = plan?.entries.find((entry) => entry.messageId === 1);
     expect(newsletter?.proposedFolderIndex).toBe(1);
+    // Flagged so the confirmation popup can show that the pre-filter — not the LLM — claimed it.
+    expect(newsletter?.viaPreFilter).toBe(true);
+    expect(plan?.entries.find((entry) => entry.messageId === 2)?.viaPreFilter).toBe(false);
     expect(plan?.resolvedFolders[1]).toMatchObject({ id: "news-id" });
     // The pre-filtered message still never reaches the classifier.
     expect(sendContentToLlmMock.mock.calls[0][0][1].content).not.toContain("Weekly digest");

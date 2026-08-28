@@ -92,5 +92,7 @@ export const DEFAULT_OPTIONS: Options = {
 
 export async function getPluginOptions(): Promise<Options> {
   const stored = (await browser.storage.sync.get("options"))?.options;
-  return stored ? { ...DEFAULT_OPTIONS, ...stored } : DEFAULT_OPTIONS;
+  // Never hand out DEFAULT_OPTIONS itself: callers such as the options page mutate what they get back
+  // before storing it, which would permanently corrupt the shipped defaults in that context.
+  return stored ? { ...DEFAULT_OPTIONS, ...stored } : { ...DEFAULT_OPTIONS };
 }

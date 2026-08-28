@@ -59,10 +59,24 @@
          That is what made the dialog "jump" when paging. */
       h1,
       .subtitle,
+      #prefilter-summary,
       #status,
       .pager,
       .footer {
         flex: 0 0 auto;
+      }
+      /* One-line result of the deterministic pre-filter rules. Those moves need no review, so they
+         are summarised here instead of taking up rows in the list below. */
+      #prefilter-summary {
+        font-size: 13px;
+        margin: 0 0 10px;
+        padding: 6px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--subtle-bg);
+      }
+      #prefilter-summary[hidden] {
+        display: none;
       }
       /* Scrollable list filling the remaining height. `flex-basis: 0` (not `auto`) makes its size
          depend only on the free space, never on how many rows and group headers the current page
@@ -209,6 +223,7 @@
     <p class="subtitle" id="subtitle">
       Choose where each email should go, then click OK. Close this window to cancel — nothing moves until you confirm.
     </p>
+    <p id="prefilter-summary" hidden></p>
     <p id="status">Loading…</p>
     <div id="move-list"></div>
     <div class="pager" id="pager" hidden>
