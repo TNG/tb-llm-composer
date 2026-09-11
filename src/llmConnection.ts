@@ -2,6 +2,7 @@ import { chatCompletionsEndpoint } from "./endpointUrls";
 import { hasEndpointPermission } from "./hostPermissions";
 import { startKeepAlive, stopKeepAlive } from "./keepAlive";
 import { getPluginOptions, type LlmParameters } from "./optionsParams";
+import { currentTrace } from "./reportTrace";
 
 export enum LlmRoles {
   SYSTEM = "system",
@@ -205,9 +206,11 @@ async function callLlmApi(
     );
   }
 
+  const trace = currentTrace();
   try {
     await startKeepAlive();
     console.log(`LLM-CONNECTION: Sending request to LLM: POST ${url} (body redacted)`);
+    trace?.llmRequest(url, requestBody);
     const response = await fetch(url, {
       signal: combinedAbortController.signal,
       method: "POST",
@@ -220,8 +223,15 @@ async function callLlmApi(
     }
     const responseBody = (await response.json()) as LlmTextCompletionResponse | TgiErrorResponse;
     console.log("LLM-CONNECTION: LLM responded with:", response.status, responseBody);
+    if (trace) {
+      const serialised = JSON.stringify(responseBody);
+      trace.llmResponse(responseBody as LlmTextCompletionResponse, serialised.length);
+    }
 
     return responseBody;
+  } catch (e) {
+    trace?.llmError(e);
+    throw e;
   } finally {
     // Synchronous cleanup first to guarantee it always runs
     signal.removeEventListener("abort", abortHandler);
@@ -381,13 +391,16 @@ export async function runAgenticLlm(
               `REPORT: running tool '${toolCall.function.name}' with arg keys: ${Object.keys(parsedArgs).join(",") || "(none)"}`,
             );
             reportProgress(describeToolPhase(toolCall.function.name));
+            currentTrace()?.toolCall(toolCall.function.name, parsedArgs);
             const result = await handler(parsedArgs);
             resultContent = JSON.stringify(result ?? null);
+            currentTrace()?.toolResult(toolCall.function.name, resultContent);
             console.log(`REPORT: tool '${toolCall.function.name}' completed (resultChars=${resultContent.length})`);
           } catch (e) {
             if ((e as Error).name === "AbortError") throw e;
             console.warn(`REPORT: tool '${toolCall.function.name}' failed:`, e);
             resultContent = JSON.stringify({ error: (e as Error).message });
+            currentTrace()?.toolResult(toolCall.function.name, resultContent);
           }
         }
         conversation.push({

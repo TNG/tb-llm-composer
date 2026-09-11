@@ -44,7 +44,10 @@ pnpm run build
 
 - Lint auto-fix: `pnpm run lint-fix` (safe) or `pnpm run lint-fix-unsafe` (unsafe)
 - Optional coverage: `pnpm run test-coverage`
-- Release package only: `pnpm run ship` -> `llm-thunderbird.xpi`
+- Packages only: `pnpm run ship` -> both `llm-thunderbird.xpi` (release) and `llm-thunderbird-trace.xpi`
+  (same add-on identity and settings, plus report tracing into `<download folder>/llm-composer-trace/`; see
+  `src/reportTrace.ts` and `docs/CONTRIBUTING.md`). Both are always regenerated. Only the packages differ —
+  they share the production add-on id, so installing one replaces the other in place.
 
 ## Project layout
 
@@ -69,6 +72,10 @@ src/
   reportGeneration.ts        generateReport(ReportRequest); builds the report system/scope prompt and drives runAgenticLlm.
   reportTools.ts             Report tool definitions + handlers (ReportScope): search_messages (compact metadata + filters, returns {hits,returned,truncated}), get_messages (batched, always-full bodies, bounded by a shared per-run budget of maxMessageBodies + maxTotalBodyChars), get_thread (References/headerMessageId + normalized-subject reconstruction across all folders; reference lookups are capped and every search page is timeout-guarded so a stalled IMAP search degrades to a partial thread instead of hanging), aggregate_messages (grouped counts, no bodies). assertSearchCapabilities() probe. Folder-only search restricts search_messages to the target folder; threads bridge to Sent.
   reports.ts                 Report window UI logic (public/reports.html): create/cancel, refine by continuing the agent conversation, "New report" to start over, folder picker, copy/save txt|md, save/load reusable prompts.
+  reportTrace.ts             Dev-build-only tracing of report runs: ReportTrace collects every LLM request/response and tool
+                             call, withReportTrace() wraps a run and writes one JSON file per run to <download folder>/llm-composer-trace/.
+                             Gated on the webpack-defined `__TRACE_BUILD__`, so normal builds compile it (and the `downloads`
+                             permission) away entirely.
   reportPrompts.ts           Persist reusable report prompts (name + text) in browser.storage.sync: getSavedPrompts/savePrompt/deletePrompt.
 
   menu.ts                    Native menu entries for the compose_action (compose/summarize) and toolbar action (organise/report) menus + shortcut labels.

@@ -53,14 +53,47 @@ In particular, when adding new top-level buttons, make them distinguishable for 
 
 ### Build the plugin locally
 
-- Build the add-on package:
+- Build the add-on packages:
   ```shell
   pnpm ship
   ```
+  This always regenerates **both** packages from scratch:
+  [llm-thunderbird.xpi](../llm-thunderbird.xpi) (release) and
+  [llm-thunderbird-trace.xpi](../llm-thunderbird-trace.xpi) (tracing build, see below).
 - Start Thunderbird.
 - Go to Hamburger Menu -> Add-ons and Themes.
 - Click on the settings symbol -> Install Add-ons from file
-- Browse to this repo and select [llm-thunderbird.xpi](../llm-thunderbird.xpi)
+- Browse to this repo and select the `.xpi` you want.
+
+### The tracing build (`llm-thunderbird-trace.xpi`)
+
+The same add-on — same name, same add-on id, therefore the same stored settings — built the same way,
+except that it keeps `console.log` and writes a **trace file per report run**. Only the package is
+separate: installing it replaces whichever LLM Composer is installed, and installing
+`llm-thunderbird.xpi` again switches back. Nothing runs in parallel and no configuration is touched;
+the one visible difference at install time is the added "download files" permission.
+
+Each run of Create report / Refine drops one JSON file into
+`llm-composer-trace/<timestamp>-<kind>-<slug>.json`, on success, error and cancellation alike. That
+path is relative to **Thunderbird's download folder** (Settings ▸ General ▸ Files & Attachments ▸ "Save
+files to") — which is often the Desktop rather than `Downloads`. Each run also logs the absolute path
+it wrote to the console as `TRACE: wrote …`. A trace contains:
+
+- the request (prompt, days, folder scope) and the effective options (API token redacted),
+- every chat-completion request: the messages appended since the previous step, the conversation size
+  so far, the tool names advertised and the LLM parameters,
+- every response: content, requested tool calls, `finish_reason` and token usage,
+- every tool call with its arguments, its full result and how long it took,
+- totals: LLM/tool call counts, tokens, characters sent and received, and the wall-time split between
+  waiting for the model and searching the mailbox.
+
+Use it to spot waste in real usage — repeated searches, bodies fetched but never cited, steps that
+burn tokens without changing the report. Collect a folder of runs, then analyse it.
+
+> **Privacy:** a trace contains the raw email content the model was shown. The files never leave the
+> machine, but treat them like a copy of the mailbox excerpt behind that report and delete them when
+> the analysis is done. Tracing and the `downloads` permission it needs exist **only** in this package —
+> the release `llm-thunderbird.xpi` compiles both out, so switching back removes them.
 
 ## Useful links
 
