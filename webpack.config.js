@@ -1,10 +1,16 @@
 const CopyWebpackPlugin = require("copy-webpack-plugin");
 const path = require("node:path");
 const TerserPlugin = require("terser-webpack-plugin");
+const webpack = require("webpack");
 const buildFolder = "build";
 
-module.exports = (_env, argv) => {
+module.exports = (env, argv) => {
   const mode = argv.mode ?? "development";
+  // `--env trace` (see `pnpm run build-trace`) builds the same add-on but with report tracing enabled:
+  // every report run is written as JSON into <Downloads>/llm-composer-trace/, which needs the `downloads`
+  // permission. It deliberately keeps the normal add-on identity (name and id), so installing it replaces
+  // the regular add-on in place and keeps its settings, rather than adding a second one alongside it.
+  const isTraceBuild = Boolean(env?.trace);
   const isProductionMode = mode === "production";
   return {
     mode: mode,
@@ -40,6 +46,8 @@ module.exports = (_env, argv) => {
       extensions: [".ts", ".js"],
     },
     plugins: [
+      // Compile-time switch read by src/reportTrace.ts; `false` lets Terser drop all tracing code.
+      new webpack.DefinePlugin({ __TRACE_BUILD__: JSON.stringify(isTraceBuild) }),
       new CopyWebpackPlugin({
         patterns: [
           {
@@ -66,6 +74,12 @@ module.exports = (_env, argv) => {
                   .replaceAll(" (dev)", "")
                   .replace("llm-thunderbird-dev@tngtech.com", "llm-thunderbird@tngtech.com");
               }
+              if (isTraceBuild) {
+                // Only the tracing build may write files; keep the permission out of every other build.
+                const manifest = JSON.parse(newContent);
+                manifest.permissions = [...new Set([...manifest.permissions, "downloads"])];
+                newContent = JSON.stringify(manifest, null, 2);
+              }
               return newContent;
             },
           },
@@ -78,7 +92,8 @@ module.exports = (_env, argv) => {
         new TerserPlugin({
           terserOptions: {
             compress: {
-              drop_console: ["log", "info"],
+              // The tracing build keeps console output so the live console can be correlated with the traces.
+              drop_console: isTraceBuild ? false : ["log", "info"],
             },
           },
         }),

@@ -15,6 +15,7 @@ import {
   type ReportScope,
   reportToolDefinitions,
 } from "./reportTools";
+import { currentTrace, type TraceRequestInfo, withReportTrace } from "./reportTrace";
 import { stripThinkTags } from "./utils";
 
 export interface ReportRequest {
@@ -116,17 +117,30 @@ export async function generateReport(
       `promptChars=${request.prompt.length})`,
   );
 
-  // Hard requirement: fail loudly if the mailbox cannot be searched the way we need.
-  await assertSearchCapabilities(scope);
-  console.log("REPORT: search capability probe succeeded");
+  return withReportTrace("report", traceInfo(request.prompt, scope), options, async () => {
+    // Hard requirement: fail loudly if the mailbox cannot be searched the way we need.
+    await assertSearchCapabilities(scope);
+    console.log("REPORT: search capability probe succeeded");
+    currentTrace()?.note("search capability probe succeeded");
 
-  const messages: LlmApiRequestMessage[] = [
-    { role: LlmRoles.SYSTEM, content: REPORT_SYSTEM_PROMPT },
-    { role: LlmRoles.USER, content: buildScopePreamble(request) },
-    { role: LlmRoles.USER, content: `Report request:\n${request.prompt}` },
-  ];
+    const messages: LlmApiRequestMessage[] = [
+      { role: LlmRoles.SYSTEM, content: REPORT_SYSTEM_PROMPT },
+      { role: LlmRoles.USER, content: buildScopePreamble(request) },
+      { role: LlmRoles.USER, content: `Report request:\n${request.prompt}` },
+    ];
 
-  return runReportLoop(messages, scope, options.reportMaxSteps, startedAt, abortSignal, onProgress);
+    return runReportLoop(messages, scope, options.reportMaxSteps, startedAt, abortSignal, onProgress);
+  });
+}
+
+/** Describe a run for the (dev-build only) trace file. */
+function traceInfo(prompt: string, scope: ReportScope): TraceRequestInfo {
+  return {
+    prompt,
+    days: scope.defaultDays,
+    folderOnly: scope.folderOnly,
+    folderPath: scope.folder?.path ?? null,
+  };
 }
 
 /**
@@ -156,7 +170,9 @@ export async function continueReport(
     },
   ];
 
-  return runReportLoop(messages, session.scope, options.reportMaxSteps, startedAt, abortSignal, onProgress);
+  return withReportTrace("refine", traceInfo(prompt, session.scope), options, () =>
+    runReportLoop(messages, session.scope, options.reportMaxSteps, startedAt, abortSignal, onProgress),
+  );
 }
 
 /**
@@ -223,6 +239,20 @@ export async function continueReportWithoutSearch(
     },
   ];
 
+  return withReportTrace("refine-no-search", traceInfo(prompt, session.scope), options, () =>
+    runNoSearchRefinement(messages, session.scope, options.strip_think_tag, startedAt, abortSignal, onProgress),
+  );
+}
+
+/** The single plain chat completion behind {@link continueReportWithoutSearch}. */
+async function runNoSearchRefinement(
+  messages: LlmApiRequestMessage[],
+  scope: ReportScope,
+  stripThinkTag: boolean,
+  startedAt: number,
+  abortSignal: AbortSignal,
+  onProgress?: (progress: AgenticProgress) => void,
+): Promise<ReportSession> {
   onProgress?.({ llmCalls: 0, toolCalls: 0, phase: "Rewriting the report…" });
   const response = await sendContentToLlm(messages, abortSignal);
   if (!isLlmTextCompletionResponse(response)) {
@@ -233,7 +263,7 @@ export async function continueReportWithoutSearch(
   }
 
   const rawReport = (response as LlmTextCompletionResponse).choices?.[0]?.message?.content ?? "";
-  const finalReport = options.strip_think_tag ? stripThinkTags(rawReport) : rawReport;
+  const finalReport = stripThinkTag ? stripThinkTags(rawReport) : rawReport;
   assertNonEmptyReport(rawReport, finalReport);
   messages.push({ role: LlmRoles.ASSISTANT, content: rawReport });
   onProgress?.({ llmCalls: 1, toolCalls: 0, phase: "Writing the report…" });
@@ -243,7 +273,7 @@ export async function continueReportWithoutSearch(
       `rawChars=${rawReport.length}, finalChars=${finalReport.length})`,
   );
 
-  return { report: finalReport, messages, scope: session.scope };
+  return { report: finalReport, messages, scope };
 }
 
 /**
