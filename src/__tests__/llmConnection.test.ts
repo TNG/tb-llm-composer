@@ -183,6 +183,69 @@ describe("runAgenticLlm", () => {
     expect(roles).toContain("tool");
   });
 
+  test("runs one step's tool calls concurrently, keeps result order, and drops think text from history", async () => {
+    mockBrowser({ options: { model: MOCK_MODEL_URL } });
+    const step = {
+      ...toolCallResponse("search_messages", "{}"),
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content: "<think>long reasoning</think>",
+            tool_calls: [
+              { id: "slow", type: "function", function: { name: "search_messages", arguments: '{"n":1}' } },
+              { id: "fast", type: "function", function: { name: "search_messages", arguments: '{"n":2}' } },
+            ],
+          },
+          finish_reason: "tool_calls",
+        },
+      ],
+    };
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(okJson(step))
+      .mockResolvedValueOnce(okJson(finalResponse("done")));
+
+    const started: number[] = [];
+    let releaseSlow: () => void = () => {};
+    const handler = vi.fn(async (args: Record<string, unknown>) => {
+      started.push(args.n as number);
+      if (args.n === 1) await new Promise<void>((resolve) => (releaseSlow = resolve));
+      return { n: args.n };
+    });
+    const run = runAgenticLlm(
+      [{ content: "go", role: LlmRoles.USER }],
+      TOOLS,
+      { search_messages: handler },
+      abortSignal,
+      4,
+    );
+    await vi.waitFor(() => expect(started).toEqual([1, 2])); // the second call starts before the first ends
+    releaseSlow();
+    const result = await run;
+
+    const toolMessages = result.messages.filter((m) => m.role === "tool");
+    expect(toolMessages.map((m) => m.tool_call_id)).toEqual(["slow", "fast"]);
+    expect(result.messages.find((m) => m.tool_calls)?.content).toBe("");
+  });
+
+  test("switches off model thinking when reportDisableThinking is set, keeping user template kwargs", async () => {
+    mockBrowser({
+      options: {
+        model: MOCK_MODEL_URL,
+        reportDisableThinking: true,
+        params: { chat_template_kwargs: { custom: 1 } },
+      },
+    });
+    global.fetch = vi.fn().mockResolvedValueOnce(okJson(finalResponse("ok")));
+
+    await runAgenticLlm([{ content: "hi", role: LlmRoles.USER }], TOOLS, {}, abortSignal, 2);
+
+    const body = JSON.parse(vi.mocked(global.fetch).mock.calls[0][1]?.body as string);
+    expect(body.chat_template_kwargs).toEqual({ custom: 1, enable_thinking: false });
+  });
+
   test("returns immediately when the model answers without tool calls", async () => {
     mockBrowser({ options: { model: MOCK_MODEL_URL } });
     global.fetch = vi.fn().mockResolvedValueOnce(okJson(finalResponse("Quick answer")));

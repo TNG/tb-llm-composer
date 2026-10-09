@@ -51,6 +51,7 @@ document.querySelector("#report_max_steps")?.addEventListener("change", updateRe
 document.querySelector("#report_max_message_bodies")?.addEventListener("change", updateReportMaxMessageBodies);
 document.querySelector("#report_max_total_body_chars")?.addEventListener("change", updateReportMaxTotalBodyChars);
 document.querySelector("#confirm_moves")?.addEventListener("change", updateConfirmMovesBeforeApplying);
+document.querySelector("#report_disable_thinking")?.addEventListener("change", updateReportDisableThinking);
 document.querySelector("#add-folder-rule-btn")?.addEventListener("click", addFolderRuleRow);
 document.querySelector("#add-prefilter-rule-btn")?.addEventListener("click", addPreFilterRuleRow);
 document.querySelector("#refresh-folder-paths-btn")?.addEventListener("click", toggleFolderPaths);
@@ -204,6 +205,13 @@ async function updateStripThinkTag(event: Event) {
   const stripThinkTagInput = event.target as HTMLInputElement;
   await updateStoredOptions((options) => {
     options.strip_think_tag = stripThinkTagInput.checked;
+  });
+}
+
+async function updateReportDisableThinking(event: Event) {
+  const input = event.target as HTMLInputElement;
+  await updateStoredOptions((options) => {
+    options.reportDisableThinking = input.checked;
   });
 }
 
@@ -433,6 +441,7 @@ export async function restoreOptions(): Promise<void> {
   getInputElement("#report_max_steps").value = `${options.reportMaxSteps}`;
   getInputElement("#report_max_message_bodies").value = `${options.reportMaxMessageBodies}`;
   getInputElement("#report_max_total_body_chars").value = `${options.reportMaxTotalBodyChars}`;
+  getInputElement("#report_disable_thinking").checked = options.reportDisableThinking;
 
   const rules = options.folderSortingRules ?? [];
   const list = document.querySelector("#folder-rules-list");

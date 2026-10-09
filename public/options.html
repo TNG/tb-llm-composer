@@ -702,6 +702,13 @@
             </label>
             <input type="number" id="report_max_total_body_chars" name="report max total body chars" min="1" step="1" />
           </div>
+          <div class="form-group checkbox-row">
+            <input type="checkbox" id="report_disable_thinking" name="report disable thinking" />
+            <label for="report_disable_thinking">
+              Disable model thinking for reports
+              <span class="info-icon" title="Sends chat_template_kwargs.enable_thinking=false with every report request, which makes reasoning models such as Qwen3 (served by vLLM/SGLang) answer faster with fewer tokens. Applies to all report steps, including the final report. Leave off if your endpoint rejects unknown parameters.">i</span>
+            </label>
+          </div>
         </div>
 
       </form>

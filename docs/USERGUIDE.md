@@ -179,6 +179,7 @@ Define **folder rules** (path + description) and choose whether to
 | **Max agentic steps** | Upper bound on tool-calling iterations per report. Raise for more complex reports. |
 | **Max message bodies per report** | How many full email bodies one report may read. |
 | **Max total body characters per report** | Combined character ceiling across all bodies read; the main knob for predictable token use. |
+| **Disable model thinking for reports** | Sends `chat_template_kwargs.enable_thinking=false` on every report request, so reasoning models such as Qwen3 (on vLLM/SGLang) answer faster with fewer tokens. Leave off if your endpoint rejects unknown parameters. |
 
 ### Model settings
 

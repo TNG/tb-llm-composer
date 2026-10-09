@@ -93,7 +93,7 @@ describe("reportTools", () => {
       });
       setBrowser({ query });
 
-      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
       const result = (await handlers.search_messages({
         query: "invoice",
         author: "alice",
@@ -116,12 +116,82 @@ describe("reportTools", () => {
       expect(result.truncated).toBe(false);
       expect(result.hits[0]).toEqual({
         id: 1,
-        date: "2026-01-01T00:00:00.000Z",
-        author: { name: "", address: "alice@example.com", domain: "example.com" },
-        recipients: [{ name: "", address: "me@example.com", domain: "example.com" }],
+        date: "2026-01-01T00:00Z",
+        from: "alice@example.com",
+        to: ["me@example.com"],
         subject: "Hello",
       });
       expect(result.hits[0]).not.toHaveProperty("body");
+    });
+
+    test("renders names compactly and only lists the first three recipients", async () => {
+      const query = vi.fn().mockResolvedValue({
+        messages: [
+          {
+            id: 1,
+            author: '"Doe, Jane" <jane@example.com>',
+            recipients: ["a@x.com", "Bob <b@x.com>", "c@x.com", "d@x.com", "e@x.com"],
+            subject: "Hi",
+          },
+        ],
+      });
+      setBrowser({ query });
+
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
+      const result = (await handlers.search_messages({})) as { hits: Array<Record<string, unknown>> };
+
+      expect(result.hits[0]).toMatchObject({
+        from: "Doe, Jane <jane@example.com>",
+        to: ["a@x.com", "b@x.com", "c@x.com"],
+        toCount: 5,
+      });
+    });
+
+    test("answers a repeated identical search from the cache", async () => {
+      const query = vi.fn().mockResolvedValue({ messages: [] });
+      setBrowser({ query });
+
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
+      await handlers.search_messages({ author: "alice", fromDays: 7 });
+      await handlers.search_messages({ fromDays: 7, author: "alice" });
+
+      expect(query).toHaveBeenCalledTimes(1);
+    });
+
+    test("falls back to header matching when full-text search stalls, and stays there", async () => {
+      vi.useFakeTimers();
+      try {
+        const query = vi.fn(async (info: Record<string, unknown>) => {
+          if (info.fullText) return new Promise(() => {}); // the IMAP full-text search hangs
+          return {
+            messages: [
+              { id: 1, subject: "Lunch", author: "x@y.com", recipients: [], date: new Date("2026-01-01") },
+              { id: 2, subject: "Würth Zugang", author: "x@y.com", recipients: [], date: new Date("2026-01-02") },
+              { id: 3, subject: "Passwort", author: "it@wuerth-it.com", recipients: [], date: new Date("2026-01-03") },
+            ],
+          };
+        });
+        setBrowser({ query });
+        const handlers = createReportToolHandlers({ ...BASE_SCOPE });
+
+        const pending = handlers.search_messages({ query: "wuerth passwort" }) as Promise<{
+          hits: Array<{ id: number }>;
+          note: string;
+        }>;
+        await vi.advanceTimersByTimeAsync(10_000);
+        const first = await pending;
+
+        // Both terms match id 3 (subject + sender), one matches id 2; "Lunch" matches neither.
+        expect(first.hits.map((h) => h.id)).toEqual([3, 2]);
+        expect(first.note).toMatch(/bodies were NOT searched/i);
+
+        // Full-text is now known to stall, so the next search skips it entirely.
+        const second = (await handlers.search_messages({ query: "lunch" })) as { hits: Array<{ id: number }> };
+        expect(second.hits.map((h) => h.id)).toEqual([1]);
+        expect(query.mock.calls.filter((c) => (c[0] as Record<string, unknown>).fullText)).toHaveLength(1);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     test("reports truncated when more matches exist beyond maxSearchResults", async () => {
@@ -153,7 +223,7 @@ describe("reportTools", () => {
       });
       setBrowser({ query });
 
-      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
       const result = (await handlers.search_messages({ subject: "schulung" })) as { hits: Array<{ id: number }> };
 
       expect(query.mock.calls[0][0]).not.toHaveProperty("subject");
@@ -190,7 +260,7 @@ describe("reportTools", () => {
       const getFull = vi.fn().mockResolvedValue({ contentType: "text/plain", body: longBody });
       setBrowser({ get, getFull });
 
-      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
       const result = (await handlers.get_messages({ ids: [42, 43] })) as {
         messages: Array<{ id: number; body: string }>;
         skipped: unknown[];
@@ -237,12 +307,61 @@ describe("reportTools", () => {
       expect(result.skipped).toHaveLength(1);
     });
 
+    test("cuts quoted reply history unless includeQuoted is set", async () => {
+      const raw =
+        "Thanks, the deployment is done and verified on staging.\r\n\r\nFrom: Bob <b@x.com>\r\nSent: Monday\r\nSubject: Task\r\n\r\nPlease do it.";
+      extractTextFromPartMock.mockReturnValue(raw);
+      const get = vi.fn().mockResolvedValue({ subject: "Re: Task", author: "a", recipients: [] });
+      setBrowser({ get, getFull: vi.fn().mockResolvedValue({}) });
+
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
+      const short = (await handlers.get_messages({ ids: [1] })) as {
+        messages: Array<{ body: string; quotedChars?: number }>;
+      };
+      const full = (await handlers.get_messages({ ids: [1], includeQuoted: true })) as {
+        messages: Array<{ body: string; quotedChars?: number }>;
+      };
+
+      expect(short.messages[0].body).toBe("Thanks, the deployment is done and verified on staging.");
+      expect(short.messages[0].quotedChars).toBeGreaterThan(0);
+      expect(full.messages[0].body).toContain("Please do it.");
+      expect(full.messages[0]).not.toHaveProperty("quotedChars");
+    });
+
+    test("serves a repeated get_messages from the cache without spending budget", async () => {
+      extractTextFromPartMock.mockReturnValue("body");
+      const get = vi.fn().mockResolvedValue({ subject: "s", author: "a", recipients: [] });
+      setBrowser({ get, getFull: vi.fn().mockResolvedValue({}) });
+
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE, maxMessageBodies: 1 });
+      await handlers.get_messages({ ids: [1] });
+      const again = (await handlers.get_messages({ ids: [1] })) as { messages: unknown[]; skipped: unknown[] };
+
+      expect(get).toHaveBeenCalledTimes(1);
+      expect(again.messages).toHaveLength(1);
+      expect(again.skipped).toHaveLength(0);
+    });
+
+    test("does not overspend the body budget across concurrent calls", async () => {
+      extractTextFromPartMock.mockReturnValue("body");
+      const get = vi.fn().mockResolvedValue({ subject: "s", author: "a", recipients: [] });
+      setBrowser({ get, getFull: vi.fn().mockResolvedValue({}) });
+
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE, maxMessageBodies: 1 });
+      const results = (await Promise.all([
+        handlers.get_messages({ ids: [1] }),
+        handlers.get_messages({ ids: [2] }),
+      ])) as Array<{ messages: unknown[] }>;
+
+      expect(results.flatMap((r) => r.messages)).toHaveLength(1);
+    });
+
     test("reports a recoverable hint for ids that do not exist", async () => {
       const get = vi.fn().mockRejectedValue(new Error("Message not found: 51291."));
       const getFull = vi.fn();
       setBrowser({ get, getFull });
 
-      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
       const result = (await handlers.get_messages({ ids: [51291] })) as {
         messages: unknown[];
         skipped: Array<{ id: number; reason: string }>;
@@ -254,7 +373,7 @@ describe("reportTools", () => {
 
     test("throws when ids is empty", async () => {
       setBrowser({});
-      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
       await expect(handlers.get_messages({ ids: [] })).rejects.toThrow(/non-empty 'ids'/);
     });
   });
@@ -287,7 +406,7 @@ describe("reportTools", () => {
       });
       setBrowser({ get, getFull, query });
 
-      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
       const result = (await handlers.get_thread({ id: 11 })) as { messages: Array<{ id: number }> };
 
       const ids = result.messages.map((m) => m.id);
@@ -295,12 +414,22 @@ describe("reportTools", () => {
       expect(ids).toContain(11);
       expect(ids).toContain(12);
       expect(ids).not.toContain(99); // different normalized subject
+
+      // The sibling scan is a date-bounded header scan, never a (stall-prone) full-text query.
+      const scan = query.mock.calls.find((c) => !(c[0] as Record<string, unknown>).headerMessageId)?.[0] as Record<
+        string,
+        unknown
+      >;
+      expect(scan).not.toHaveProperty("fullText");
+      expect(scan.fromDate).toBeInstanceOf(Date);
+      // Starts before the earliest thread message (2026-01-01), with the lookback margin.
+      expect((scan.fromDate as Date).getTime()).toBeLessThan(new Date("2026-01-01").getTime());
     });
 
     test("throws a clear error for a numeric id that cannot be loaded", async () => {
       const get = vi.fn().mockRejectedValue(new Error("nope"));
       setBrowser({ get, getFull: vi.fn() });
-      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
       await expect(handlers.get_thread({ id: 5 })).rejects.toThrow(/No message exists with id 5/);
     });
 
@@ -316,7 +445,7 @@ describe("reportTools", () => {
       });
       setBrowser({ get, getFull, query });
 
-      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
       const result = (await handlers.get_thread({ id: 11 })) as { messages: Array<{ id: number }> };
 
       // Despite the streaming failure, same-subject siblings are still found via the subject scan.
@@ -344,7 +473,7 @@ describe("reportTools", () => {
         });
         setBrowser({ get, getFull, query });
 
-        const handlers = createReportToolHandlers(BASE_SCOPE);
+        const handlers = createReportToolHandlers({ ...BASE_SCOPE });
         const pending = handlers.get_thread({ id: 11 }) as Promise<{
           messages: Array<{ id: number }>;
           truncated: boolean;
@@ -368,7 +497,7 @@ describe("reportTools", () => {
       const query = vi.fn().mockResolvedValue({ messages: [] });
       setBrowser({ get, getFull, query });
 
-      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
       const result = (await handlers.get_thread({ id: 11 })) as { truncated: boolean };
 
       const lookups = query.mock.calls.filter((c) => (c[0] as Record<string, unknown>).headerMessageId);
@@ -383,7 +512,7 @@ describe("reportTools", () => {
       controller.abort();
       const get = vi.fn().mockResolvedValue({ subject: "x", headerMessageId: "a@x" });
       setBrowser({ get, getFull: vi.fn(), query: vi.fn() });
-      const handlers = createReportToolHandlers(BASE_SCOPE, controller.signal);
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE }, controller.signal);
       await expect(handlers.get_thread({ id: 5 })).rejects.toMatchObject({ name: "AbortError" });
     });
   });
@@ -400,7 +529,7 @@ describe("reportTools", () => {
       });
       setBrowser({ query });
 
-      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
       const result = (await handlers.aggregate_messages({ groupBy: "author" })) as {
         totalMatched: number;
         groups: Array<{ key: string; count: number }>;
@@ -422,7 +551,7 @@ describe("reportTools", () => {
       });
       setBrowser({ query });
 
-      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
       const result = (await handlers.aggregate_messages({ groupBy: "domain" })) as {
         groups: Array<{ key: string; count: number }>;
       };
@@ -446,7 +575,7 @@ describe("reportTools", () => {
       });
       setBrowser({ query });
 
-      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
       const result = (await handlers.aggregate_messages({ groupBy: "recipientDomain" })) as {
         groups: Array<{ key: string; count: number }>;
       };
@@ -466,7 +595,7 @@ describe("reportTools", () => {
       });
       setBrowser({ query });
 
-      const handlers = createReportToolHandlers(BASE_SCOPE);
+      const handlers = createReportToolHandlers({ ...BASE_SCOPE });
       const result = (await handlers.aggregate_messages({ groupBy: "day" })) as {
         groups: Array<{ key: string; count: number }>;
       };
