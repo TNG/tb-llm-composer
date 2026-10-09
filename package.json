@@ -24,7 +24,8 @@
     "test-coverage": "vitest run --coverage",
     "lint": "biome ci ./",
     "lint-fix": "biome check --write ./",
-    "lint-fix-unsafe": "biome check --unsafe --write ./"
+    "lint-fix-unsafe": "biome check --unsafe --write ./",
+    "ci": "pnpm run lint-fix && pnpm run test-coverage && pnpm audit && pnpm run build"
   },
   "repository": {
     "type": "git",
