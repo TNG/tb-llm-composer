@@ -100,7 +100,9 @@ export class ReportTrace {
   private responseChars = 0;
   private toolResultChars = 0;
   private lastLlmRequestAt = 0;
-  private lastToolCallAt = 0;
+  /** Tool calls of one step run concurrently; toolMs counts the time at least one was running. */
+  private activeTools = 0;
+  private toolsActiveSince = 0;
   private outcome: TraceOutcome = "error";
   private errorMessage?: string;
   private report?: string;
@@ -195,16 +197,24 @@ export class ReportTrace {
     });
   }
 
-  /** Record a tool invocation requested by the model. */
-  toolCall(name: string, args: Record<string, unknown>): void {
-    this.lastToolCallAt = Date.now();
+  /** Record a tool invocation requested by the model; returns its start time for {@link toolResult}. */
+  toolCall(name: string, args: Record<string, unknown>): number {
+    const startedAt = Date.now();
+    if (this.activeTools++ === 0) this.toolsActiveSince = startedAt;
     this.push("tool-call", { name, args });
+    return startedAt;
   }
 
-  /** Record the result a tool handler returned; `result` is the JSON string handed back to the model. */
-  toolResult(name: string, result: string): void {
-    const durationMs = this.lastToolCallAt ? Date.now() - this.lastToolCallAt : 0;
-    this.toolMs += durationMs;
+  /**
+   * Record the result a tool handler returned; `result` is the JSON string handed back to the model and
+   * `startedAt` the value {@link toolCall} returned (absent when the call failed before it started).
+   */
+  toolResult(name: string, result: string, startedAt?: number): void {
+    const now = Date.now();
+    const durationMs = startedAt !== undefined ? now - startedAt : 0;
+    if (startedAt !== undefined && this.activeTools > 0 && --this.activeTools === 0) {
+      this.toolMs += now - this.toolsActiveSince;
+    }
     this.toolCalls++;
     this.toolResultChars += result.length;
     this.push("tool-result", { name, durationMs, resultChars: result.length, result: clamp(result) });

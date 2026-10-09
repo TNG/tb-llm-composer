@@ -320,6 +320,7 @@ export async function runAgenticLlm(
   async function runToolCall(toolCall: LlmToolCall): Promise<string> {
     const handler = toolHandlers[toolCall.function.name];
     let resultContent: string;
+    let startedAt: number | undefined;
     if (!handler) {
       console.warn(`REPORT: tool '${toolCall.function.name}' is not registered`);
       resultContent = JSON.stringify({ error: `Unknown tool: ${toolCall.function.name}` });
@@ -330,16 +331,16 @@ export async function runAgenticLlm(
           `REPORT: running tool '${toolCall.function.name}' with arg keys: ${Object.keys(parsedArgs).join(",") || "(none)"}`,
         );
         reportProgress(describeToolPhase(toolCall.function.name));
-        currentTrace()?.toolCall(toolCall.function.name, parsedArgs);
+        startedAt = currentTrace()?.toolCall(toolCall.function.name, parsedArgs);
         const result = await handler(parsedArgs);
         resultContent = JSON.stringify(result ?? null);
-        currentTrace()?.toolResult(toolCall.function.name, resultContent);
+        currentTrace()?.toolResult(toolCall.function.name, resultContent, startedAt);
         console.log(`REPORT: tool '${toolCall.function.name}' completed (resultChars=${resultContent.length})`);
       } catch (e) {
         if ((e as Error).name === "AbortError") throw e;
         console.warn(`REPORT: tool '${toolCall.function.name}' failed:`, e);
         resultContent = JSON.stringify({ error: (e as Error).message });
-        currentTrace()?.toolResult(toolCall.function.name, resultContent);
+        currentTrace()?.toolResult(toolCall.function.name, resultContent, startedAt);
       }
     }
     toolCallCount++;
