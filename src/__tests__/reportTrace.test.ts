@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { LlmApiRequestBody, LlmTextCompletionResponse } from "../llmConnection";
 import { LlmRoles } from "../llmConnection";
 import { DEFAULT_OPTIONS, type Options } from "../optionsParams";
@@ -66,8 +66,8 @@ describe("ReportTrace", () => {
     const trace = newTrace();
     trace.llmRequest("https://llm.example", requestBody(["ask"]));
     trace.llmResponse(completion(null), 120);
-    trace.toolCall("search_messages", { query: "foo" });
-    trace.toolResult("search_messages", '{"hits":3}');
+    const startedAt = trace.toolCall("search_messages", { query: "foo" });
+    trace.toolResult("search_messages", '{"hits":3}', startedAt);
     trace.llmRequest("https://llm.example", requestBody(["ask", "tool result"]));
     trace.llmResponse(completion("the report"), 200);
     trace.finish("success", { report: "the report" });
@@ -86,6 +86,37 @@ describe("ReportTrace", () => {
         toolResultChars: 10,
       }),
     );
+  });
+
+  it("times concurrent tool calls individually and counts their overlap once in toolMs", () => {
+    vi.useFakeTimers();
+    try {
+      const trace = newTrace();
+      const a = trace.toolCall("search_messages", {}); // t=0
+      vi.advanceTimersByTime(100);
+      const b = trace.toolCall("get_thread", {}); // t=100
+      vi.advanceTimersByTime(50);
+      trace.toolResult("get_thread", "{}", b); // t=150
+      vi.advanceTimersByTime(250);
+      trace.toolResult("search_messages", "{}", a); // t=400
+      vi.advanceTimersByTime(100);
+      const c = trace.toolCall("get_messages", {}); // t=500, after an idle gap
+      vi.advanceTimersByTime(30);
+      trace.toolResult("get_messages", "{}", c); // t=530
+
+      const json = trace.toJson();
+      const durations = (json.events as Array<Record<string, unknown>>)
+        .filter((e) => e.type === "tool-result")
+        .map((e) => [e.name, e.durationMs]);
+      expect(durations).toEqual([
+        ["get_thread", 50],
+        ["search_messages", 400],
+        ["get_messages", 30],
+      ]);
+      expect((json.totals as Record<string, unknown>).toolMs).toBe(430);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("marks an aborted run as cancelled and keeps the error message", () => {

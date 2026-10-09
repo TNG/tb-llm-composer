@@ -717,14 +717,22 @@ async function collectHeaderMatches(
     if (score > 0) matches.push({ score, hit: toHit(msg) });
     return ++scanned < MAX_AGGREGATE_SCAN;
   });
-  const strong = matches.filter((m) => m.score >= minTermMatches(terms));
-  const kept = strong.length > 0 ? strong : matches;
+  const kept = keepBestMatches(matches, terms);
   kept.sort((a, b) => b.score - a.score || b.hit.date.localeCompare(a.hit.date));
   return {
     hits: kept.slice(0, cap).map((m) => m.hit),
     truncated: !complete || kept.length > cap,
     timedOut,
   };
+}
+
+/**
+ * Keep the matches scoring at least {@link minTermMatches}; if none does, fall back to every match with
+ * at least one term, so a header fallback never comes back empty while some header mentions a term.
+ */
+function keepBestMatches<T extends { score: number }>(matches: T[], terms: string[]): T[] {
+  const strong = matches.filter((m) => m.score >= minTermMatches(terms));
+  return strong.length > 0 ? strong : matches;
 }
 
 /** ISO timestamp at minute precision ("2026-09-11T09:36Z"); seconds cost tokens but add no meaning. */
@@ -982,24 +990,30 @@ async function handleAggregateMessages(
   if (folderRef?.folderId) queryInfo.folderId = folderRef.folderId;
 
   const countMatches = async (info: QueryInfo, terms: string[] | null, timeoutMs: number) => {
-    const counts = new Map<string, number>();
-    let scanned = 0;
+    // With terms, headers are scored like search_messages' fallback and only the kept ones are counted.
+    const matches: Array<{ score: number; msg: browser.messages.MessageHeader }> = [];
     let reachedCap = false;
     const { complete, timedOut } = await scanHeaders(info, abortSignal, timeoutMs, (msg) => {
       if (filters.subjectFilter && !(msg.subject ?? "").toLowerCase().includes(filters.subjectFilter)) return true;
+      let score = 1;
       if (terms) {
         const text = headerText(msg);
-        if (terms.filter((t) => text.includes(t)).length < minTermMatches(terms)) return true;
+        score = terms.filter((t) => text.includes(t)).length;
+        if (score === 0) return true;
       }
-      scanned++;
+      matches.push({ score, msg });
+      reachedCap = matches.length >= MAX_AGGREGATE_SCAN;
+      return !reachedCap;
+    });
+    const counted = terms ? keepBestMatches(matches, terms) : matches;
+    const counts = new Map<string, number>();
+    for (const { msg } of counted) {
       for (const key of groupKeys(msg, groupBy)) {
         counts.set(key, (counts.get(key) ?? 0) + 1);
       }
-      reachedCap = scanned >= MAX_AGGREGATE_SCAN;
-      return !reachedCap;
-    });
+    }
     // A failed or stalled page flags the scan as capped so a partial aggregate is not reported as complete.
-    return { counts, scanned, capped: reachedCap || !complete, timedOut };
+    return { counts, scanned: counted.length, capped: reachedCap || !complete, timedOut };
   };
 
   // Like search_messages, a stalled full-text aggregate falls back to matching terms against headers.

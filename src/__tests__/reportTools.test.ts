@@ -558,6 +558,46 @@ describe("reportTools", () => {
   });
 
   describe("aggregate_messages", () => {
+    test("falls back to the same header matches as search_messages, incl. single-term matches", async () => {
+      vi.useFakeTimers();
+      try {
+        const query = vi.fn(async (info: Record<string, unknown>) => {
+          if (info.fullText) return new Promise(() => {});
+          return {
+            messages: [
+              { id: 1, subject: "Lunch", author: "a@x.com", recipients: [], date: new Date("2026-01-01") },
+              { id: 2, subject: "Würth Zugang", author: "b@x.com", recipients: [], date: new Date("2026-01-02") },
+              { id: 3, subject: "Passwort", author: "c@x.com", recipients: [], date: new Date("2026-01-03") },
+            ],
+          };
+        });
+        setBrowser({ query });
+        const handlers = createReportToolHandlers({ ...BASE_SCOPE });
+
+        // Three terms, but no header matches two of them: single-term matches are counted, as search does.
+        const pending = handlers.aggregate_messages({
+          groupBy: "author",
+          query: "wuerth passwort service",
+        }) as Promise<{
+          totalMatched: number;
+          groups: Array<{ key: string; count: number }>;
+          note?: string;
+        }>;
+        await vi.advanceTimersByTimeAsync(10_000);
+        const result = await pending;
+        expect(result.totalMatched).toBe(2);
+        expect(result.groups.map((g) => g.key).sort()).toEqual(["b@x.com", "c@x.com"]);
+        expect(result.note).toMatch(/bodies were NOT searched/i);
+
+        const search = (await handlers.search_messages({ query: "wuerth passwort service" })) as {
+          hits: Array<{ id: number }>;
+        };
+        expect(search.hits.map((h) => h.id).sort()).toEqual([2, 3]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     test("counts messages grouped by author", async () => {
       const query = vi.fn().mockResolvedValue({
         id: undefined,
