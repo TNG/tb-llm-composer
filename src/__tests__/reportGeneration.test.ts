@@ -110,14 +110,44 @@ describe("reportGeneration", () => {
       maxTotalBodyChars: 60000,
     };
 
-    await continueReport({ messages: priorMessages, scope }, "Add deadlines", abortSignal);
+    const session = await continueReport(
+      { messages: priorMessages, scope },
+      { ...BASE_REQUEST, prompt: "Add deadlines" },
+      abortSignal,
+    );
 
     const [messages] = runAgenticLlmMock.mock.calls[0];
-    // Prior turns are preserved and the new follow-up is appended.
+    // Prior turns are preserved and only the new follow-up is appended (the scope is unchanged).
     expect(messages.slice(0, 2)).toEqual(priorMessages);
+    expect(messages).toHaveLength(3);
     const lastMessage = messages[messages.length - 1];
     expect(lastMessage.role).toBe("user");
     expect(lastMessage.content).toContain("Add deadlines");
+    expect(session.scope).toBe(scope); // same object, so the tool-result cache carries over
+  });
+
+  test("continueReport applies a changed time window and tells the model about it", async () => {
+    const scope = {
+      folderOnly: true,
+      folder: { accountId: "a", path: "/INBOX" },
+      defaultDays: 30,
+      maxSearchResults: 50,
+      maxMessageBodies: 25,
+      maxTotalBodyChars: 60000,
+    };
+
+    const session = await continueReport(
+      { messages: [], scope },
+      { ...BASE_REQUEST, days: 45, prompt: "Also the older set" },
+      abortSignal,
+    );
+
+    expect(session.scope).toMatchObject({ defaultDays: 45, maxSearchResults: 50 });
+    expect(session.scope).not.toBe(scope);
+    const [messages] = runAgenticLlmMock.mock.calls[0];
+    expect(messages[0].content).toContain("The search scope has changed");
+    expect(messages[0].content).toContain("last 45 day(s)");
+    expect(messages[1].content).toContain("Also the older set");
   });
 
   test("rebuilds a lost session with the displayed report as the last assistant turn", async () => {

@@ -144,25 +144,48 @@ function traceInfo(prompt: string, scope: ReportScope): TraceRequestInfo {
   };
 }
 
+/** True when the report window's days/folder settings differ from the scope a session was built with. */
+function scopeChanged(scope: ReportScope, request: ReportRequest): boolean {
+  return (
+    scope.defaultDays !== request.days ||
+    scope.folderOnly !== request.folderOnly ||
+    scope.folder?.accountId !== request.folder?.accountId ||
+    scope.folder?.path !== request.folder?.path
+  );
+}
+
 /**
  * Continue an existing report conversation: append the user's refinement as a new turn and keep
  * looping the same agent (with its accumulated context and tool history) instead of starting over.
+ * If the user changed the time window or folder scope in the meantime, the refinement runs with the
+ * new scope and the model is told about it.
  */
 export async function continueReport(
   session: { messages: LlmApiRequestMessage[]; scope: ReportScope },
-  prompt: string,
+  request: ReportRequest,
   abortSignal: AbortSignal,
   onProgress?: (progress: AgenticProgress) => void,
 ): Promise<ReportSession> {
   const startedAt = Date.now();
   const options = await getPluginOptions();
+  const { prompt } = request;
+
+  // A new scope object also starts a fresh tool-result cache, whose entries depend on the old defaults.
+  const changed = scopeChanged(session.scope, request);
+  const scope: ReportScope = changed
+    ? { ...session.scope, defaultDays: request.days, folderOnly: request.folderOnly, folder: request.folder }
+    : session.scope;
 
   console.log(
-    `REPORT: continuing conversation (priorMessages=${session.messages.length}, promptChars=${prompt.length})`,
+    `REPORT: continuing conversation (priorMessages=${session.messages.length}, promptChars=${prompt.length}, ` +
+      `scopeChanged=${changed})`,
   );
 
   const messages: LlmApiRequestMessage[] = [
     ...session.messages,
+    ...(changed
+      ? [{ role: LlmRoles.USER, content: `The search scope has changed:\n${buildScopePreamble(request)}` }]
+      : []),
     {
       role: LlmRoles.USER,
       content:
@@ -171,8 +194,8 @@ export async function continueReport(
     },
   ];
 
-  return withReportTrace("refine", traceInfo(prompt, session.scope), options, () =>
-    runReportLoop(messages, session.scope, options.reportMaxSteps, startedAt, abortSignal, onProgress),
+  return withReportTrace("refine", traceInfo(prompt, scope), options, () =>
+    runReportLoop(messages, scope, options.reportMaxSteps, startedAt, abortSignal, onProgress),
   );
 }
 
