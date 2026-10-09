@@ -9,6 +9,7 @@ import {
   type TgiErrorResponse,
 } from "./llmConnection";
 import { getPluginOptions } from "./optionsParams";
+import { compactReportHistory } from "./reportHistory";
 import {
   assertSearchCapabilities,
   createReportToolHandlers,
@@ -44,8 +45,8 @@ Work agentically:
 - Be token-frugal: start with search_messages (compact metadata). For statistics (counts, volume
   per sender/day), use aggregate_messages instead of listing messages yourself. To report by
   company/organisation, group by 'domain' (sender) or 'recipientDomain' rather than full addresses.
-- search_messages / get_messages return author and recipients already parsed into { name, address,
-  domain } — use the 'domain' field directly instead of parsing addresses out of a string.
+- search_messages / get_messages return the sender as 'from' ("Name <address>") and up to three
+  recipient addresses in 'to' ('toCount' gives the total when there are more).
 - search_messages / get_thread / aggregate_messages return no bodies — call get_messages to read
   content, batching all the ids you need into a single call rather than one call per message.
 - To follow a conversation (including your own Sent replies), call get_thread with any message id.
@@ -313,6 +314,7 @@ async function runReportLoop(
       abortSignal,
       maxSteps,
       onProgress,
+      compactReportHistory,
     );
     const finalReport = options.strip_think_tag ? stripThinkTags(rawReport) : rawReport;
     assertNonEmptyReport(rawReport, finalReport);

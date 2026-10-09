@@ -14,6 +14,7 @@ export interface LlmParameters {
   model?: string;
   use_cache?: boolean;
   logprobs?: number;
+  chat_template_kwargs?: Record<string, unknown>;
 }
 
 export interface FolderRule {
@@ -58,6 +59,7 @@ export interface Options {
   reportMaxMessageBodies: number; // cap on full message bodies fetched per report run (via get_messages)
   reportMaxTotalBodyChars: number; // run-level ceiling on summed body characters served by get_messages
   reportDefaultDays: number; // prefilled "days in the past" value in the report window
+  reportDisableThinking: boolean; // send chat_template_kwargs.enable_thinking=false on every report step
   confirmMovesBeforeApplying: boolean; // show a confirmation popup to review moves; if false, move automatically
 }
 
@@ -87,6 +89,7 @@ export const DEFAULT_OPTIONS: Options = {
   reportMaxMessageBodies: 25,
   reportMaxTotalBodyChars: 60000,
   reportDefaultDays: 30,
+  reportDisableThinking: false,
   confirmMovesBeforeApplying: true,
 };
 

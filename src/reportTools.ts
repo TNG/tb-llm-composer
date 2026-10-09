@@ -1,5 +1,6 @@
 import { extractTextFromPart, resolveFolderPath } from "./emailOrganising";
 import type { LlmToolDefinition, LlmToolHandler } from "./llmConnection";
+import { cleanReportBody } from "./reportBodyCleanup";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Safety ceiling on how many headers aggregate_messages will enumerate (local paging, no bodies). */
@@ -8,6 +9,15 @@ const MAX_AGGREGATE_SCAN = 5000;
 const MESSAGE_READ_TIMEOUT_MS = 20_000;
 /** Searches (query/continueList) can hang on IMAP/Gloda; bound every page with this timeout. */
 const QUERY_TIMEOUT_MS = 25_000;
+/**
+ * Full-text pages get a shorter bound: on IMAP they either answer within seconds or stall until any
+ * timeout, so waiting the full {@link QUERY_TIMEOUT_MS} only delays the fallback.
+ */
+const FULL_TEXT_QUERY_TIMEOUT_MS = 10_000;
+/** How far before the earliest known thread message get_thread scans for same-subject siblings. */
+const THREAD_SUBJECT_LOOKBACK_DAYS = 14;
+/** Recipients listed per search hit; the rest is only counted, to keep hit lists compact. */
+const MAX_HIT_RECIPIENTS = 3;
 /**
  * How many References/In-Reply-To ids get_thread resolves with individual queries. Long threads carry
  * dozens of ids and each lookup is a full mailbox search, so only the nearest ancestors are resolved.
@@ -42,7 +52,9 @@ function guardedRead<T>(
     }
     timer = setTimeout(() => {
       cleanup();
-      reject(new Error(`${what} timed out after ${timeoutMs / 1000}s`));
+      const error = new Error(`${what} timed out after ${timeoutMs / 1000}s`);
+      error.name = "TimeoutError";
+      reject(error);
     }, timeoutMs);
     abortSignal.addEventListener("abort", onAbort, { once: true });
     operation.then(
@@ -65,22 +77,34 @@ function throwIfAborted(abortSignal: AbortSignal): void {
 
 type MessagePage = Awaited<ReturnType<typeof browser.messages.query>>;
 
+/** Marker returned by {@link guardedQuery} when a page stalled past its timeout. */
+const TIMED_OUT = Symbol("timed out");
+
+/** A search page, or why there is none: query/continueList return an error string on failure. */
+type GuardedPage = MessagePage | string | null | typeof TIMED_OUT;
+
+function isFailedPage(page: GuardedPage): page is string | null | typeof TIMED_OUT {
+  return page === null || page === TIMED_OUT || typeof page === "string";
+}
+
 /**
- * Run one search page (query/continueList) under a timeout + abort guard. Returns `null` when the page
- * stalled or failed, so callers can return a partial (truncated) result instead of the whole report
- * run hanging on a single unresponsive search. Cancellation still propagates as an AbortError.
+ * Run one search page (query/continueList) under a timeout + abort guard. Returns {@link TIMED_OUT}
+ * when the page stalled and `null` when it failed, so callers can return a partial (truncated) result
+ * instead of the whole report run hanging on a single unresponsive search. Cancellation still
+ * propagates as an AbortError.
  */
 async function guardedQuery(
   run: () => Promise<MessagePage>,
   abortSignal: AbortSignal,
   what: string,
-): Promise<MessagePage | null> {
+  timeoutMs: number = QUERY_TIMEOUT_MS,
+): Promise<GuardedPage> {
   try {
-    return await guardedRead<MessagePage>(run(), abortSignal, what, QUERY_TIMEOUT_MS);
+    return await guardedRead<MessagePage>(run(), abortSignal, what, timeoutMs);
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;
     console.warn(`REPORT: ${what} failed:`, e);
-    return null;
+    return (e as Error).name === "TimeoutError" ? TIMED_OUT : null;
   }
 }
 
@@ -136,13 +160,51 @@ export function parseAddress(raw: string): ParsedAddress {
   return { name, address, domain };
 }
 
+/** Render an address header compactly: "Name <address>", or whichever part exists. */
+export function formatAddress(raw: string): string {
+  const { name, address } = parseAddress(raw);
+  if (!address) return name;
+  return name && name.toLowerCase() !== address.toLowerCase() ? `${name} <${address}>` : address;
+}
+
 /** Compact metadata shape returned by search/thread tools (no bodies, to stay token-frugal). */
 interface SearchHit {
   id: number;
+  /** ISO date at minute precision, e.g. "2026-09-11T09:36Z". */
   date: string;
-  author: ParsedAddress;
-  recipients: ParsedAddress[];
+  from: string;
+  /** The first {@link MAX_HIT_RECIPIENTS} recipient addresses. */
+  to: string[];
+  /** Total recipient count, present only when `to` was shortened. */
+  toCount?: number;
   subject: string;
+}
+
+/** A get_messages entry: hit metadata plus the cleaned body. */
+interface MessageWithBody extends SearchHit {
+  body: string;
+  /** Characters of quoted earlier messages removed from `body` (absent when nothing was cut). */
+  quotedChars?: number;
+}
+
+/**
+ * Mailbox state shared by every run bound to the same scope object, i.e. a report and its refinements:
+ * whether full-text search is known to stall, and a cache of tool results keyed by name + arguments.
+ */
+interface ReportToolState {
+  fullTextUnavailable: boolean;
+  cache: Map<string, Promise<unknown>>;
+}
+
+const toolStates = new WeakMap<ReportScope, ReportToolState>();
+
+function toolStateFor(scope: ReportScope): ReportToolState {
+  let state = toolStates.get(scope);
+  if (!state) {
+    state = { fullTextUnavailable: false, cache: new Map() };
+    toolStates.set(scope, state);
+  }
+  return state;
 }
 
 /** Mutable per-run budget shared by all get_messages calls so full bodies stay bounded. */
@@ -196,7 +258,8 @@ export const reportToolDefinitions: LlmToolDefinition[] = [
       description:
         "Search emails and return compact metadata only (no bodies). Use this first to find relevant " +
         "messages, then call get_messages for the bodies you actually need. If the result is `truncated`, " +
-        "narrow the query (add filters or shorten the time window) rather than reporting on a partial set.",
+        "narrow the query (add filters or shorten the time window) rather than reporting on a partial set. " +
+        "If it is `timedOut`, the mailbox search stalled — follow its `note` instead of retrying similar terms.",
       parameters: {
         type: "object",
         properties: {
@@ -227,7 +290,9 @@ export const reportToolDefinitions: LlmToolDefinition[] = [
       description:
         "Fetch the full plain-text bodies of one or more messages by id. Prefer a single batched call " +
         "over many single-id calls. There is a per-report budget on how many bodies (and total characters) " +
-        "can be read; any ids beyond the budget are returned in `skipped` — summarize with what you have.",
+        "can be read; any ids beyond the budget are returned in `skipped` — summarize with what you have. " +
+        "Quoted reply history is cut from bodies (its size is in `quotedChars`); read the thread's other " +
+        "messages instead, or pass includeQuoted only when the quoted part is not available otherwise.",
       parameters: {
         type: "object",
         properties: {
@@ -235,6 +300,10 @@ export const reportToolDefinitions: LlmToolDefinition[] = [
             type: "array",
             items: { type: "number" },
             description: "Message ids from a recent search_messages / get_thread result.",
+          },
+          includeQuoted: {
+            type: "boolean",
+            description: "If true, keep the quoted earlier messages in each body (optional; costs more budget).",
           },
         },
         required: ["ids"],
@@ -300,11 +369,50 @@ export function createReportToolHandlers(
     bodiesRemaining: scope.maxMessageBodies,
     charsRemaining: scope.maxTotalBodyChars,
   };
+  const state = toolStateFor(scope);
   return {
-    search_messages: (args) => handleSearchMessages(args, scope, abortSignal),
-    get_messages: (args) => handleGetMessages(args, budget, abortSignal),
-    get_thread: (args) => handleGetThread(args, scope, abortSignal),
-    aggregate_messages: (args) => handleAggregateMessages(args, scope, abortSignal),
+    search_messages: cached(state, "search_messages", (args) => handleSearchMessages(args, scope, state, abortSignal)),
+    // A result with budget-skipped ids is not cached: a refinement starts with a fresh budget.
+    get_messages: cached(
+      state,
+      "get_messages",
+      (args) => handleGetMessages(args, budget, abortSignal),
+      (result) => result.skipped.length === 0,
+    ),
+    get_thread: cached(state, "get_thread", (args) => handleGetThread(args, scope, abortSignal)),
+    aggregate_messages: cached(state, "aggregate_messages", (args) =>
+      handleAggregateMessages(args, scope, state, abortSignal),
+    ),
+  };
+}
+
+/**
+ * Memoise a tool by name + arguments for the lifetime of the scope (a report and its refinements), so a
+ * repeated call is answered instantly and a repeated get_messages spends no body budget. Concurrent
+ * identical calls share one in-flight promise; failures and results rejected by `cacheable` are dropped.
+ */
+function cached<T>(
+  state: ReportToolState,
+  name: string,
+  handler: (args: Record<string, unknown>) => Promise<T>,
+  cacheable: (result: T) => boolean = () => true,
+): LlmToolHandler {
+  return (args) => {
+    const key = `${name}:${JSON.stringify(args, Object.keys(args).sort())}`;
+    const hit = state.cache.get(key);
+    if (hit) {
+      console.log(`REPORT: ${name} served from cache`);
+      return hit;
+    }
+    const pending = handler(args);
+    state.cache.set(key, pending);
+    pending.then(
+      (result) => {
+        if (!cacheable(result)) state.cache.delete(key);
+      },
+      () => state.cache.delete(key),
+    );
+    return pending;
   };
 }
 
@@ -348,11 +456,26 @@ function filtersToQueryInfo(filters: MessageFilters): QueryInfo {
   return queryInfo;
 }
 
+/** search_messages result; `note` explains a stalled or degraded search to the model. */
+interface SearchResult {
+  hits: SearchHit[];
+  returned: number;
+  truncated: boolean;
+  timedOut?: boolean;
+  note?: string;
+}
+
+const FULL_TEXT_FALLBACK_NOTE =
+  "Full-text search stalls on this mailbox, so it is disabled for this report: your query terms were matched " +
+  "against subject, sender and recipients only (any term, best matches first). Message bodies were NOT " +
+  "searched — narrow with author/recipient/subject filters, or read candidates with get_messages.";
+
 async function handleSearchMessages(
   args: Record<string, unknown>,
   scope: ReportScope,
+  state: ReportToolState,
   abortSignal: AbortSignal,
-): Promise<{ hits: SearchHit[]; returned: number; truncated: boolean }> {
+): Promise<SearchResult> {
   const startedAt = Date.now();
   const filters = buildFilters(args, scope.defaultDays);
   const queryInfo = filtersToQueryInfo(filters);
@@ -361,20 +484,64 @@ async function handleSearchMessages(
   const folderRef = await resolveTargetFolder(scope);
   if (folderRef?.folderId) queryInfo.folderId = folderRef.folderId;
 
-  const { hits, truncated } = await collectHeaders(
-    queryInfo,
-    scope.maxSearchResults,
-    filters.subjectFilter,
-    abortSignal,
-  );
+  const result = await searchWithFullTextFallback(queryInfo, filters, scope.maxSearchResults, state, abortSignal);
 
   console.log(
     "REPORT: search_messages completed " +
       `(query='${filters.fullText ?? ""}', author='${filters.author ?? ""}', subject='${filters.subjectFilter}', ` +
-      `folderOnly=${scope.folderOnly}, returned=${hits.length}/${scope.maxSearchResults}, truncated=${truncated}, ` +
-      `elapsedMs=${Date.now() - startedAt})`,
+      `folderOnly=${scope.folderOnly}, returned=${result.hits.length}/${scope.maxSearchResults}, ` +
+      `truncated=${result.truncated}, timedOut=${result.timedOut ?? false}, elapsedMs=${Date.now() - startedAt})`,
   );
-  return { hits, returned: hits.length, truncated };
+  return result;
+}
+
+/**
+ * Run a search, degrading gracefully when full-text search stalls (common on IMAP): the first stall
+ * disables full-text for the rest of the scope, and the terms are matched client-side against headers.
+ */
+async function searchWithFullTextFallback(
+  queryInfo: QueryInfo,
+  filters: MessageFilters,
+  cap: number,
+  state: ReportToolState,
+  abortSignal: AbortSignal,
+): Promise<SearchResult> {
+  const fullText = filters.fullText;
+  if (fullText && !state.fullTextUnavailable) {
+    const scan = await collectHeaders(queryInfo, cap, filters.subjectFilter, abortSignal, FULL_TEXT_QUERY_TIMEOUT_MS);
+    if (!scan.timedOut) return { hits: scan.hits, returned: scan.hits.length, truncated: scan.truncated };
+    state.fullTextUnavailable = true;
+    console.warn("REPORT: full-text search timed out; matching query terms against headers from now on");
+    if (scan.hits.length > 0) {
+      return {
+        hits: scan.hits,
+        returned: scan.hits.length,
+        truncated: true,
+        timedOut: true,
+        note:
+          "The full-text search stalled, so these hits are partial; full-text search is now disabled for " +
+          "this report. Further query terms are matched against subject, sender and recipients only.",
+      };
+    }
+  }
+  if (fullText) {
+    const { fullText: _unused, ...headerQuery } = queryInfo;
+    const scan = await collectHeaderMatches(headerQuery, fullText, cap, filters.subjectFilter, abortSignal);
+    return {
+      hits: scan.hits,
+      returned: scan.hits.length,
+      truncated: scan.truncated,
+      ...(scan.timedOut ? { timedOut: true } : {}),
+      note: FULL_TEXT_FALLBACK_NOTE,
+    };
+  }
+  const scan = await collectHeaders(queryInfo, cap, filters.subjectFilter, abortSignal);
+  return {
+    hits: scan.hits,
+    returned: scan.hits.length,
+    truncated: scan.truncated,
+    ...(scan.timedOut ? { timedOut: true, note: "The mailbox search stalled; these results may be incomplete." } : {}),
+  };
 }
 
 /** A resolved folder to search, expressed as its folder id (required for the MV3 query API). */
@@ -400,50 +567,128 @@ async function resolveTargetFolder(scope: ReportScope): Promise<FolderRef | null
 
 /**
  * Page through a query collecting compact metadata up to `cap`. Reports `truncated` when more
- * matching messages exist beyond the cap so the model can choose to narrow instead of guessing.
+ * matching messages exist beyond the cap (or a page failed, so a partial scan is not presented as a
+ * complete set), and `timedOut` when a page stalled.
  */
 async function collectHeaders(
   queryInfo: QueryInfo,
   cap: number,
   subjectFilter: string,
   abortSignal: AbortSignal,
-): Promise<{ hits: SearchHit[]; truncated: boolean }> {
+  timeoutMs: number = QUERY_TIMEOUT_MS,
+): Promise<{ hits: SearchHit[]; truncated: boolean; timedOut: boolean }> {
   const hits: SearchHit[] = [];
-  const seenIds = new Set<number>();
-  let truncated = false;
+  let full = false;
+  const { complete, timedOut } = await scanHeaders(queryInfo, abortSignal, timeoutMs, (msg) => {
+    if (subjectFilter && !(msg.subject ?? "").toLowerCase().includes(subjectFilter)) return true;
+    if (hits.length >= cap) {
+      full = true;
+      return false;
+    }
+    hits.push(toHit(msg));
+    return true;
+  });
+  return { hits, truncated: full || !complete, timedOut };
+}
 
-  let page = await guardedQuery(() => browser.messages.query(queryInfo), abortSignal, "search messages");
+/**
+ * Visit every distinct message a query returns, page by page, until `visit` returns false. A failed or
+ * stalled page ends the scan; `complete` is false whenever it ended early for any reason.
+ */
+async function scanHeaders(
+  queryInfo: QueryInfo,
+  abortSignal: AbortSignal,
+  timeoutMs: number,
+  visit: (msg: browser.messages.MessageHeader) => boolean,
+): Promise<{ complete: boolean; timedOut: boolean }> {
+  const seenIds = new Set<number>();
+  let page = await guardedQuery(() => browser.messages.query(queryInfo), abortSignal, "search messages", timeoutMs);
   for (;;) {
     throwIfAborted(abortSignal);
-    // query/continueList return the error string on failure, and guardedQuery yields null when a page
-    // stalls; flag the result as truncated so a partial scan is not presented as a complete set.
-    if (page === null || typeof page === "string") {
-      truncated = true;
-      break;
-    }
+    if (isFailedPage(page)) return { complete: false, timedOut: page === TIMED_OUT };
     for (const msg of page.messages) {
       if (msg.id === undefined || seenIds.has(msg.id)) continue;
-      if (subjectFilter && !(msg.subject ?? "").toLowerCase().includes(subjectFilter)) continue;
-      if (hits.length >= cap) {
-        truncated = true;
-        break;
-      }
       seenIds.add(msg.id);
-      hits.push(toHit(msg));
+      if (!visit(msg)) return { complete: false, timedOut: false };
     }
-    if (truncated || !page.id) break;
+    if (!page.id) return { complete: true, timedOut: false };
     const listId = page.id;
-    page = await guardedQuery(() => browser.messages.continueList(listId), abortSignal, "continue message search");
+    page = await guardedQuery(
+      () => browser.messages.continueList(listId),
+      abortSignal,
+      "continue message search",
+      timeoutMs,
+    );
   }
-  return { hits, truncated };
+}
+
+/** Lower-case and fold accents/umlauts (ü and ue → u, ß → ss) so "Würth" and "Wuerth" compare equal. */
+function foldForMatch(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/ß/g, "ss")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/([aou])e/g, "$1");
+}
+
+/** Searchable header text of a message: subject, sender and all recipients. */
+function headerText(msg: browser.messages.MessageHeader): string {
+  return foldForMatch(
+    [msg.subject ?? "", msg.author ?? "", ...(msg.recipients ?? []), ...(msg.ccList ?? [])].join("\n"),
+  );
+}
+
+/** Split full-text query terms for client-side matching; one-letter terms only add noise. */
+function queryTerms(fullText: string): string[] {
+  return [...new Set(foldForMatch(fullText).split(/[\s,;"']+/))].filter((t) => t.length >= 2);
+}
+
+/**
+ * Client-side stand-in for a stalled full-text search: scan the (otherwise filtered) headers and keep
+ * messages whose subject/sender/recipients contain any query term, ranked by matched terms then date.
+ */
+async function collectHeaderMatches(
+  queryInfo: QueryInfo,
+  fullText: string,
+  cap: number,
+  subjectFilter: string,
+  abortSignal: AbortSignal,
+): Promise<{ hits: SearchHit[]; truncated: boolean; timedOut: boolean }> {
+  const terms = queryTerms(fullText);
+  const matches: Array<{ score: number; hit: SearchHit }> = [];
+  let scanned = 0;
+  const { complete, timedOut } = await scanHeaders(queryInfo, abortSignal, QUERY_TIMEOUT_MS, (msg) => {
+    if (subjectFilter && !(msg.subject ?? "").toLowerCase().includes(subjectFilter)) return true;
+    const text = headerText(msg);
+    const score = terms.filter((t) => text.includes(t)).length;
+    if (score > 0) matches.push({ score, hit: toHit(msg) });
+    return ++scanned < MAX_AGGREGATE_SCAN;
+  });
+  matches.sort((a, b) => b.score - a.score || b.hit.date.localeCompare(a.hit.date));
+  return {
+    hits: matches.slice(0, cap).map((m) => m.hit),
+    truncated: !complete || matches.length > cap,
+    timedOut,
+  };
+}
+
+/** ISO timestamp at minute precision ("2026-09-11T09:36Z"); seconds cost tokens but add no meaning. */
+function compactDate(date: Date | string | number | undefined): string {
+  return date ? `${new Date(date).toISOString().slice(0, 16)}Z` : "";
 }
 
 function toHit(msg: browser.messages.MessageHeader): SearchHit {
+  const recipients = (msg.recipients ?? []).map((r) => {
+    const { name, address } = parseAddress(r);
+    return address || name;
+  });
   return {
     id: msg.id as number,
-    date: msg.date ? new Date(msg.date).toISOString() : "",
-    author: parseAddress(msg.author ?? ""),
-    recipients: (msg.recipients ?? []).map(parseAddress),
+    date: compactDate(msg.date),
+    from: formatAddress(msg.author ?? ""),
+    to: recipients.slice(0, MAX_HIT_RECIPIENTS),
+    ...(recipients.length > MAX_HIT_RECIPIENTS ? { toCount: recipients.length } : {}),
     subject: msg.subject ?? "(no subject)",
   };
 }
@@ -453,14 +698,7 @@ async function handleGetMessages(
   budget: BodyBudget,
   abortSignal: AbortSignal,
 ): Promise<{
-  messages: Array<{
-    id: number;
-    date: string;
-    author: ParsedAddress;
-    recipients: ParsedAddress[];
-    subject: string;
-    body: string;
-  }>;
+  messages: MessageWithBody[];
   skipped: Array<{ id: number; reason: string }>;
 }> {
   const startedAt = Date.now();
@@ -469,15 +707,9 @@ async function handleGetMessages(
   if (ids.length === 0) {
     throw new Error("get_messages requires a non-empty 'ids' array of numeric message ids.");
   }
+  const includeQuoted = args.includeQuoted === true;
 
-  const messages: Array<{
-    id: number;
-    date: string;
-    author: ParsedAddress;
-    recipients: ParsedAddress[];
-    subject: string;
-    body: string;
-  }> = [];
+  const messages: MessageWithBody[] = [];
   const skipped: Array<{ id: number; reason: string }> = [];
 
   for (const id of ids) {
@@ -489,6 +721,8 @@ async function handleGetMessages(
       });
       continue;
     }
+    // Reserve the body slot before awaiting, so parallel get_messages calls cannot overspend it.
+    budget.bodiesRemaining -= 1;
     try {
       const header = await guardedRead<browser.messages.MessageHeader>(
         browser.messages.get(id),
@@ -500,18 +734,11 @@ async function handleGetMessages(
         abortSignal,
         `stream message ${id}`,
       );
-      const body = extractTextFromPart(full);
-      messages.push({
-        id,
-        date: header.date ? new Date(header.date).toISOString() : "",
-        author: parseAddress(header.author ?? ""),
-        recipients: (header.recipients ?? []).map(parseAddress),
-        subject: header.subject ?? "(no subject)",
-        body,
-      });
-      budget.bodiesRemaining -= 1;
+      const { body, quotedChars } = cleanReportBody(extractTextFromPart(full), header.subject ?? "", includeQuoted);
+      messages.push({ ...toHit(header), id, body, ...(quotedChars > 0 ? { quotedChars } : {}) });
       budget.charsRemaining -= body.length;
     } catch (e) {
+      budget.bodiesRemaining += 1;
       // Cancellation must stop the whole run; anything else (missing id, IMAP stream failure, timeout)
       // just skips this one message so the report can proceed with what it has.
       if ((e as Error).name === "AbortError") throw e;
@@ -635,9 +862,8 @@ async function handleGetThread(
       abortSignal,
       `thread lookup for ${messageId}`,
     );
-    // query returns the error string on failure and guardedQuery yields null on a stalled page: the
-    // thread is missing an ancestor either way, so it must not be reported as complete.
-    if (page === null || typeof page === "string") {
+    // A failed or stalled page means the thread is missing an ancestor, so it must not be reported as complete.
+    if (isFailedPage(page)) {
       lookupFailed = true;
       continue;
     }
@@ -649,12 +875,16 @@ async function handleGetThread(
     }
   }
 
-  // 2) Siblings/replies (incl. Sent): messages sharing the normalized subject. fullText narrows the
-  // scan server-side; we then keep only exact normalized-subject matches.
+  // 2) Siblings/replies (incl. Sent): messages sharing the normalized subject. A full-text query here
+  // stalled on IMAP for every call (~25s each), so this is a header-only scan bounded to the thread's
+  // time span: from shortly before its earliest known message (or the run window, if earlier) onwards.
   const norm = normalizeSubject(header.subject ?? "");
   let subjectTruncated = false;
   if (norm && hits.length < cap) {
-    const scan = await collectHeaders({ fullText: norm } as QueryInfo, cap * 2, "", abortSignal);
+    const knownDates = hits.map((h) => Date.parse(h.date)).filter(Number.isFinite);
+    const earliest = Math.min(Date.now(), ...knownDates) - THREAD_SUBJECT_LOOKBACK_DAYS * DAY_MS;
+    const fromDate = new Date(Math.min(earliest, Date.now() - scope.defaultDays * DAY_MS));
+    const scan = await collectHeaders({ fromDate } as QueryInfo, cap * 2, norm, abortSignal);
     subjectTruncated = scan.truncated;
     for (const hit of scan.hits) {
       if (hits.length >= cap) break;
@@ -679,6 +909,7 @@ async function handleGetThread(
 async function handleAggregateMessages(
   args: Record<string, unknown>,
   scope: ReportScope,
+  state: ReportToolState,
   abortSignal: AbortSignal,
 ): Promise<{
   groupBy: string;
@@ -686,6 +917,7 @@ async function handleAggregateMessages(
   scanned: number;
   capped: boolean;
   groups: Array<{ key: string; count: number }>;
+  note?: string;
 }> {
   const startedAt = Date.now();
   const groupBy = typeof args.groupBy === "string" ? args.groupBy : "author";
@@ -695,44 +927,47 @@ async function handleAggregateMessages(
   const folderRef = await resolveTargetFolder(scope);
   if (folderRef?.folderId) queryInfo.folderId = folderRef.folderId;
 
-  const counts = new Map<string, number>();
-  let scanned = 0;
-  let capped = false;
-  const seenIds = new Set<number>();
-
-  let page = await guardedQuery(() => browser.messages.query(queryInfo), abortSignal, "aggregate search");
-  outer: for (;;) {
-    throwIfAborted(abortSignal);
-    // query/continueList return the error string on failure, and guardedQuery yields null on a stalled
-    // page; flag the scan as capped so a partial aggregate is not reported as complete.
-    if (page === null || typeof page === "string") {
-      capped = true;
-      break;
-    }
-    for (const msg of page.messages) {
-      if (msg.id === undefined || seenIds.has(msg.id)) continue;
-      if (filters.subjectFilter && !(msg.subject ?? "").toLowerCase().includes(filters.subjectFilter)) continue;
-      seenIds.add(msg.id);
+  const countMatches = async (info: QueryInfo, terms: string[] | null, timeoutMs: number) => {
+    const counts = new Map<string, number>();
+    let scanned = 0;
+    let reachedCap = false;
+    const { complete, timedOut } = await scanHeaders(info, abortSignal, timeoutMs, (msg) => {
+      if (filters.subjectFilter && !(msg.subject ?? "").toLowerCase().includes(filters.subjectFilter)) return true;
+      if (terms) {
+        const text = headerText(msg);
+        if (!terms.some((t) => text.includes(t))) return true;
+      }
       scanned++;
       for (const key of groupKeys(msg, groupBy)) {
         counts.set(key, (counts.get(key) ?? 0) + 1);
       }
-      if (scanned >= MAX_AGGREGATE_SCAN) {
-        capped = true;
-        break outer;
-      }
-    }
-    if (!page.id) break;
-    const listId = page.id;
-    page = await guardedQuery(() => browser.messages.continueList(listId), abortSignal, "continue aggregate search");
+      reachedCap = scanned >= MAX_AGGREGATE_SCAN;
+      return !reachedCap;
+    });
+    // A failed or stalled page flags the scan as capped so a partial aggregate is not reported as complete.
+    return { counts, scanned, capped: reachedCap || !complete, timedOut };
+  };
+
+  // Like search_messages, a stalled full-text aggregate falls back to matching terms against headers.
+  let result =
+    filters.fullText && state.fullTextUnavailable
+      ? undefined
+      : await countMatches(queryInfo, null, filters.fullText ? FULL_TEXT_QUERY_TIMEOUT_MS : QUERY_TIMEOUT_MS);
+  if (filters.fullText && result?.timedOut) state.fullTextUnavailable = true;
+  let note: string | undefined;
+  if (!result || (filters.fullText && result.timedOut && result.scanned === 0)) {
+    const { fullText: _unused, ...headerQuery } = queryInfo;
+    result = await countMatches(headerQuery, queryTerms(filters.fullText ?? ""), QUERY_TIMEOUT_MS);
+    note = FULL_TEXT_FALLBACK_NOTE;
   }
+  const { counts, scanned, capped } = result;
 
   const groups = [...counts.entries()].map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count);
   console.log(
     `REPORT: aggregate_messages groupBy=${groupBy} scanned=${scanned} groups=${groups.length} capped=${capped} ` +
-      `elapsedMs=${Date.now() - startedAt}`,
+      `fullTextFallback=${note !== undefined} elapsedMs=${Date.now() - startedAt}`,
   );
-  return { groupBy, totalMatched: scanned, scanned, capped, groups };
+  return { groupBy, totalMatched: scanned, scanned, capped, groups, ...(note ? { note } : {}) };
 }
 
 /** Derive the grouping key(s) for a message under the requested `groupBy`. */

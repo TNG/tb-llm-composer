@@ -3,6 +3,7 @@ import { hasEndpointPermission } from "./hostPermissions";
 import { startKeepAlive, stopKeepAlive } from "./keepAlive";
 import { getPluginOptions, type LlmParameters } from "./optionsParams";
 import { currentTrace } from "./reportTrace";
+import { stripThinkTags } from "./utils";
 
 export enum LlmRoles {
   SYSTEM = "system",
@@ -250,6 +251,14 @@ export function isLlmTextCompletionResponse(response: LlmTextCompletionResponse 
   return "id" in response;
 }
 
+/**
+ * Request params that switch off model reasoning via the chat template (Qwen3 & co. on vLLM/SGLang),
+ * merged into any `chat_template_kwargs` the user already configured.
+ */
+function thinkingOffParams(params: LlmParameters): Pick<LlmParameters, "chat_template_kwargs"> {
+  return { chat_template_kwargs: { ...params.chat_template_kwargs, enable_thinking: false } };
+}
+
 /** Log per-call token usage and return the running total. */
 function logTokenUsage(response: LlmTextCompletionResponse, runningTotal: number, step: number): number {
   const usage = response.usage;
@@ -270,7 +279,8 @@ function logTokenUsage(response: LlmTextCompletionResponse, runningTotal: number
  * definitions, executes any requested tool calls via `toolHandlers`, and repeats until the
  * model returns a plain message or `maxSteps` is reached. Throws if the endpoint/model does
  * not support tool calling. Returns the final text and the full conversation (so a caller can
- * append a follow-up message and continue the same conversation).
+ * append a follow-up message and continue the same conversation). `compactHistory`, if given, may
+ * shrink the conversation in place before every request.
  */
 export async function runAgenticLlm(
   messages: LlmApiRequestMessage[],
@@ -279,6 +289,7 @@ export async function runAgenticLlm(
   abortSignal: AbortSignal,
   maxSteps: number,
   onProgress?: (progress: AgenticProgress) => void,
+  compactHistory?: (conversation: LlmApiRequestMessage[]) => void,
 ): Promise<AgenticRunResult> {
   const options = await getPluginOptions();
   if (!options.model) {
@@ -305,6 +316,37 @@ export async function runAgenticLlm(
     await stopKeepAlive().catch((err) => console.error("REPORT: error stopping keep-alive:", err));
   }
 
+  /** Execute one tool call and return its JSON result; failures become an `{error}` result for the model. */
+  async function runToolCall(toolCall: LlmToolCall): Promise<string> {
+    const handler = toolHandlers[toolCall.function.name];
+    let resultContent: string;
+    if (!handler) {
+      console.warn(`REPORT: tool '${toolCall.function.name}' is not registered`);
+      resultContent = JSON.stringify({ error: `Unknown tool: ${toolCall.function.name}` });
+    } else {
+      try {
+        const parsedArgs = parseToolArguments(toolCall.function.arguments);
+        console.log(
+          `REPORT: running tool '${toolCall.function.name}' with arg keys: ${Object.keys(parsedArgs).join(",") || "(none)"}`,
+        );
+        reportProgress(describeToolPhase(toolCall.function.name));
+        currentTrace()?.toolCall(toolCall.function.name, parsedArgs);
+        const result = await handler(parsedArgs);
+        resultContent = JSON.stringify(result ?? null);
+        currentTrace()?.toolResult(toolCall.function.name, resultContent);
+        console.log(`REPORT: tool '${toolCall.function.name}' completed (resultChars=${resultContent.length})`);
+      } catch (e) {
+        if ((e as Error).name === "AbortError") throw e;
+        console.warn(`REPORT: tool '${toolCall.function.name}' failed:`, e);
+        resultContent = JSON.stringify({ error: (e as Error).message });
+        currentTrace()?.toolResult(toolCall.function.name, resultContent);
+      }
+    }
+    toolCallCount++;
+    reportProgress(describeToolPhase(toolCall.function.name));
+    return resultContent;
+  }
+
   async function runAgenticLoop(): Promise<AgenticRunResult> {
     for (let step = 1; step <= maxSteps; step++) {
       if (abortSignal.aborted) {
@@ -312,12 +354,14 @@ export async function runAgenticLlm(
       }
 
       reportProgress("Waiting for the model…");
+      compactHistory?.(conversation);
 
       const requestBody: LlmApiRequestBody = {
         messages: conversation,
         tools,
         tool_choice: "auto",
         ...options.params,
+        ...(options.reportDisableThinking ? thinkingOffParams(options.params) : {}),
       };
 
       console.log(
@@ -371,47 +415,24 @@ export async function runAgenticLlm(
         `REPORT: step ${step} requested ${toolCalls.length} tool call(s): ${toolCalls.map((t) => t.function.name).join(", ")}`,
       );
 
-      // Append the assistant's tool-call request, then each tool result.
+      // Append the assistant's tool-call request, then each tool result. Its reasoning is dropped: it
+      // served this step only, and keeping it would re-send it with every later request.
       conversation.push({
         role: LlmRoles.ASSISTANT,
-        content: choice.message.content ?? null,
+        content: stripThinkTags(choice.message.content ?? ""),
         tool_calls: toolCalls,
       });
 
-      for (const toolCall of toolCalls) {
-        const handler = toolHandlers[toolCall.function.name];
-        let resultContent: string;
-        if (!handler) {
-          console.warn(`REPORT: tool '${toolCall.function.name}' is not registered`);
-          resultContent = JSON.stringify({ error: `Unknown tool: ${toolCall.function.name}` });
-        } else {
-          try {
-            const parsedArgs = parseToolArguments(toolCall.function.arguments);
-            console.log(
-              `REPORT: running tool '${toolCall.function.name}' with arg keys: ${Object.keys(parsedArgs).join(",") || "(none)"}`,
-            );
-            reportProgress(describeToolPhase(toolCall.function.name));
-            currentTrace()?.toolCall(toolCall.function.name, parsedArgs);
-            const result = await handler(parsedArgs);
-            resultContent = JSON.stringify(result ?? null);
-            currentTrace()?.toolResult(toolCall.function.name, resultContent);
-            console.log(`REPORT: tool '${toolCall.function.name}' completed (resultChars=${resultContent.length})`);
-          } catch (e) {
-            if ((e as Error).name === "AbortError") throw e;
-            console.warn(`REPORT: tool '${toolCall.function.name}' failed:`, e);
-            resultContent = JSON.stringify({ error: (e as Error).message });
-            currentTrace()?.toolResult(toolCall.function.name, resultContent);
-          }
-        }
+      // Independent tool calls of one step run concurrently; results are appended in request order.
+      const results = await Promise.all(toolCalls.map(runToolCall));
+      toolCalls.forEach((toolCall, i) => {
         conversation.push({
           role: LlmRoles.TOOL,
           tool_call_id: toolCall.id,
           name: toolCall.function.name,
-          content: resultContent,
+          content: results[i],
         });
-        toolCallCount++;
-        reportProgress(describeToolPhase(toolCall.function.name));
-      }
+      });
     }
 
     console.warn(`REPORT: reached max steps (${maxSteps}) without a final answer`);
