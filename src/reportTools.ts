@@ -467,8 +467,49 @@ interface SearchResult {
 
 const FULL_TEXT_FALLBACK_NOTE =
   "Full-text search stalls on this mailbox, so it is disabled for this report: your query terms were matched " +
-  "against subject, sender and recipients only (any term, best matches first). Message bodies were NOT " +
-  "searched — narrow with author/recipient/subject filters, or read candidates with get_messages.";
+  "against subject, sender and recipients only (best matches first; with 3+ terms, at least 2 must match " +
+  "where possible). Message bodies were NOT searched — narrow with author/recipient/subject filters, or " +
+  "read candidates with get_messages.";
+
+/** storage.local key remembering, per search scope, when full-text search last stalled. */
+const FULL_TEXT_STALLS_KEY = "reportFullTextStalls";
+/** A remembered stall is trusted this long, then full-text search is given another chance. */
+const FULL_TEXT_STALL_TTL_MS = 7 * DAY_MS;
+
+/** Which mailbox area a stall applies to: one folder, or the all-folders search. */
+function stallKey(scope: ReportScope): string {
+  return scope.folderOnly && scope.folder ? `${scope.folder.accountId}:${scope.folder.path}` : "all-folders";
+}
+
+/**
+ * Whether full-text search may be tried for this scope. A stall is remembered across reports, so later
+ * reports skip straight to header matching instead of each waiting out {@link FULL_TEXT_QUERY_TIMEOUT_MS}.
+ */
+async function fullTextUsable(scope: ReportScope, state: ReportToolState): Promise<boolean> {
+  if (state.fullTextUnavailable) return false;
+  try {
+    const stalls = (await browser.storage.local.get(FULL_TEXT_STALLS_KEY))[FULL_TEXT_STALLS_KEY] ?? {};
+    const stalledAt = (stalls as Record<string, number>)[stallKey(scope)];
+    if (typeof stalledAt === "number" && Date.now() - stalledAt < FULL_TEXT_STALL_TTL_MS) {
+      state.fullTextUnavailable = true;
+      console.log(`REPORT: full-text search is known to stall for ${stallKey(scope)}; using header matching`);
+    }
+  } catch (e) {
+    console.warn("REPORT: could not read remembered full-text stalls:", e);
+  }
+  return !state.fullTextUnavailable;
+}
+
+/** Disable full-text search for this scope and remember the stall for later reports. */
+async function markFullTextStalled(scope: ReportScope, state: ReportToolState): Promise<void> {
+  state.fullTextUnavailable = true;
+  try {
+    const stalls = (await browser.storage.local.get(FULL_TEXT_STALLS_KEY))[FULL_TEXT_STALLS_KEY] ?? {};
+    await browser.storage.local.set({ [FULL_TEXT_STALLS_KEY]: { ...stalls, [stallKey(scope)]: Date.now() } });
+  } catch (e) {
+    console.warn("REPORT: could not remember the full-text stall:", e);
+  }
+}
 
 async function handleSearchMessages(
   args: Record<string, unknown>,
@@ -484,7 +525,7 @@ async function handleSearchMessages(
   const folderRef = await resolveTargetFolder(scope);
   if (folderRef?.folderId) queryInfo.folderId = folderRef.folderId;
 
-  const result = await searchWithFullTextFallback(queryInfo, filters, scope.maxSearchResults, state, abortSignal);
+  const result = await searchWithFullTextFallback(queryInfo, filters, scope, state, abortSignal);
 
   console.log(
     "REPORT: search_messages completed " +
@@ -497,20 +538,22 @@ async function handleSearchMessages(
 
 /**
  * Run a search, degrading gracefully when full-text search stalls (common on IMAP): the first stall
- * disables full-text for the rest of the scope, and the terms are matched client-side against headers.
+ * disables full-text for the scope (and is remembered for later reports), and the terms are matched
+ * client-side against headers.
  */
 async function searchWithFullTextFallback(
   queryInfo: QueryInfo,
   filters: MessageFilters,
-  cap: number,
+  scope: ReportScope,
   state: ReportToolState,
   abortSignal: AbortSignal,
 ): Promise<SearchResult> {
   const fullText = filters.fullText;
-  if (fullText && !state.fullTextUnavailable) {
+  const cap = scope.maxSearchResults;
+  if (fullText && (await fullTextUsable(scope, state))) {
     const scan = await collectHeaders(queryInfo, cap, filters.subjectFilter, abortSignal, FULL_TEXT_QUERY_TIMEOUT_MS);
     if (!scan.timedOut) return { hits: scan.hits, returned: scan.hits.length, truncated: scan.truncated };
-    state.fullTextUnavailable = true;
+    await markFullTextStalled(scope, state);
     console.warn("REPORT: full-text search timed out; matching query terms against headers from now on");
     if (scan.hits.length > 0) {
       return {
@@ -645,8 +688,17 @@ function queryTerms(fullText: string): string[] {
 }
 
 /**
+ * Matched terms a header needs to count as a hit. With 3+ terms a single generic word ("service",
+ * "password") matches far too much, so at least two are required.
+ */
+function minTermMatches(terms: string[]): number {
+  return terms.length >= 3 ? 2 : 1;
+}
+
+/**
  * Client-side stand-in for a stalled full-text search: scan the (otherwise filtered) headers and keep
- * messages whose subject/sender/recipients contain any query term, ranked by matched terms then date.
+ * messages whose subject/sender/recipients contain query terms, ranked by matched terms then date.
+ * Messages must match {@link minTermMatches} terms; if none does, single-term matches are returned.
  */
 async function collectHeaderMatches(
   queryInfo: QueryInfo,
@@ -665,10 +717,12 @@ async function collectHeaderMatches(
     if (score > 0) matches.push({ score, hit: toHit(msg) });
     return ++scanned < MAX_AGGREGATE_SCAN;
   });
-  matches.sort((a, b) => b.score - a.score || b.hit.date.localeCompare(a.hit.date));
+  const strong = matches.filter((m) => m.score >= minTermMatches(terms));
+  const kept = strong.length > 0 ? strong : matches;
+  kept.sort((a, b) => b.score - a.score || b.hit.date.localeCompare(a.hit.date));
   return {
-    hits: matches.slice(0, cap).map((m) => m.hit),
-    truncated: !complete || matches.length > cap,
+    hits: kept.slice(0, cap).map((m) => m.hit),
+    truncated: !complete || kept.length > cap,
     timedOut,
   };
 }
@@ -935,7 +989,7 @@ async function handleAggregateMessages(
       if (filters.subjectFilter && !(msg.subject ?? "").toLowerCase().includes(filters.subjectFilter)) return true;
       if (terms) {
         const text = headerText(msg);
-        if (!terms.some((t) => text.includes(t))) return true;
+        if (terms.filter((t) => text.includes(t)).length < minTermMatches(terms)) return true;
       }
       scanned++;
       for (const key of groupKeys(msg, groupBy)) {
@@ -950,10 +1004,10 @@ async function handleAggregateMessages(
 
   // Like search_messages, a stalled full-text aggregate falls back to matching terms against headers.
   let result =
-    filters.fullText && state.fullTextUnavailable
+    filters.fullText && !(await fullTextUsable(scope, state))
       ? undefined
       : await countMatches(queryInfo, null, filters.fullText ? FULL_TEXT_QUERY_TIMEOUT_MS : QUERY_TIMEOUT_MS);
-  if (filters.fullText && result?.timedOut) state.fullTextUnavailable = true;
+  if (filters.fullText && result?.timedOut) await markFullTextStalled(scope, state);
   let note: string | undefined;
   if (!result || (filters.fullText && result.timedOut && result.scanned === 0)) {
     const { fullText: _unused, ...headerQuery } = queryInfo;

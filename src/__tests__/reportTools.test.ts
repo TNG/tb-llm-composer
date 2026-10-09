@@ -194,6 +194,46 @@ describe("reportTools", () => {
       }
     });
 
+    test("remembers a full-text stall for later reports and requires two terms for 3+ term queries", async () => {
+      vi.useFakeTimers();
+      try {
+        const query = vi.fn(async (info: Record<string, unknown>) => {
+          if (info.fullText) return new Promise(() => {});
+          return {
+            messages: [
+              { id: 1, subject: "Service desk", author: "x@y.com", recipients: [], date: new Date("2026-01-01") },
+              { id: 2, subject: "Würth Zugang", author: "x@y.com", recipients: [], date: new Date("2026-01-02") },
+              { id: 3, subject: "Passwort", author: "it@wuerth-it.com", recipients: [], date: new Date("2026-01-03") },
+            ],
+          };
+        });
+        const stored: Record<string, unknown> = {};
+        setBrowser({ query });
+        (global.browser as unknown as Record<string, unknown>).storage = {
+          local: {
+            get: vi.fn(async (key: string) => ({ [key]: stored[key] })),
+            set: vi.fn(async (items: Record<string, unknown>) => Object.assign(stored, items)),
+          },
+        };
+
+        // First report: the full-text query stalls once, and only the message matching 2 of 3 terms is kept.
+        const first = createReportToolHandlers({ ...BASE_SCOPE });
+        const pending = first.search_messages({ query: "wuerth service passwort" }) as Promise<{
+          hits: Array<{ id: number }>;
+        }>;
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect((await pending).hits.map((h) => h.id)).toEqual([3]);
+
+        // A later report (new scope object) skips full-text immediately.
+        const later = createReportToolHandlers({ ...BASE_SCOPE });
+        const result = (await later.search_messages({ query: "zugang" })) as { hits: Array<{ id: number }> };
+        expect(result.hits.map((h) => h.id)).toEqual([2]);
+        expect(query.mock.calls.filter((c) => (c[0] as Record<string, unknown>).fullText)).toHaveLength(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     test("reports truncated when more matches exist beyond maxSearchResults", async () => {
       const query = vi.fn().mockResolvedValue({
         id: undefined,

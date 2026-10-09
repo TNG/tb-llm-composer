@@ -307,7 +307,7 @@ async function runReport(
       // refine continues the agentic conversation with search tools available.
       session = noSearch
         ? await continueReportWithoutSearch(existing, request.prompt, abortController.signal, onProgress)
-        : await continueReport(existing, request.prompt, abortController.signal, onProgress);
+        : await continueReport(existing, request, abortController.signal, onProgress);
     } else {
       session = await generateReport(request, abortController.signal, onProgress);
     }
