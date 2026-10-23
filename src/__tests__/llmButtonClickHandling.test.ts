@@ -7,6 +7,7 @@ import {
   llmActionClickHandler,
   stripThinkTag,
   summarize,
+  writeSummaryAnswer,
 } from "../llmButtonClickHandling";
 import {
   type LlmApiRequestMessage,
@@ -16,6 +17,7 @@ import {
   type TgiErrorResponse,
 } from "../llmConnection";
 import { addLlmActionsToMenu, handleMenuClickListener } from "../menu";
+import { deleteSummary, loadSummary, openSummaryWindow } from "../summaryWindow";
 import { mockBrowser, mockBrowserMenus, waitFor } from "./testUtils";
 
 import Tab = browser.tabs.Tab;
@@ -33,6 +35,12 @@ const MOCK_RESPONSE_LLM_TEXT = "MOCK_RESPONSE_LLM_TEXT";
 vi.mock("../llmConnection", async () => ({
   ...(await vi.importActual("../llmConnection")),
   sendContentToLlm: vi.fn(),
+}));
+
+vi.mock("../summaryWindow", () => ({
+  openSummaryWindow: vi.fn(),
+  loadSummary: vi.fn(),
+  deleteSummary: vi.fn(),
 }));
 
 const originalBrowser = global.browser;
@@ -115,9 +123,8 @@ describe("The llmActionClickHandler", () => {
     expect(sendContentToLlm).toHaveBeenCalledTimes(1);
     expectComposerButtonSetAndReset();
 
-    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
-      plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n\n\n${mockPreviousConversation}`,
-    });
+    expect(openSummaryWindow).toHaveBeenCalledWith(MOCK_TAB_ID, { summary: MOCK_RESPONSE_LLM_TEXT, openPoints: [] });
+    expect(browser.compose.setComposeDetails).not.toHaveBeenCalled();
   });
 
   test("Cancel request aborts request", async () => {
@@ -260,9 +267,7 @@ describe("Think-tag stripping in summarize", () => {
 
     await llmActionClickHandler(MOCK_TAB, async (tabId: number) => summarize(tabId, mockPreviousConversation));
 
-    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
-      plainTextBody: `${RESPONSE_WITHOUT_THINK}\n\n\n\n${mockPreviousConversation}`,
-    });
+    expect(openSummaryWindow).toHaveBeenCalledWith(MOCK_TAB_ID, { summary: RESPONSE_WITHOUT_THINK, openPoints: [] });
   });
 
   test("keeps think tag in summary when strip_think_tag is false", async () => {
@@ -271,9 +276,39 @@ describe("Think-tag stripping in summarize", () => {
 
     await llmActionClickHandler(MOCK_TAB, async (tabId: number) => summarize(tabId, mockPreviousConversation));
 
+    expect(openSummaryWindow).toHaveBeenCalledWith(MOCK_TAB_ID, { summary: RESPONSE_WITH_THINK, openPoints: [] });
+  });
+});
+
+describe("writeSummaryAnswer", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("prepends the instructions to the body and runs compose", async () => {
+    mockBrowser({ plainTextBody: "\n\n> quoted conversation" });
+    browser.tabs.get = vi.fn().mockResolvedValue(MOCK_TAB);
+    (loadSummary as unknown as MockInstance).mockResolvedValue({ tabId: MOCK_TAB_ID, summary: "s", openPoints: [] });
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
+
+    const result = await writeSummaryAnswer("key", "Say yes");
+
+    expect(result).toEqual({ ok: true });
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
-      plainTextBody: `${RESPONSE_WITH_THINK}\n\n\n\n${mockPreviousConversation}`,
+      plainTextBody: "Say yes\n\n> quoted conversation",
     });
+    expect(deleteSummary).toHaveBeenCalledWith("key");
+    await waitFor(() => expect(sendContentToLlm).toHaveBeenCalled());
+  });
+
+  test("fails when the summary is gone", async () => {
+    mockBrowser({});
+    (loadSummary as unknown as MockInstance).mockResolvedValue(undefined);
+
+    const result = await writeSummaryAnswer("key", "Say yes");
+
+    expect(result.ok).toBe(false);
+    expect(sendContentToLlm).not.toHaveBeenCalled();
   });
 });
 

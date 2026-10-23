@@ -57,12 +57,17 @@ re-appended. A subject is generated when the field is empty.
 
 ## Summarize a conversation
 
-Condense a long reply thread into a short summary.
+Condense a long reply thread into a short summary and answer its open points.
 
 1. Open a **reply** to a conversation (so the quoted thread is present).
 2. Press `Ctrl+Alt+K`.
+3. A popup shows the summary and the open points you need to address. Points with a fixed set of
+   answers are shown as lists to pick from (one or several options), open questions get a text box.
+   Every point and the optional "Anything else to include?" box can be left empty.
+4. Click **Write answer** (or `Ctrl+Enter`). Your answers are written into the composer as instructions
+   and the reply is generated exactly like with **Compose**.
 
-The quoted conversation is sent to the LLM and the summary is written into the composer.
+Closing the popup leaves the email untouched.
 
 ---
 

@@ -22,6 +22,7 @@ module.exports = (env, argv) => {
       background: "./src/background.ts",
       reports: "./src/reports.ts",
       organiseConfirm: "./src/organiseConfirm.ts",
+      summary: "./src/summaryPopup.ts",
     },
     output: {
       path: path.resolve(__dirname, buildFolder),
