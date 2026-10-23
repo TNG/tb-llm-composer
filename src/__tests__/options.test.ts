@@ -308,6 +308,24 @@ describe("The options page", () => {
     });
   });
 
+  test("per-feature think-tag checkboxes follow the global value until set, then save on their own", async () => {
+    browserStorage = { options: { strip_think_tag: false } };
+    const doc = optionsDom.window.document;
+    doc.dispatchEvent(new optionsDom.window.Event("DOMContentLoaded"));
+
+    const reportBox = doc.getElementById("strip_think_tag_report") as HTMLInputElement;
+    await waitFor(() => expect(reportBox.checked).toBe(false));
+    expect(doc.getElementById("strip_think_tag_organise")).toBeNull();
+
+    reportBox.checked = true;
+    reportBox.dispatchEvent(new optionsDom.window.Event("change"));
+
+    await waitFor(() => {
+      expect((browserStorage.options as Options).stripThinkTagByFeature).toEqual({ report: true });
+      expect((browserStorage.options as Options).strip_think_tag).toBe(false);
+    });
+  });
+
   test("renders one endpoint block per feature", () => {
     const doc = optionsDom.window.document;
     for (const feature of ["compose", "summarize", "report", "organise"]) {

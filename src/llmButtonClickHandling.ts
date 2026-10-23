@@ -8,7 +8,13 @@ import {
 } from "./llmConnection";
 import { addCancelRequestMenuEntry, addLlmActionsToMenu } from "./menu";
 import { notifyOnError } from "./notifications";
-import { getAdvancedPrompt, getPluginOptions, type Options } from "./optionsParams";
+import {
+  getAdvancedPrompt,
+  getPluginOptions,
+  type Options,
+  shouldStripThinkTag,
+  type ThinkTagFeature,
+} from "./optionsParams";
 import { getOriginalTabConversation } from "./originalTabConversation";
 import {
   getEmailGenerationContext,
@@ -159,7 +165,7 @@ async function handleSubjectSuccessResponse(
   options: Options,
 ) {
   await browser.compose.setComposeDetails(tabId, {
-    subject: maybeStripThinkTag(subjectResponse.choices[0].message.content ?? "", options).trim(),
+    subject: maybeStripThinkTag(subjectResponse.choices[0].message.content ?? "", options, "compose").trim(),
   });
 }
 
@@ -184,8 +190,8 @@ async function handleComposeSuccessResponse(tabId: number, response: LlmTextComp
   });
 }
 
-function maybeStripThinkTag(content: string, options: Options): string {
-  return (options.strip_think_tag ?? true) ? stripThinkTag(content) : content;
+function maybeStripThinkTag(content: string, options: Options, feature: ThinkTagFeature): string {
+  return shouldStripThinkTag(options, feature) ? stripThinkTag(content) : content;
 }
 
 async function getCleanedUpGeneratedEmail(
@@ -193,7 +199,7 @@ async function getCleanedUpGeneratedEmail(
   signature: string | undefined,
   options: Options,
 ) {
-  const content = maybeStripThinkTag(response.choices[0].message.content ?? "", options);
+  const content = maybeStripThinkTag(response.choices[0].message.content ?? "", options, "compose");
   const responseWithoutSignature = signature ? content.replace(signature, "") : content;
   return responseWithoutSignature.replace(/^\s*/, "");
 }
@@ -219,6 +225,7 @@ export async function summarize(tabId: number, originalConversation?: string): P
     const content = maybeStripThinkTag(
       (response as LlmTextCompletionResponse).choices[0].message.content ?? "",
       options,
+      "summarize",
     );
     await openSummaryWindow(tabId, parseSummaryResponse(content));
   } else {

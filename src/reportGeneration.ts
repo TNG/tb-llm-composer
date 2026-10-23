@@ -8,7 +8,7 @@ import {
   sendContentToLlm,
   type TgiErrorResponse,
 } from "./llmConnection";
-import { getAdvancedPrompt, getPluginOptions } from "./optionsParams";
+import { getAdvancedPrompt, getPluginOptions, shouldStripThinkTag } from "./optionsParams";
 import { compactReportHistory } from "./reportHistory";
 import {
   assertSearchCapabilities,
@@ -233,7 +233,14 @@ export async function continueReportWithoutSearch(
   ];
 
   return withReportTrace("refine-no-search", traceInfo(prompt, session.scope), options, () =>
-    runNoSearchRefinement(messages, session.scope, options.strip_think_tag, startedAt, abortSignal, onProgress),
+    runNoSearchRefinement(
+      messages,
+      session.scope,
+      shouldStripThinkTag(options, "report"),
+      startedAt,
+      abortSignal,
+      onProgress,
+    ),
   );
 }
 
@@ -308,13 +315,14 @@ async function runReportLoop(
       onProgress,
       compactReportHistory,
     );
-    const finalReport = options.strip_think_tag ? stripThinkTags(rawReport) : rawReport;
+    const stripThink = shouldStripThinkTag(options, "report");
+    const finalReport = stripThink ? stripThinkTags(rawReport) : rawReport;
     assertNonEmptyReport(rawReport, finalReport);
 
     console.log(
       "REPORT: generation completed " +
         `(elapsedMs=${Date.now() - startedAt}, rawChars=${rawReport.length}, finalChars=${finalReport.length}, ` +
-        `strippedThinkTags=${options.strip_think_tag})`,
+        `strippedThinkTags=${stripThink})`,
     );
 
     return { report: finalReport, messages: finalMessages, scope };

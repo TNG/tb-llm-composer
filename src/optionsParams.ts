@@ -51,6 +51,9 @@ export const LLM_FEATURES: ReadonlyArray<{ value: LlmFeature; label: string }> =
   { value: "organise", label: "Organise folder" },
 ];
 
+/** Features whose output honours the strip-<think> setting; organise always strips (it must parse JSON). */
+export type ThinkTagFeature = Exclude<LlmFeature, "organise">;
+
 /** Connection settings for one OpenAI-compatible endpoint. */
 export interface EndpointSettings {
   model: string; // endpoint URL (named like Options.model for backwards compatibility)
@@ -86,6 +89,7 @@ export interface Options {
   confirmMovesBeforeApplying: boolean; // show a confirmation popup to review moves; if false, move automatically
   showAdvancedOptions: boolean; // the settings below only apply while this is on
   featureEndpoints: Partial<Record<LlmFeature, FeatureEndpointOverride>>;
+  stripThinkTagByFeature: Partial<Record<ThinkTagFeature, boolean>>; // unset = use strip_think_tag
   summaryContext: string; // summarize system prompt; the JSON answer format is appended automatically
   reportSystemPrompt: string;
   organiseSystemPrompt: string; // the JSON answer format is appended automatically
@@ -124,6 +128,7 @@ export const DEFAULT_OPTIONS: Options = {
   confirmMovesBeforeApplying: true,
   showAdvancedOptions: false,
   featureEndpoints: {},
+  stripThinkTagByFeature: {},
   summaryContext:
     "I want to reply to an email. Give me a short summary of the previous conversation " +
     "and list the open points I need to cover in my answer.\n" +
@@ -190,4 +195,10 @@ export function getEndpointSettings(options: Options, feature: LlmFeature): Endp
 export function getAdvancedPrompt(options: Options, key: AdvancedPromptKey): string {
   const stored = options[key];
   return options.showAdvancedOptions && stored?.trim() ? stored : DEFAULT_OPTIONS[key];
+}
+
+/** Whether to strip <think> blocks from a feature's output: its own setting in advanced mode, else the global one. */
+export function shouldStripThinkTag(options: Options, feature: ThinkTagFeature): boolean {
+  const own = options.showAdvancedOptions ? options.stripThinkTagByFeature?.[feature] : undefined;
+  return own ?? options.strip_think_tag ?? true;
 }

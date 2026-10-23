@@ -243,6 +243,11 @@
         display: none;
       }
 
+      /* Basic-mode controls replaced by finer-grained advanced ones. */
+      body.show-advanced .basic-only {
+        display: none;
+      }
+
       /* Top-of-page toggle, visually separated from the first section. */
       .advanced-toggle {
         padding-bottom: 10px;
@@ -251,7 +256,7 @@
 
       /* Per-feature endpoint block; its fields only show while the override is enabled. */
       .feature-endpoint {
-        margin-top: 10px;
+        margin-bottom: 14px;
       }
 
       .fe-fields {
@@ -620,17 +625,26 @@
             <div id="models-list" class="model-list"></div>
             <textarea id="other_options" name="other option window"> </textarea>
           </div>
-          <div class="form-group checkbox-row">
+          <!-- In advanced mode this is replaced by a per-feature checkbox in each section. -->
+          <div class="form-group checkbox-row basic-only">
             <input type="checkbox" id="strip_think_tag" name="strip think tag" />
             <label for="strip_think_tag">
               Remove &lt;think&gt; tag and its content from the response
-              <span class="info-icon" title="When enabled, any &lt;think&gt;...&lt;/think&gt; block produced by reasoning models will be stripped from the response before it is inserted into the composer.">i</span>
+              <span class="info-icon" title="When enabled, any &lt;think&gt;...&lt;/think&gt; block produced by reasoning models is removed from the output of Compose (email body and subject), Summarize and Reports.&#10;&#10;Organise Folder always removes it, since it has to read the model's JSON answer.&#10;&#10;In advanced mode this can be set separately for each feature.">i</span>
             </label>
           </div>
         </div>
 
         <div class="settings-section">
           <h2>Write</h2>
+          <div class="feature-endpoint-slot" data-feature="compose"></div>
+          <div class="form-group checkbox-row advanced-only">
+            <input type="checkbox" id="strip_think_tag_compose" data-strip-think-feature="compose" />
+            <label for="strip_think_tag_compose">
+              Remove &lt;think&gt; tag and its content from the response
+              <span class="info-icon" title="When enabled, any &lt;think&gt;...&lt;/think&gt; block produced by reasoning models is removed from the generated email body and subject.">i</span>
+            </label>
+          </div>
           <div class="form-group">
             <div class="label-with-action">
               <label for="llm_context">LLM Context:</label>
@@ -664,11 +678,18 @@
             </div>
             <textarea id="subject_context" name="subject context"> </textarea>
           </div>
-          <div class="feature-endpoint-slot" data-feature="compose"></div>
         </div>
 
         <div class="settings-section advanced-only">
           <h2>Summarize</h2>
+          <div class="feature-endpoint-slot" data-feature="summarize"></div>
+          <div class="form-group checkbox-row advanced-only">
+            <input type="checkbox" id="strip_think_tag_summarize" data-strip-think-feature="summarize" />
+            <label for="strip_think_tag_summarize">
+              Remove &lt;think&gt; tag and its content from the response
+              <span class="info-icon" title="When enabled, any &lt;think&gt;...&lt;/think&gt; block produced by reasoning models is removed from the summary.">i</span>
+            </label>
+          </div>
           <div class="form-group">
             <div class="label-with-action">
               <label for="summary_context">
@@ -684,11 +705,11 @@
             </div>
             <textarea id="summary_context" name="summary context"> </textarea>
           </div>
-          <div class="feature-endpoint-slot" data-feature="summarize"></div>
         </div>
 
         <div class="settings-section">
           <h2>Organise Folder</h2>
+          <div class="feature-endpoint-slot" data-feature="organise"></div>
 
           <div class="form-group advanced-only">
             <div class="label-with-action">
@@ -751,11 +772,25 @@
               <span class="info-icon" title="When enabled, organising opens a window listing each email with a dropdown to choose its destination folder; nothing moves until you click OK. When disabled, emails are moved automatically in batches.">i</span>
             </label>
           </div>
-          <div class="feature-endpoint-slot" data-feature="organise"></div>
         </div>
 
         <div class="settings-section">
           <h2>Reports</h2>
+          <div class="feature-endpoint-slot" data-feature="report"></div>
+          <div class="form-group checkbox-row advanced-only">
+            <input type="checkbox" id="strip_think_tag_report" data-strip-think-feature="report" />
+            <label for="strip_think_tag_report">
+              Remove &lt;think&gt; tag and its content from the response
+              <span class="info-icon" title="When enabled, any &lt;think&gt;...&lt;/think&gt; block produced by reasoning models is removed from the final report.">i</span>
+            </label>
+          </div>
+          <div class="form-group checkbox-row">
+            <input type="checkbox" id="report_disable_thinking" name="report disable thinking" />
+            <label for="report_disable_thinking">
+              Disable model thinking for reports
+              <span class="info-icon" title="Sends chat_template_kwargs.enable_thinking=false with every report request, which makes reasoning models such as Qwen3 (served by vLLM/SGLang) answer faster with fewer tokens. Applies to all report steps, including the final report. Leave off if your endpoint rejects unknown parameters.">i</span>
+            </label>
+          </div>
           <div class="form-group advanced-only">
             <div class="label-with-action">
               <label for="report_system_prompt">
@@ -803,14 +838,6 @@
             </label>
             <input type="number" id="report_max_total_body_chars" name="report max total body chars" min="1" step="1" />
           </div>
-          <div class="form-group checkbox-row">
-            <input type="checkbox" id="report_disable_thinking" name="report disable thinking" />
-            <label for="report_disable_thinking">
-              Disable model thinking for reports
-              <span class="info-icon" title="Sends chat_template_kwargs.enable_thinking=false with every report request, which makes reasoning models such as Qwen3 (served by vLLM/SGLang) answer faster with fewer tokens. Applies to all report steps, including the final report. Leave off if your endpoint rejects unknown parameters.">i</span>
-            </label>
-          </div>
-          <div class="feature-endpoint-slot" data-feature="report"></div>
         </div>
 
       </form>
