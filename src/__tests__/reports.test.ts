@@ -263,6 +263,53 @@ describe("The report popup", () => {
       toggleAccount(doc, "All accounts");
       expect(doc.getElementById("selected-accounts-name")?.textContent).toBe("Work");
     });
+
+    test("lists Local Folders when enabled in the options", async () => {
+      syncStore = { options: { reportIncludeLocalFolders: true } };
+      accountsListMock.mockResolvedValue([...ACCOUNTS, { id: "local", name: "Local Folders", type: "none" }]);
+      await loadPopup(FOLDER_SEARCH);
+      const doc = reportsDom.window.document;
+
+      (doc.getElementById("account-select-btn") as HTMLButtonElement).click();
+      expect(doc.getElementById("account-list")?.textContent).toContain("Local Folders");
+    });
+
+    test("hides Local Folders by default and never searches them", async () => {
+      accountsListMock.mockResolvedValue([
+        { id: "acc1", name: "Work", type: "imap" },
+        { id: "acc2", name: "Private", type: "imap" },
+        { id: "local", name: "Local Folders", type: "local" },
+      ]);
+      await loadPopup("");
+      const doc = reportsDom.window.document;
+
+      (doc.getElementById("account-select-btn") as HTMLButtonElement).click();
+      expect(doc.getElementById("account-list")?.textContent).not.toContain("Local Folders");
+      // "All accounts" now means the listed ones, so they are sent explicitly.
+      expect(submitAndGetRequest(doc, "status")).toMatchObject({ accountIds: ["acc1", "acc2"] });
+    });
+
+    test("disables the account picker when there is only one account", async () => {
+      accountsListMock.mockResolvedValue([
+        { id: "acc1", name: "Work", type: "imap" },
+        { id: "local", name: "Local Folders", type: "none" },
+      ]);
+      await loadPopup(FOLDER_SEARCH);
+      const doc = reportsDom.window.document;
+
+      expect((doc.getElementById("account-select-btn") as HTMLButtonElement).disabled).toBe(true);
+      expect(doc.getElementById("selected-accounts-name")?.textContent).toBe("Work");
+      // The single account still allows a single-folder search.
+      expect((doc.getElementById("folder-only") as HTMLInputElement).disabled).toBe(false);
+    });
+
+    test("keeps the account picker enabled with several accounts", async () => {
+      await loadPopup(FOLDER_SEARCH);
+
+      expect((reportsDom.window.document.getElementById("account-select-btn") as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    });
   });
 
   test("requests a report and renders it in the output area", async () => {

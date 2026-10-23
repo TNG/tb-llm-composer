@@ -86,6 +86,7 @@ export interface Options {
   reportMaxTotalBodyChars: number; // run-level ceiling on summed body characters served by get_messages
   reportDefaultDays: number; // prefilled "days in the past" value in the report window
   reportDisableThinking: boolean; // send chat_template_kwargs.enable_thinking=false on every report step
+  reportIncludeLocalFolders: boolean; // offer the "Local Folders" account in the report window's account list
   confirmMovesBeforeApplying: boolean; // show a confirmation popup to review moves; if false, move automatically
   showAdvancedOptions: boolean; // the settings below only apply while this is on
   featureEndpoints: Partial<Record<LlmFeature, FeatureEndpointOverride>>;
@@ -125,6 +126,7 @@ export const DEFAULT_OPTIONS: Options = {
   reportMaxTotalBodyChars: 60000,
   reportDefaultDays: 30,
   reportDisableThinking: false,
+  reportIncludeLocalFolders: false,
   confirmMovesBeforeApplying: true,
   showAdvancedOptions: false,
   featureEndpoints: {},

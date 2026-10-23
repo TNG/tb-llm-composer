@@ -33,10 +33,12 @@ let selectedFolder: { accountId: string; path: string; name: string } | null = f
   ? { accountId: folderContext.accountId, path: folderContext.path, name: folderName || folderContext.path }
   : null;
 
-type AccountInfo = { id: string; name: string };
-// Every mail account, in Thunderbird's order, and the ones the report searches. Defaults to the
-// account of the folder the window was opened from (or every account without a folder context).
+type AccountInfo = { id: string; name: string; type?: string };
+// The listed mail accounts, in Thunderbird's order, and the ones the report searches. Defaults to the
+// account of the folder the window was opened from (or every listed account without a folder context).
 let accounts: AccountInfo[] = [];
+// Whether `accounts` is every account; if some are hidden, "all listed" must be sent as an explicit list.
+let listsEveryAccount = true;
 let selectedAccountIds = new Set<string>();
 // The user's last single-folder choice, restored when going back from several accounts to one.
 let folderOnlyPreferred = true;
@@ -90,13 +92,17 @@ async function init(): Promise<void> {
   }
   if (selectedFolderNameEl) selectedFolderNameEl.textContent = selectedFolder?.name ?? "Choose folder";
   try {
-    accounts = await loadAccounts();
+    const allAccounts = await loadAccounts();
+    accounts = options.reportIncludeLocalFolders ? allAccounts : allAccounts.filter((a) => !isLocalFoldersAccount(a));
+    listsEveryAccount = accounts.length === allAccounts.length;
   } catch (e) {
     console.error("REPORT-WINDOW: could not load accounts", e);
   }
   const startAccountId = folderContext?.accountId;
   const hasStartAccount = !!startAccountId && accounts.some((a) => a.id === startAccountId);
   selectedAccountIds = new Set(hasStartAccount ? [startAccountId] : accounts.map((a) => a.id));
+  // The launch folder is in a hidden account (Local Folders), so it cannot be the single-folder target.
+  if (!hasStartAccount) folderOnlyPreferred = false;
   updateScopeControls();
 
   folderOnlyInput.addEventListener("change", () => {
@@ -287,6 +293,8 @@ function renderAccountSummary(): void {
   if (chosen.length === 1) label = chosen[0].name;
   else if (chosen.length > 1 && chosen.length < accounts.length) label = `${chosen[0].name} + ${chosen.length - 1}`;
   if (selectedAccountsNameEl) selectedAccountsNameEl.textContent = label;
+  // With a single account there is nothing to choose.
+  if (accountSelectBtn) accountSelectBtn.disabled = accounts.length <= 1;
   if (accountSelectBtn) {
     accountSelectBtn.title = chosen.map((a) => a.name).join(", ") || "Choose which accounts to search";
   }
@@ -378,11 +386,16 @@ function accountRow(
   return row;
 }
 
+/** Thunderbird's "Local Folders" pseudo-account ("none" in older APIs, "local" in MV3). */
+function isLocalFoldersAccount(account: AccountInfo): boolean {
+  return account.type === "none" || account.type === "local";
+}
+
 /** Load the mail accounts, falling back to the background script if the direct API call fails. */
 async function loadAccounts(): Promise<AccountInfo[]> {
   try {
     const list = await browser.accounts.list(false);
-    return list.map((a) => ({ id: a.id, name: a.name }));
+    return list.map((a) => ({ id: a.id, name: a.name, type: a.type }));
   } catch (directError) {
     console.warn("REPORT-WINDOW: direct account lookup failed, trying background fallback:", directError);
   }
@@ -536,9 +549,10 @@ async function onCreate(): Promise<void> {
     return;
   }
   const targetFolder = folderOnly ? selectedFolder : null;
-  // Every account selected = no restriction, which also covers accounts added after the window opened.
+  // Every account selected (none hidden by the options) = no restriction, which also covers accounts
+  // added after the window opened.
   const chosenAccounts = accounts.filter((a) => selectedAccountIds.has(a.id));
-  const restrictAccounts = chosenAccounts.length < accounts.length;
+  const restrictAccounts = chosenAccounts.length < accounts.length || !listsEveryAccount;
   // With a report already present, keep talking to the same agent instead of starting over.
   const continueConversation = hasReport;
   // Only meaningful when refining an existing report; the checkbox is disabled until then.
