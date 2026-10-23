@@ -13,6 +13,7 @@ import {
   type LlmParameters,
   type Options,
   type PreFilterRule,
+  type ThinkTagFeature,
 } from "./optionsParams";
 import { PRE_FILTER_FIELDS, PRE_FILTER_OPERATORS, toPreFilterField, toPreFilterOperator } from "./preFilters";
 import { getInputElement } from "./utils";
@@ -108,6 +109,9 @@ for (const { id, key } of PROMPT_FIELDS) {
 document.querySelector("#use_last_mails")?.addEventListener("change", updateUseLastMails);
 document.querySelector("#recent_mails_count")?.addEventListener("change", updateRecentMailsCount);
 document.querySelector("#strip_think_tag")?.addEventListener("change", updateStripThinkTag);
+for (const { feature, input } of stripThinkCheckboxes()) {
+  input.addEventListener("change", () => updateFeatureStripThinkTag(feature, input));
+}
 document.querySelector("#context_window")?.addEventListener("change", updateContextWindow);
 document.querySelector("#other_options")?.addEventListener("change", updateOtherOptions);
 document.querySelector("#report_default_days")?.addEventListener("change", updateReportDefaultDays);
@@ -409,8 +413,33 @@ async function updateRecentMailsCount(event: Event) {
 
 async function updateStripThinkTag(event: Event) {
   const stripThinkTagInput = event.target as HTMLInputElement;
+  let updated: Options | undefined;
   await updateStoredOptions((options) => {
     options.strip_think_tag = stripThinkTagInput.checked;
+    updated = options;
+  });
+  // Per-feature checkboxes that were never set follow the global value.
+  if (updated) renderStripThinkCheckboxes(updated);
+}
+
+/** Per-feature strip-<think> checkboxes (advanced mode), keyed by feature. */
+function stripThinkCheckboxes(): Array<{ feature: ThinkTagFeature; input: HTMLInputElement }> {
+  return Array.from(document.querySelectorAll<HTMLInputElement>("input[data-strip-think-feature]")).map((input) => ({
+    feature: input.dataset.stripThinkFeature as ThinkTagFeature,
+    input,
+  }));
+}
+
+/** Show each feature's own setting, or the global one where it was never set. */
+function renderStripThinkCheckboxes(options: Options): void {
+  for (const { feature, input } of stripThinkCheckboxes()) {
+    input.checked = options.stripThinkTagByFeature?.[feature] ?? options.strip_think_tag ?? true;
+  }
+}
+
+async function updateFeatureStripThinkTag(feature: ThinkTagFeature, input: HTMLInputElement) {
+  await updateStoredOptions((options) => {
+    options.stripThinkTagByFeature = { ...options.stripThinkTagByFeature, [feature]: input.checked };
   });
 }
 
@@ -620,6 +649,7 @@ export async function restoreOptions(): Promise<void> {
   getInputElement("#use_last_mails").checked = options.include_recent_mails;
   getInputElement("#recent_mails_count").value = `${options.recentMailsCount}`;
   getInputElement("#strip_think_tag").checked = options.strip_think_tag ?? true;
+  renderStripThinkCheckboxes(options);
   getInputElement("#confirm_moves").checked = options.confirmMovesBeforeApplying ?? true;
   main.otherOptions.value = JSON.stringify(options.params, null, 2);
   for (const { id, key } of PROMPT_FIELDS) {

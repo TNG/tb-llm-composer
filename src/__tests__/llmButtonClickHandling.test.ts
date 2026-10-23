@@ -278,6 +278,24 @@ describe("Think-tag stripping in summarize", () => {
 
     expect(openSummaryWindow).toHaveBeenCalledWith(MOCK_TAB_ID, { summary: RESPONSE_WITH_THINK, openPoints: [] });
   });
+
+  test.each([
+    [true, RESPONSE_WITH_THINK],
+    [false, RESPONSE_WITHOUT_THINK],
+  ])("honours the summarize-specific setting only in advanced mode (advanced=%s)", async (advanced, expected) => {
+    mockBrowser({
+      options: {
+        strip_think_tag: true,
+        showAdvancedOptions: advanced,
+        stripThinkTagByFeature: { summarize: false, compose: true },
+      },
+    });
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse(RESPONSE_WITH_THINK));
+
+    await llmActionClickHandler(MOCK_TAB, async (tabId: number) => summarize(tabId, mockPreviousConversation));
+
+    expect(openSummaryWindow).toHaveBeenCalledWith(MOCK_TAB_ID, { summary: expected, openPoints: [] });
+  });
 });
 
 describe("writeSummaryAnswer", () => {
