@@ -121,6 +121,7 @@ document.querySelector("#report_max_message_bodies")?.addEventListener("change",
 document.querySelector("#report_max_total_body_chars")?.addEventListener("change", updateReportMaxTotalBodyChars);
 document.querySelector("#confirm_moves")?.addEventListener("change", updateConfirmMovesBeforeApplying);
 document.querySelector("#report_disable_thinking")?.addEventListener("change", updateReportDisableThinking);
+document.querySelector("#report_include_local_folders")?.addEventListener("change", updateReportIncludeLocalFolders);
 document.querySelector("#add-folder-rule-btn")?.addEventListener("click", addFolderRuleRow);
 document.querySelector("#add-prefilter-rule-btn")?.addEventListener("click", addPreFilterRuleRow);
 document.querySelector("#refresh-folder-paths-btn")?.addEventListener("click", refreshFolderPaths);
@@ -450,6 +451,13 @@ async function updateReportDisableThinking(event: Event) {
   });
 }
 
+async function updateReportIncludeLocalFolders(event: Event) {
+  const input = event.target as HTMLInputElement;
+  await updateStoredOptions((options) => {
+    options.reportIncludeLocalFolders = input.checked;
+  });
+}
+
 async function updateConfirmMovesBeforeApplying(event: Event) {
   const input = event.target as HTMLInputElement;
   await updateStoredOptions((options) => {
@@ -661,6 +669,7 @@ export async function restoreOptions(): Promise<void> {
   getInputElement("#report_max_message_bodies").value = `${options.reportMaxMessageBodies}`;
   getInputElement("#report_max_total_body_chars").value = `${options.reportMaxTotalBodyChars}`;
   getInputElement("#report_disable_thinking").checked = options.reportDisableThinking;
+  getInputElement("#report_include_local_folders").checked = options.reportIncludeLocalFolders;
   for (const [feature, ui] of featureEndpointUis) {
     await renderFeatureEndpoint(ui, { ...emptyOverride(), ...options.featureEndpoints?.[feature] });
   }

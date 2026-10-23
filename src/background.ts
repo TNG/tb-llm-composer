@@ -432,7 +432,7 @@ browser.runtime.onMessage.addListener((message: unknown) => {
       return getAllFolderPaths(message.accountId);
 
     case "get-accounts":
-      return browser.accounts.list(false).then((list) => list.map((a) => ({ id: a.id, name: a.name })));
+      return browser.accounts.list(false).then((list) => list.map((a) => ({ id: a.id, name: a.name, type: a.type })));
 
     case "get-active-folder":
       return getActiveMailFolder().then((folder): { folder: ReportFolderPayload } => ({

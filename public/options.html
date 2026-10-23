@@ -810,6 +810,13 @@
             <label for="report_default_days">Default days in the past:</label>
             <input type="number" id="report_default_days" name="report default days" min="1" step="1" />
           </div>
+          <div class="form-group checkbox-row">
+            <input type="checkbox" id="report_include_local_folders" name="report include local folders" />
+            <label for="report_include_local_folders">
+              Include Local Folders in the report's account list
+              <span class="info-icon" title="When disabled, the Local Folders account is neither listed nor searched by reports.">i</span>
+            </label>
+          </div>
           <div class="form-group form-row">
             <label for="report_max_search_results">
               Max search results per query:

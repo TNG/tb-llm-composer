@@ -119,7 +119,9 @@ write a report.
 2. Set the **scope**:
    - **Days in the past** — how far back to search.
    - **Accounts** — which accounts to search (defaults to the current folder's account). Tick
-     several, or **All accounts**.
+     several, or **All accounts**. The picker is disabled when there is only one account.
+     *Local Folders* is hidden (and never searched) unless you tick **Include Local Folders in
+     the report's account list** on the options page.
    - **All folders** ↔ **Single folder** toggle; when *Single folder* is on, use the
      picker to choose which one of that account's folders (defaults to the current folder).
      With several accounts ticked, the toggle is locked to *All folders*.

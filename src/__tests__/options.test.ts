@@ -155,6 +155,19 @@ describe("The options page", () => {
     });
   });
 
+  test("sets the reportIncludeLocalFolders option on change", async () => {
+    const box = optionsDom.window.document.getElementById("report_include_local_folders") as HTMLInputElement;
+    expect(box).not.toBeNull();
+
+    expect(box.checked).toBe(false);
+    box.checked = true;
+    box.dispatchEvent(new optionsDom.window.Event("change"));
+
+    await waitFor(() => {
+      expect((browserStorage.options as Options).reportIncludeLocalFolders).toBe(true);
+    });
+  });
+
   test("throws error if params is not json", async () => {
     const otherOptionsEl = optionsDom.window.document.getElementById("other_options") as HTMLInputElement;
     expect(otherOptionsEl).not.toBeNull();
