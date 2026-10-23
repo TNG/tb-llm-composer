@@ -43,6 +43,8 @@ export interface OrganiseResult {
 export interface OrganiseFolderOption {
   path: string;
   name: string;
+  /** Account the path was resolved in, so applying the plan later moves into that same account. */
+  accountId?: string;
 }
 
 /** One email in the confirmation popup, with the folder the model proposed (null = keep in place). */
@@ -210,10 +212,18 @@ export async function getFoldersForAccount(
   }
 }
 
-/** Resolve a folderPath string like "/INBOX/Work" to a MailFolder object. */
-export async function resolveFolderPath(folderPath: string): Promise<browser.folders.MailFolder | null> {
+/**
+ * Resolve a folderPath string like "/INBOX/Work" to a MailFolder object. Paths are only unique within
+ * an account (every IMAP account has "/INBOX"), so pass `accountId` to look in that account only;
+ * without it the first account containing the path wins.
+ */
+export async function resolveFolderPath(
+  folderPath: string,
+  accountId?: string,
+): Promise<browser.folders.MailFolder | null> {
   const accounts = await browser.accounts.list(true);
   for (const account of accounts) {
+    if (accountId && account.id !== accountId) continue;
     const foundInRoot = account.rootFolder?.path === folderPath ? account.rootFolder : null;
     if (foundInRoot) return foundInRoot;
 
@@ -222,6 +232,15 @@ export async function resolveFolderPath(folderPath: string): Promise<browser.fol
     if (found) return found;
   }
   return null;
+}
+
+/** Resolve `folderPath` in `accountId` if it exists there, else in the first account that has it. */
+export async function resolveFolderPathPreferringAccount(
+  folderPath: string,
+  accountId: string | undefined,
+): Promise<browser.folders.MailFolder | null> {
+  const own = accountId ? await resolveFolderPath(folderPath, accountId) : null;
+  return own ?? (await resolveFolderPath(folderPath));
 }
 
 function findFolderInTree(folders: browser.folders.MailFolder[], path: string): browser.folders.MailFolder | null {
@@ -233,12 +252,13 @@ function findFolderInTree(folders: browser.folders.MailFolder[], path: string): 
   return null;
 }
 
-/** Return a flat list of all folder paths across all accounts (for diagnostics / options UI). */
-export async function getAllFolderPaths(): Promise<string[]> {
+/** Return a flat list of all folder paths across all accounts, or only `accountId`'s (for diagnostics / options UI). */
+export async function getAllFolderPaths(accountId?: string): Promise<string[]> {
   const accounts = await browser.accounts.list(true);
   const paths = new Set<string>();
 
   for (const account of accounts) {
+    if (accountId && account.id !== accountId) continue;
     if (account.rootFolder?.path) {
       paths.add(account.rootFolder.path);
     }
@@ -379,9 +399,14 @@ async function prepareOrganise(): Promise<PreparedOrganise | null> {
     throw new Error("No folder organisation rules configured. Please add rules in the extension options.");
   }
 
+  // Rule paths carry no account, and paths like "/INBOX/Work" can exist in several accounts: resolve
+  // them in the displayed folder's account first so mail is never moved into another account.
+  const sourceFolder = await getActiveMailFolder();
+  const resolveTarget = (path: string) => resolveFolderPathPreferringAccount(path, sourceFolder?.accountId);
+
   // Resolve destination folders up front so we can warn early about bad paths.
   const resolvedFolders: Array<browser.folders.MailFolder | null> = await Promise.all(
-    rules.map((r: FolderRule) => resolveFolderPath(r.folderPath)),
+    rules.map((r: FolderRule) => resolveTarget(r.folderPath)),
   );
 
   // Pre-filter targets are resolved separately: they are addressed by path (not by rule index) and a
@@ -389,7 +414,7 @@ async function prepareOrganise(): Promise<PreparedOrganise | null> {
   const preFilterTargetPaths = Array.from(
     new Set(preFilterRules.map((rule) => rule.targetFolderPath.trim()).filter((path) => path.length > 0)),
   );
-  const resolvedPreFilterTargets = await Promise.all(preFilterTargetPaths.map((path) => resolveFolderPath(path)));
+  const resolvedPreFilterTargets = await Promise.all(preFilterTargetPaths.map(resolveTarget));
 
   const unresolvedPaths = [
     ...rules.filter((_: FolderRule, i: number) => resolvedFolders[i] === null).map((r: FolderRule) => r.folderPath),
@@ -406,8 +431,6 @@ async function prepareOrganise(): Promise<PreparedOrganise | null> {
     );
   }
 
-  // Get active mail tab and its current folder.
-  const sourceFolder = await getActiveMailFolder();
   if (!sourceFolder) {
     throw new Error("No folder is currently displayed. Open a mail folder first.");
   }
@@ -718,6 +741,7 @@ export async function planOrganiseCurrentFolder(
   const folders: OrganiseFolderOption[] = rules.map((rule, index) => ({
     path: rule.folderPath,
     name: resolvedFolders[index]?.name ?? rule.folderPath,
+    accountId: resolvedFolders[index]?.accountId,
   }));
   // The popup addresses destinations by index into `folders`, so a pre-filter target that is not also
   // an organise rule needs its own slot appended (index-aligned with `planResolvedFolders`).
@@ -730,7 +754,8 @@ export async function planOrganiseCurrentFolder(
   prepared.preFilterTargetPaths.forEach((path, index) => {
     if (indexByPath.has(path)) return;
     indexByPath.set(path, folders.length);
-    folders.push({ path, name: prepared.resolvedPreFilterTargets[index]?.name ?? path });
+    const target = prepared.resolvedPreFilterTargets[index];
+    folders.push({ path, name: target?.name ?? path, accountId: target?.accountId });
     planResolvedFolders.push(prepared.resolvedPreFilterTargets[index]);
   });
 

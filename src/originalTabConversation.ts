@@ -1,3 +1,5 @@
+import { getPlainTextSignature, replaceForeignSignatures } from "./emailHelpers";
+
 import Tab = browser.tabs.Tab;
 
 const cacheName = "ORIGINAL_TAB_CONVERSATION";
@@ -12,6 +14,29 @@ export async function getOriginalTabConversationCacheContent(): Promise<{
 export async function getOriginalTabConversation(tabId: number): Promise<string | undefined> {
   console.log("LLM-CONVO-CACHE: Retrieving original convo for tab", tabId);
   return (await getOriginalTabConversationCacheContent())[tabId];
+}
+
+/**
+ * The cached reply quote for `tabId`, with any other identity's signature replaced by `identity`'s.
+ * The cache is filled when the composer opens, so switching the From identity afterwards would otherwise
+ * write the previous identity's signature back into the reply.
+ */
+export async function getOriginalTabConversationForIdentity(
+  tabId: number,
+  identity: browser.identities.MailIdentity,
+): Promise<string | undefined> {
+  const cached = await getOriginalTabConversation(tabId);
+  if (!cached) return cached;
+  let others: string[] = [];
+  try {
+    others = (await browser.identities.list())
+      .filter((other) => other.id !== identity.id)
+      .map(getPlainTextSignature)
+      .filter((signature): signature is string => !!signature);
+  } catch (e) {
+    console.warn("LLM-CONVO-CACHE: could not list identities to fix up the reply signature", e);
+  }
+  return replaceForeignSignatures(cached, getPlainTextSignature(identity), others);
 }
 
 export async function updateOriginalTabCache(tabId: number, content: string): Promise<void> {

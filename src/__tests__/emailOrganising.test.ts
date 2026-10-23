@@ -42,7 +42,13 @@ vi.mock("../optionsParams", async () => {
   };
 });
 
-import { organiseCurrentFolder, planOrganiseCurrentFolder } from "../emailOrganising";
+import {
+  getAllFolderPaths,
+  organiseCurrentFolder,
+  planOrganiseCurrentFolder,
+  resolveFolderPath,
+  resolveFolderPathPreferringAccount,
+} from "../emailOrganising";
 
 const originalBrowser = global.browser;
 
@@ -649,8 +655,8 @@ describe("emailOrganising", () => {
     expect(messagesMove).not.toHaveBeenCalled();
     // The pre-filter target is not an organise rule, so it gets its own slot appended to the folders.
     expect(plan?.folders).toEqual([
-      { path: "/target", name: "Target" },
-      { path: "/newsletters", name: "Newsletters" },
+      { path: "/target", name: "Target", accountId: "acc-1" },
+      { path: "/newsletters", name: "Newsletters", accountId: "acc-1" },
     ]);
     const newsletter = plan?.entries.find((entry) => entry.messageId === 1);
     expect(newsletter?.proposedFolderIndex).toBe(1);
@@ -672,5 +678,41 @@ describe("emailOrganising", () => {
       /Could not find these folder paths: \/nope/,
     );
     expect(sendContentToLlmMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("folder lookup across accounts", () => {
+  // Two IMAP accounts with the same folder layout: paths alone are ambiguous.
+  const folder = (accountId: string, path: string) => ({ id: `${accountId}:${path}`, accountId, path, name: path });
+  beforeEach(() => {
+    global.browser = {
+      accounts: {
+        list: vi.fn().mockResolvedValue([
+          { id: "work", folders: [folder("work", "/INBOX"), folder("work", "/Archive")] },
+          { id: "home", folders: [folder("home", "/INBOX"), folder("home", "/Family")] },
+        ]),
+      },
+    } as unknown as typeof browser;
+  });
+
+  afterAll(() => {
+    global.browser = originalBrowser;
+  });
+
+  test("resolveFolderPath looks only in the given account", async () => {
+    expect((await resolveFolderPath("/INBOX"))?.id).toBe("work:/INBOX");
+    expect((await resolveFolderPath("/INBOX", "home"))?.id).toBe("home:/INBOX");
+    expect(await resolveFolderPath("/Archive", "home")).toBeNull();
+  });
+
+  test("resolveFolderPathPreferringAccount falls back to any account", async () => {
+    expect((await resolveFolderPathPreferringAccount("/INBOX", "home"))?.id).toBe("home:/INBOX");
+    expect((await resolveFolderPathPreferringAccount("/Archive", "home"))?.id).toBe("work:/Archive");
+    expect((await resolveFolderPathPreferringAccount("/Family", undefined))?.id).toBe("home:/Family");
+  });
+
+  test("getAllFolderPaths can be limited to one account", async () => {
+    expect(await getAllFolderPaths("home")).toEqual(["/INBOX", "/Family"]);
+    expect(await getAllFolderPaths()).toEqual(["/INBOX", "/Archive", "/Family"]);
   });
 });

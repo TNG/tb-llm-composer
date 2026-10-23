@@ -42,7 +42,9 @@ Turn a short instruction into a full email draft.
 The extension gathers context — your instruction, the reply quote (if any), and
 optionally your recent sent mail to the same recipient — asks the LLM to write the
 email, and replaces the body with the result. Your signature and any quoted reply are
-re-appended. A subject is generated when the field is empty.
+re-appended. The signature always belongs to the identity currently selected in **From**,
+even if you switched it after opening a reply. Recent sent mail is only taken from that
+identity's own account. A subject is generated when the field is empty.
 
 **Tips**
 
@@ -84,6 +86,9 @@ On the options page, under **Organise Folder**, add one **rule** per destination
 - **Description for the LLM** — free text telling the model what belongs there,
   e.g. *"Invoices, receipts and billing."*
 
+Folder paths have no account. With several accounts, a path is looked up in the account of the
+folder being organised first, so mail never moves into another account's folder of the same name.
+
 Emails that don't clearly match any rule are left where they are.
 
 ### Running it
@@ -113,8 +118,11 @@ write a report.
 1. Press `Ctrl+Alt+R`, or click the **LLM Composer** toolbar button → **Create Report…**, to open the report window.
 2. Set the **scope**:
    - **Days in the past** — how far back to search.
+   - **Accounts** — which accounts to search (defaults to the current folder's account). Tick
+     several, or **All accounts**.
    - **All folders** ↔ **Single folder** toggle; when *Single folder* is on, use the
-     picker to choose which one (defaults to the current folder).
+     picker to choose which one of that account's folders (defaults to the current folder).
+     With several accounts ticked, the toggle is locked to *All folders*.
 3. Type your request, e.g.
    *"A to-do list of open items addressed to me"* or
    *"How long Alice took to reply over the last 120 days."*

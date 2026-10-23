@@ -3,7 +3,47 @@ import ComposeRecipientList = browser.compose.ComposeRecipientList;
 import MessagePart = browser.messages.MessagePart;
 
 import { describe, expect, test } from "vitest";
-import { getContentFromEmailParts, getFirstRecipientMailAddress } from "../emailHelpers";
+import {
+  getContentFromEmailParts,
+  getFirstRecipientMailAddress,
+  getPlainTextSignature,
+  replaceForeignSignatures,
+} from "../emailHelpers";
+
+describe("getPlainTextSignature", () => {
+  test.each([
+    [{}, undefined],
+    [{ signature: "  " }, undefined],
+    [{ signature: "Jane\nACME" }, "Jane\nACME"],
+    [{ signature: "Jane\nACME", signatureIsPlainText: true }, "Jane\nACME"],
+    [
+      { signature: "<p>Jane</p><div>ACME &amp; Co<br>Berlin</div>", signatureIsPlainText: false },
+      "Jane\nACME & Co\nBerlin",
+    ],
+  ])("turns %j into %j", (identity, expected) => {
+    expect(getPlainTextSignature(identity as browser.identities.MailIdentity)).toBe(expected);
+  });
+});
+
+describe("replaceForeignSignatures", () => {
+  const quote = (sig: string) => `\n\n-- \n${sig}\n\nOn Monday Bob wrote:\n> Hi`;
+
+  test("swaps another identity's signature for the current one", () => {
+    expect(replaceForeignSignatures(quote("Old Sig"), "New Sig", ["Old Sig"])).toBe(quote("New Sig"));
+  });
+
+  test("drops the old signature with its delimiter when the current identity has none", () => {
+    expect(replaceForeignSignatures(quote("Old Sig"), undefined, ["Old Sig"])).toBe("\n\n\nOn Monday Bob wrote:\n> Hi");
+  });
+
+  test("keeps the content when it already carries the current signature", () => {
+    expect(replaceForeignSignatures(quote("New Sig"), "New Sig", ["Old Sig", "New Sig"])).toBe(quote("New Sig"));
+  });
+
+  test("inserts a signature containing $ literally", () => {
+    expect(replaceForeignSignatures(quote("Old"), "Cost $& co", ["Old"])).toBe(quote("Cost $& co"));
+  });
+});
 
 describe("The getFirstRecipientMailAddress", () => {
   test.each([

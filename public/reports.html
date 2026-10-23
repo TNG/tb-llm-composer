@@ -191,6 +191,15 @@
       #folder-picker[hidden] {
         display: none;
       }
+      /* Account rows are labels wrapping a checkbox, so the whole row toggles the account. */
+      .account-row input[type="checkbox"] {
+        margin: 0;
+        flex: 0 0 auto;
+      }
+      .account-row.all-accounts {
+        border-bottom: 1px solid var(--border);
+        border-radius: 4px 4px 0 0;
+      }
       /* "Refine without search" sits at the far right of the scope row and only appears with a report. */
       #refine-control {
         margin-left: auto;
@@ -570,8 +579,25 @@
         <input type="number" id="days" min="1" step="1" value="30" aria-label="Number of days in the past to search" />
       </span>
 
-      <!-- Folder scope: All folders (left) ↔ Single folder (right). #folder-only checked = single folder. -->
+      <!-- Accounts to search: a multi-select dropdown (defaults to the current folder's account). -->
       <span class="control-inline">
+        Accounts:
+        <button
+          type="button"
+          id="account-select-btn"
+          class="folder-select-btn"
+          title="Choose which accounts to search"
+          aria-haspopup="true"
+          aria-expanded="false"
+        >
+          <span id="selected-accounts-name" class="selected-folder-name">Current account</span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+      </span>
+
+      <!-- Folder scope: All folders (left) ↔ Single folder (right). #folder-only checked = single folder.
+           Disabled while several accounts are selected (a single folder belongs to one account). -->
+      <span class="control-inline" id="folder-scope-control">
         <span class="toggle-label">All folders</span>
         <label class="switch" title="Toggle between searching all folders and a single folder">
           <input type="checkbox" id="folder-only" checked aria-label="Search a single folder only" />
@@ -596,6 +622,7 @@
         </label>
       </span>
     </div>
+    <div id="account-list" class="model-list" hidden></div>
     <div id="folder-list" class="model-list" hidden></div>
 
     <div class="saved-row">

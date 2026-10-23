@@ -1,3 +1,4 @@
+import { getPlainTextSignature } from "./emailHelpers";
 import { type LlmApiRequestMessage, LlmRoles } from "./llmConnection";
 
 import { DEFAULT_OPTIONS, type Options } from "./optionsParams";
@@ -64,7 +65,9 @@ export async function getEmailGenerationPrompt(
   const bodyContent = getBodyContent(tabDetails);
 
   return {
-    content: bodyContent ? buildEmailPrompt(bodyContent, identity.signature, previousConversation) : DEFAULT_PROMPT,
+    content: bodyContent
+      ? buildEmailPrompt(bodyContent, getPlainTextSignature(identity), previousConversation)
+      : DEFAULT_PROMPT,
     role: LlmRoles.USER,
   };
 }

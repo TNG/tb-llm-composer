@@ -33,12 +33,24 @@ let selectedFolder: { accountId: string; path: string; name: string } | null = f
   ? { accountId: folderContext.accountId, path: folderContext.path, name: folderName || folderContext.path }
   : null;
 
+type AccountInfo = { id: string; name: string };
+// Every mail account, in Thunderbird's order, and the ones the report searches. Defaults to the
+// account of the folder the window was opened from (or every account without a folder context).
+let accounts: AccountInfo[] = [];
+let selectedAccountIds = new Set<string>();
+// The user's last single-folder choice, restored when going back from several accounts to one.
+let folderOnlyPreferred = true;
+
 const folderOnlyInput = getInputElement("#folder-only");
 const daysInput = getInputElement("#days");
 const folderSelectBtn = document.querySelector<HTMLButtonElement>("#folder-select-btn");
 const selectedFolderNameEl = document.querySelector<HTMLSpanElement>("#selected-folder-name");
 const folderPickerEl = document.querySelector<HTMLElement>("#folder-picker");
 const folderListEl = document.querySelector<HTMLDivElement>("#folder-list");
+const accountSelectBtn = document.querySelector<HTMLButtonElement>("#account-select-btn");
+const selectedAccountsNameEl = document.querySelector<HTMLSpanElement>("#selected-accounts-name");
+const accountListEl = document.querySelector<HTMLDivElement>("#account-list");
+const folderScopeControl = document.querySelector<HTMLElement>("#folder-scope-control");
 const promptInput = document.querySelector<HTMLTextAreaElement>("#prompt");
 const outputArea = document.querySelector<HTMLElement>("#report-output");
 const statusEl = document.querySelector<HTMLParagraphElement>("#status");
@@ -73,15 +85,32 @@ async function init(): Promise<void> {
   daysInput.value = `${options.reportDefaultDays}`;
 
   if (!folderContext) {
-    // No folder context (e.g. opened without an active mail folder): search everywhere.
-    folderOnlyInput.checked = false;
-    folderOnlyInput.disabled = true;
+    // No folder context (e.g. opened without an active mail folder): search every folder by default.
+    folderOnlyPreferred = false;
   }
-  if (selectedFolderNameEl) selectedFolderNameEl.textContent = selectedFolder?.name ?? "Current folder";
+  if (selectedFolderNameEl) selectedFolderNameEl.textContent = selectedFolder?.name ?? "Choose folder";
+  try {
+    accounts = await loadAccounts();
+  } catch (e) {
+    console.error("REPORT-WINDOW: could not load accounts", e);
+  }
+  const startAccountId = folderContext?.accountId;
+  const hasStartAccount = !!startAccountId && accounts.some((a) => a.id === startAccountId);
+  selectedAccountIds = new Set(hasStartAccount ? [startAccountId] : accounts.map((a) => a.id));
   updateScopeControls();
 
-  folderOnlyInput.addEventListener("change", updateScopeControls);
+  folderOnlyInput.addEventListener("change", () => {
+    folderOnlyPreferred = folderOnlyInput.checked;
+    updateScopeControls();
+  });
   folderSelectBtn?.addEventListener("click", toggleFolderList);
+  accountSelectBtn?.addEventListener("click", toggleAccountList);
+  accountListEl?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeAccountList();
+      accountSelectBtn?.focus();
+    }
+  });
   createBtn.addEventListener("click", onCreate);
   // Enter sends the prompt (chat-style); Shift+Enter inserts a newline.
   promptInput?.addEventListener("keydown", (event) => {
@@ -221,12 +250,145 @@ async function onDeleteSavedPrompt(): Promise<void> {
   setStatus(`Deleted prompt "${name}".`);
 }
 
-/** Keep the folder picker consistent with the folder-only toggle. */
+/** The one selected account, or null when several are selected (or the account list is unavailable). */
+function singleSelectedAccount(): string | null {
+  return selectedAccountIds.size === 1 ? [...selectedAccountIds][0] : null;
+}
+
+/**
+ * Keep the folder toggle and picker consistent with the account selection: a single folder belongs to
+ * one account, so several selected accounts force (and lock) an all-folders search.
+ */
 function updateScopeControls(): void {
-  const single = folderOnlyInput.checked && !!folderContext;
+  const account = singleSelectedAccount();
+  folderOnlyInput.disabled = account === null;
+  folderOnlyInput.checked = account !== null && folderOnlyPreferred;
+  if (folderScopeControl) {
+    folderScopeControl.title = account === null ? "Several accounts are always searched across all their folders" : "";
+  }
+  // The picked folder must live in the searched account.
+  if (account !== null && selectedFolder && selectedFolder.accountId !== account) {
+    selectedFolder = null;
+    if (selectedFolderNameEl) selectedFolderNameEl.textContent = "Choose folder";
+  }
+  const single = folderOnlyInput.checked;
   // The folder picker only applies to a single-folder search.
   if (folderPickerEl) folderPickerEl.hidden = !single;
   if (!single) closeFolderList();
+  renderAccountSummary();
+}
+
+// ── Account picker ──────────────────────────────────────────────────────────────
+
+/** Show the selected accounts on the picker button, e.g. "Work", "Work + 1" or "All accounts". */
+function renderAccountSummary(): void {
+  const chosen = accounts.filter((a) => selectedAccountIds.has(a.id));
+  let label = "All accounts";
+  if (chosen.length === 1) label = chosen[0].name;
+  else if (chosen.length > 1 && chosen.length < accounts.length) label = `${chosen[0].name} + ${chosen.length - 1}`;
+  if (selectedAccountsNameEl) selectedAccountsNameEl.textContent = label;
+  if (accountSelectBtn) {
+    accountSelectBtn.title = chosen.map((a) => a.name).join(", ") || "Choose which accounts to search";
+  }
+}
+
+/** Accordion toggle for the account list (mirrors the folder list). */
+function toggleAccountList(): void {
+  if (!accountListEl) return;
+  if (accountListEl.childElementCount > 0) {
+    closeAccountList();
+    return;
+  }
+  closeFolderList();
+  renderAccountList();
+}
+
+function closeAccountList(): void {
+  accountListEl?.replaceChildren();
+  accountListEl?.setAttribute("hidden", "");
+  accountSelectBtn?.setAttribute("aria-expanded", "false");
+}
+
+/** Render an "All accounts" row plus one checkbox row per account. */
+function renderAccountList(focusIndex?: number): void {
+  if (!accountListEl) return;
+  accountListEl.replaceChildren();
+  accountListEl.removeAttribute("hidden");
+  accountSelectBtn?.setAttribute("aria-expanded", "true");
+  if (accounts.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "model-row";
+    empty.textContent = "No accounts found — every account is searched.";
+    accountListEl.appendChild(empty);
+    return;
+  }
+
+  const rows: HTMLLabelElement[] = [];
+  if (accounts.length > 1) {
+    const allChecked = accounts.every((a) => selectedAccountIds.has(a.id));
+    rows.push(
+      accountRow("All accounts", allChecked, "all-accounts", (checked) => {
+        // Unticking "All" falls back to the launch account (or the first one) — never to nothing.
+        const fallback = folderContext?.accountId ?? accounts[0].id;
+        selectedAccountIds = new Set(checked ? accounts.map((a) => a.id) : [fallback]);
+      }),
+    );
+  }
+  for (const account of accounts) {
+    rows.push(
+      accountRow(account.name, selectedAccountIds.has(account.id), "", (checked) => {
+        if (checked) {
+          selectedAccountIds.add(account.id);
+        } else if (selectedAccountIds.size > 1) {
+          selectedAccountIds.delete(account.id);
+        } else {
+          setStatus("Select at least one account.", 4000);
+        }
+      }),
+    );
+  }
+  rows.forEach((row, index) => {
+    row.querySelector("input")?.addEventListener("change", () => {
+      // Re-rendering replaces the focused checkbox; keep keyboard focus on the same row.
+      renderAccountList(index);
+      updateScopeControls();
+    });
+  });
+  accountListEl.append(...rows);
+  if (focusIndex !== undefined) rows[focusIndex]?.querySelector("input")?.focus();
+}
+
+/** One checkbox row for the account list. */
+function accountRow(
+  label: string,
+  checked: boolean,
+  extraClass: string,
+  onToggle: (checked: boolean) => void,
+): HTMLLabelElement {
+  const row = document.createElement("label");
+  row.className = `model-row account-row ${extraClass}`.trim();
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.checked = checked;
+  box.addEventListener("change", () => onToggle(box.checked));
+  const name = document.createElement("span");
+  name.className = "model-id";
+  name.textContent = label;
+  row.append(box, name);
+  return row;
+}
+
+/** Load the mail accounts, falling back to the background script if the direct API call fails. */
+async function loadAccounts(): Promise<AccountInfo[]> {
+  try {
+    const list = await browser.accounts.list(false);
+    return list.map((a) => ({ id: a.id, name: a.name }));
+  } catch (directError) {
+    console.warn("REPORT-WINDOW: direct account lookup failed, trying background fallback:", directError);
+  }
+  const response = await browser.runtime.sendMessage({ type: "get-accounts" });
+  if (!Array.isArray(response)) throw new Error("Invalid account response from background script.");
+  return response as AccountInfo[];
 }
 
 // ── Folder picker ───────────────────────────────────────────────────────────────
@@ -254,7 +416,7 @@ async function populateFolderList(): Promise<void> {
 
   let paths: string[];
   try {
-    paths = await loadFolderPaths();
+    paths = await loadFolderPaths(singleSelectedAccount() ?? undefined);
   } catch (e) {
     console.error("REPORT-WINDOW: could not load folder paths", e);
     setStatus("Could not load folders.");
@@ -289,10 +451,10 @@ async function populateFolderList(): Promise<void> {
 
 /** Select `path` as the single-folder target, resolving its account and display name. */
 async function selectFolder(path: string): Promise<void> {
-  let accountId = folderContext?.accountId ?? "";
+  let accountId = singleSelectedAccount() ?? folderContext?.accountId ?? "";
   let name = path;
   try {
-    const folder = await resolveFolderPath(path);
+    const folder = await resolveFolderPath(path, accountId || undefined);
     if (folder) {
       accountId = folder.accountId ?? accountId;
       name = folder.name ?? path;
@@ -305,14 +467,14 @@ async function selectFolder(path: string): Promise<void> {
   closeFolderList();
 }
 
-/** Load all folder paths, falling back to the background script if the direct API call fails. */
-async function loadFolderPaths(): Promise<string[]> {
+/** Load `accountId`'s (or every) folder path, falling back to the background script if the direct API call fails. */
+async function loadFolderPaths(accountId?: string): Promise<string[]> {
   try {
-    return await getAllFolderPaths();
+    return await getAllFolderPaths(accountId);
   } catch (directError) {
     console.warn("REPORT-WINDOW: direct folder-path lookup failed, trying background fallback:", directError);
   }
-  const response = await browser.runtime.sendMessage({ type: "get-folder-paths" });
+  const response = await browser.runtime.sendMessage({ type: "get-folder-paths", accountId });
   if (!Array.isArray(response) || response.some((path) => typeof path !== "string")) {
     throw new Error("Invalid folder path response from background script.");
   }
@@ -368,8 +530,15 @@ async function onCreate(): Promise<void> {
   }
 
   const days = daysInput.valueAsNumber > 0 ? daysInput.valueAsNumber : 30;
-  const folderOnly = folderOnlyInput.checked && !!folderContext;
-  const targetFolder = selectedFolder ?? folderContext;
+  const folderOnly = folderOnlyInput.checked && !folderOnlyInput.disabled;
+  if (folderOnly && !selectedFolder) {
+    setStatus("Choose a folder to search, or switch to all folders.");
+    return;
+  }
+  const targetFolder = folderOnly ? selectedFolder : null;
+  // Every account selected = no restriction, which also covers accounts added after the window opened.
+  const chosenAccounts = accounts.filter((a) => selectedAccountIds.has(a.id));
+  const restrictAccounts = chosenAccounts.length < accounts.length;
   // With a report already present, keep talking to the same agent instead of starting over.
   const continueConversation = hasReport;
   // Only meaningful when refining an existing report; the checkbox is disabled until then.
@@ -380,6 +549,8 @@ async function onCreate(): Promise<void> {
     days,
     folderOnly,
     folder: targetFolder ? { accountId: targetFolder.accountId, path: targetFolder.path } : null,
+    accountIds: restrictAccounts ? chosenAccounts.map((a) => a.id) : [],
+    accountNames: restrictAccounts ? chosenAccounts.map((a) => a.name) : [],
   };
 
   setBusy(true);

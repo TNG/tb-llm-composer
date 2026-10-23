@@ -9,7 +9,7 @@ import {
   type OrganisePlanEntry,
   organiseCurrentFolder,
   planOrganiseCurrentFolder,
-  resolveFolderPath,
+  resolveFolderPathPreferringAccount,
 } from "./emailOrganising";
 import { handleKeepAliveAlarm } from "./keepAlive";
 import { executeLlmAction, type LlmPluginAction, writeSummaryAnswer } from "./llmButtonClickHandling";
@@ -223,7 +223,12 @@ async function applyConfirmedPlan(
   }
   try {
     // Re-resolve the destination folders from their paths (index-aligned with the folder options).
-    const resolvedFolders = await Promise.all(plan.folders.map((folder) => resolveFolderPath(folder.path)));
+    // Prefer the account each path was resolved in when the plan was made (paths repeat across accounts).
+    const resolvedFolders = await Promise.all(
+      plan.folders.map((folder) =>
+        resolveFolderPathPreferringAccount(folder.path, folder.accountId ?? plan.source?.accountId),
+      ),
+    );
     const abortController = new AbortController();
     await applyOrganisePlan(assignments, resolvedFolders, plan.source, abortController.signal);
     await deleteConfirmPlan(planKey);
@@ -354,7 +359,8 @@ if (!browser.action) {
 type ReportFolderPayload = { accountId: string; path: string } | null;
 
 type RuntimeRequestMessage =
-  | { type: "get-folder-paths" }
+  | { type: "get-folder-paths"; accountId?: string }
+  | { type: "get-accounts" }
   | { type: "get-active-folder" }
   | {
       type: "generate-report";
@@ -379,6 +385,7 @@ function isRuntimeRequestMessage(value: unknown): value is RuntimeRequestMessage
   const type = (value as { type?: unknown }).type;
   return (
     type === "get-folder-paths" ||
+    type === "get-accounts" ||
     type === "get-active-folder" ||
     type === "generate-report" ||
     type === "cancel-report" ||
@@ -422,7 +429,10 @@ browser.runtime.onMessage.addListener((message: unknown) => {
 
   switch (message.type) {
     case "get-folder-paths":
-      return getAllFolderPaths();
+      return getAllFolderPaths(message.accountId);
+
+    case "get-accounts":
+      return browser.accounts.list(false).then((list) => list.map((a) => ({ id: a.id, name: a.name })));
 
     case "get-active-folder":
       return getActiveMailFolder().then((folder): { folder: ReportFolderPayload } => ({

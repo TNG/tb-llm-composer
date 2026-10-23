@@ -112,6 +112,8 @@ async function guardedQuery(
 export interface ReportScope {
   folderOnly: boolean;
   folder: { accountId: string; path: string } | null;
+  /** Accounts searched when not folder-only; empty = every account. */
+  accountIds: string[];
   defaultDays: number;
   maxSearchResults: number;
   /** Max number of full message bodies get_messages may serve across the whole run. */
@@ -120,7 +122,16 @@ export interface ReportScope {
   maxTotalBodyChars: number;
 }
 
-type QueryInfo = browser.messages._QueryQueryInfo & { folderId?: string };
+// The bundled typings predate TB 121, which added folderId and account/folder id arrays.
+type QueryInfo = Omit<browser.messages._QueryQueryInfo, "accountId"> & {
+  folderId?: string;
+  accountId?: string | string[];
+};
+
+/** `browser.messages.query` with the TB 121+ query shape. */
+function queryMessages(queryInfo: QueryInfo): ReturnType<typeof browser.messages.query> {
+  return browser.messages.query(queryInfo as browser.messages._QueryQueryInfo);
+}
 
 /** A raw From/To header value parsed into its display name, address, and domain. */
 export interface ParsedAddress {
@@ -237,7 +248,7 @@ export async function assertSearchCapabilities(scope: ReportScope): Promise<void
       author: "capability-probe@example.invalid",
       fullText: "capability-probe",
     };
-    await browser.messages.query(probe);
+    await queryMessages(probe);
     console.log("REPORT: search capability probe query succeeded");
   } catch (e) {
     throw new Error(
@@ -476,9 +487,10 @@ const FULL_TEXT_STALLS_KEY = "reportFullTextStalls";
 /** A remembered stall is trusted this long, then full-text search is given another chance. */
 const FULL_TEXT_STALL_TTL_MS = 7 * DAY_MS;
 
-/** Which mailbox area a stall applies to: one folder, or the all-folders search. */
+/** Which mailbox area a stall applies to: one folder, or the all-folders search of a set of accounts. */
 function stallKey(scope: ReportScope): string {
-  return scope.folderOnly && scope.folder ? `${scope.folder.accountId}:${scope.folder.path}` : "all-folders";
+  if (scope.folderOnly && scope.folder) return `${scope.folder.accountId}:${scope.folder.path}`;
+  return scope.accountIds.length > 0 ? `accounts:${[...scope.accountIds].sort().join(",")}` : "all-folders";
 }
 
 /**
@@ -521,9 +533,8 @@ async function handleSearchMessages(
   const filters = buildFilters(args, scope.defaultDays);
   const queryInfo = filtersToQueryInfo(filters);
 
-  // search_messages honours the folder-only scope; an all-folders search is unrestricted.
-  const folderRef = await resolveTargetFolder(scope);
-  if (folderRef?.folderId) queryInfo.folderId = folderRef.folderId;
+  // search_messages honours the folder-only scope; an all-folders search is limited to the chosen accounts.
+  Object.assign(queryInfo, await resolveScopeFilter(scope));
 
   const result = await searchWithFullTextFallback(queryInfo, filters, scope, state, abortSignal);
 
@@ -587,15 +598,15 @@ async function searchWithFullTextFallback(
   };
 }
 
-/** A resolved folder to search, expressed as its folder id (required for the MV3 query API). */
-type FolderRef = { folderId: string };
-
-/** Resolve the single target folder for a folder-only search, or null for an all-folders search. */
-async function resolveTargetFolder(scope: ReportScope): Promise<FolderRef | null> {
+/**
+ * The query restriction for a scope: the target folder's id for a folder-only search, otherwise the
+ * chosen accounts (an empty object = every account).
+ */
+async function resolveScopeFilter(scope: ReportScope): Promise<Pick<QueryInfo, "folderId" | "accountId">> {
   if (!scope.folderOnly || !scope.folder) {
-    return null;
+    return accountFilter(scope);
   }
-  const target = await resolveFolderPath(scope.folder.path);
+  const target = await resolveFolderPath(scope.folder.path, scope.folder.accountId || undefined);
   if (!target) {
     throw new Error(`Could not resolve the active folder "${scope.folder.path}" for a folder-only search.`);
   }
@@ -606,6 +617,16 @@ async function resolveTargetFolder(scope: ReportScope): Promise<FolderRef | null
     throw new Error(`The folder "${scope.folder.path}" has no id, so a folder-only search cannot be restricted to it.`);
   }
   return { folderId: withId.id };
+}
+
+/**
+ * Accounts a scope may touch — also used by thread lookups, which bridge to Sent and so ignore the
+ * folder-only restriction but must stay inside the searched account(s).
+ */
+function accountFilter(scope: ReportScope): Pick<QueryInfo, "accountId"> {
+  if (scope.folderOnly && scope.folder?.accountId) return { accountId: scope.folder.accountId };
+  if (scope.accountIds.length === 0) return {};
+  return { accountId: scope.accountIds.length === 1 ? scope.accountIds[0] : [...scope.accountIds] };
 }
 
 /**
@@ -645,7 +666,7 @@ async function scanHeaders(
   visit: (msg: browser.messages.MessageHeader) => boolean,
 ): Promise<{ complete: boolean; timedOut: boolean }> {
   const seenIds = new Set<number>();
-  let page = await guardedQuery(() => browser.messages.query(queryInfo), abortSignal, "search messages", timeoutMs);
+  let page = await guardedQuery(() => queryMessages(queryInfo), abortSignal, "search messages", timeoutMs);
   for (;;) {
     throwIfAborted(abortSignal);
     if (isFailedPage(page)) return { complete: false, timedOut: page === TIMED_OUT };
@@ -920,7 +941,7 @@ async function handleGetThread(
   for (const messageId of lookupIds) {
     if (hits.length >= cap) break;
     const page = await guardedQuery(
-      () => browser.messages.query({ headerMessageId: messageId } as QueryInfo),
+      () => queryMessages({ headerMessageId: messageId, ...accountFilter(scope) } as QueryInfo),
       abortSignal,
       `thread lookup for ${messageId}`,
     );
@@ -946,7 +967,7 @@ async function handleGetThread(
     const knownDates = hits.map((h) => Date.parse(h.date)).filter(Number.isFinite);
     const earliest = Math.min(Date.now(), ...knownDates) - THREAD_SUBJECT_LOOKBACK_DAYS * DAY_MS;
     const fromDate = new Date(Math.min(earliest, Date.now() - scope.defaultDays * DAY_MS));
-    const scan = await collectHeaders({ fromDate } as QueryInfo, cap * 2, norm, abortSignal);
+    const scan = await collectHeaders({ fromDate, ...accountFilter(scope) } as QueryInfo, cap * 2, norm, abortSignal);
     subjectTruncated = scan.truncated;
     for (const hit of scan.hits) {
       if (hits.length >= cap) break;
@@ -986,8 +1007,7 @@ async function handleAggregateMessages(
   const filters = buildFilters(args, scope.defaultDays);
   const queryInfo = filtersToQueryInfo(filters);
 
-  const folderRef = await resolveTargetFolder(scope);
-  if (folderRef?.folderId) queryInfo.folderId = folderRef.folderId;
+  Object.assign(queryInfo, await resolveScopeFilter(scope));
 
   const countMatches = async (info: QueryInfo, terms: string[] | null, timeoutMs: number) => {
     // With terms, headers are scored like search_messages' fallback and only the kept ones are counted.
