@@ -8,7 +8,7 @@ import {
 } from "./llmConnection";
 import { addCancelRequestMenuEntry, addLlmActionsToMenu } from "./menu";
 import { notifyOnError } from "./notifications";
-import { getPluginOptions, type Options } from "./optionsParams";
+import { getAdvancedPrompt, getPluginOptions, type Options } from "./optionsParams";
 import { getOriginalTabConversation } from "./originalTabConversation";
 import {
   getEmailGenerationContext,
@@ -133,6 +133,7 @@ export async function compose(tabId: number) {
     const subjectResponse = await sendContentToLlm(
       [subjectContext, subjectPrompt],
       allRequestsStatus.getAbortSignal(tabId),
+      "compose",
     );
     console.log("subject", subjectResponse);
     if (isLlmTextCompletionResponse(subjectResponse)) {
@@ -140,7 +141,11 @@ export async function compose(tabId: number) {
     }
   }
 
-  const emailResponse = await sendContentToLlm([emailContext, emailPrompt], allRequestsStatus.getAbortSignal(tabId));
+  const emailResponse = await sendContentToLlm(
+    [emailContext, emailPrompt],
+    allRequestsStatus.getAbortSignal(tabId),
+    "compose",
+  );
   if (isLlmTextCompletionResponse(emailResponse)) {
     await handleComposeSuccessResponse(tabId, emailResponse as LlmTextCompletionResponse, options);
   } else {
@@ -206,10 +211,10 @@ export async function summarize(tabId: number, originalConversation?: string): P
     // This should never happen, as we do not want to allow summarize to be called when there is nothing to summarize
     throw Error("No conversation found to summarize. Aborting.");
   }
-  const messages = await getSummaryPromptAndContext(originalConversation);
   const options = await getPluginOptions();
+  const messages = await getSummaryPromptAndContext(originalConversation, getAdvancedPrompt(options, "summaryContext"));
   const requestStatus = allRequestsStatus.getRequestStatus(tabId);
-  const response = await sendContentToLlm(messages, requestStatus.abortController.signal);
+  const response = await sendContentToLlm(messages, requestStatus.abortController.signal, "summarize");
   if (isLlmTextCompletionResponse(response)) {
     const content = maybeStripThinkTag(
       (response as LlmTextCompletionResponse).choices[0].message.content ?? "",
