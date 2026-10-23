@@ -35,8 +35,12 @@ async function init(): Promise<void> {
   writeBtn.addEventListener("click", () => void onWrite());
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeWindow();
-    if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !writeBtn.disabled) void onWrite();
+    if (event.key === "Enter" && !event.isComposing && (event.ctrlKey || event.metaKey) && !writeBtn.disabled) {
+      void onWrite();
+    }
   });
+  // Enter in a lone detail field would otherwise submit the form (GET) and reload the page.
+  pointsForm.addEventListener("submit", (event) => event.preventDefault());
 
   const response = (await browser.runtime.sendMessage({ type: "get-summary", summaryKey })) as SummaryResponse;
   if (!response?.found) {

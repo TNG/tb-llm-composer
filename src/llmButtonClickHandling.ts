@@ -1,4 +1,5 @@
 import { getFirstRecipientMailAddress } from "./emailHelpers";
+import { startKeepAlive, stopKeepAlive } from "./keepAlive";
 import {
   isLlmTextCompletionResponse,
   type LlmTextCompletionResponse,
@@ -249,8 +250,12 @@ export async function writeSummaryAnswer(
     });
   }
   await deleteSummary(summaryKey);
-  // Detached: the popup closes right away while the composer shows the usual busy state.
-  void executeLlmAction("compose", tab).catch((e) => console.error("SUMMARY: compose failed", e));
+  // Detached: the popup closes right away while the composer shows the usual busy state. Keep the
+  // background alive for the whole run, including context gathering before the first LLM fetch.
+  await startKeepAlive();
+  void executeLlmAction("compose", tab)
+    .catch((e) => console.error("SUMMARY: compose failed", e))
+    .finally(() => stopKeepAlive().catch((e) => console.error("SUMMARY: error stopping keep-alive", e)));
   return { ok: true };
 }
 
