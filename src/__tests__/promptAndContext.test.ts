@@ -8,6 +8,7 @@ import {
   getSubjectGenerationPrompt,
   getSummaryPromptAndContext,
 } from "../promptAndContext";
+import { SUMMARY_JSON_SCHEMA } from "../summary";
 import { MOCK_TAB_DETAILS, MOCK_USER_NAME, mockBrowser } from "./testUtils";
 
 const EMAIL_BASIC_PROMPT = `${DEFAULT_OPTIONS.llmContext}\nI am ${MOCK_USER_NAME}.`;
@@ -200,24 +201,18 @@ describe("Testing getSubjectGenerationPrompt", () => {
 });
 
 describe("Testing getSummaryPromptAndContext", () => {
-  test("sends previous conversation", async () => {
+  test("sends previous conversation and asks for the JSON summary schema", async () => {
     const testPreviousConversation = "Previous conversation";
-    const expectedContext = [
-      {
-        content:
-          "I want to reply to an email. Give me a short summary of the previous conversation, " +
-          "highlighting the open points I needs to cover in my answer.",
-        role: LlmRoles.SYSTEM,
-      },
-      {
-        content: `Previous conversation:\n${testPreviousConversation}`,
-        role: LlmRoles.USER,
-      },
-    ];
 
-    const result = await getSummaryPromptAndContext(testPreviousConversation);
+    const [system, user] = await getSummaryPromptAndContext(testPreviousConversation);
 
-    expect(result).toEqual(expectedContext);
+    expect(system.role).toBe(LlmRoles.SYSTEM);
+    expect(system.content).toContain(SUMMARY_JSON_SCHEMA);
+    expect(user).toEqual({
+      content: `Previous conversation:
+${testPreviousConversation}`,
+      role: LlmRoles.USER,
+    });
   });
 });
 

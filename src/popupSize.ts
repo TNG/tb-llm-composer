@@ -1,5 +1,5 @@
 /**
- * Remembered sizes for the extension's popup windows (report window, organise confirmation).
+ * Remembered sizes for the extension's popup windows (report window, organise confirmation, summary).
  *
  * Thunderbird persists the size of extension popup windows itself and re-applies it *after* the
  * window is already on screen — in practice the resize only becomes visible at first paint or at the
@@ -17,7 +17,7 @@ export interface PopupSize {
 }
 
 /** Identifies a popup so each window type remembers its own size. */
-export type PopupName = "report" | "organiseConfirm";
+export type PopupName = "report" | "organiseConfirm" | "summary";
 
 const storageKey = (name: PopupName): string => `popupSize:${name}`;
 
@@ -55,4 +55,21 @@ export function rememberPopupSize(name: PopupName): void {
     if (timer !== undefined) clearTimeout(timer);
     timer = setTimeout(save, 400);
   });
+}
+
+/**
+ * Open an extension popup window at the size it was last seen with.
+ *
+ * Do not "correct" the size with `windows.update` afterwards: Thunderbird applies its own persisted
+ * size after the window is on screen, and a late second resize is exactly what makes the window jump
+ * under the user's cursor. Asking for the remembered size instead means there is nothing to correct.
+ */
+export async function createPopupWindow(
+  name: PopupName,
+  url: string,
+  width: number,
+  height: number,
+): Promise<browser.windows.Window> {
+  const size = await getRememberedPopupSize(name, { width, height });
+  return browser.windows.create({ type: "popup", url, ...size });
 }

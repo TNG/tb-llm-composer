@@ -61,6 +61,10 @@ src/
                              writes results via browser.compose.setComposeDetails.
   llmConnection.ts           sendContentToLlm()/callLlmApi(); runAgenticLlm() tool-calling loop; fetch to LLM endpoint;
                              request/response + tool (LlmToolDefinition/LlmToolHandler) types; abort + timeout.
+  summary.ts                 Pure summary types + parseSummaryResponse() (JSON {summary, openPoints[single|multi|text]}, plain-text fallback)
+                             and formatAnswerInstructions() (popup answers -> compose instructions).
+  summaryWindow.ts           Hands a summary to its popup (storage.session + handoff key) and opens it; cleanup on window close.
+  summaryPopup.ts            Summary popup UI (public/summary.html): summary, open points as option lists/text boxes, "Write answer".
   promptAndContext.ts        Builds system/user messages (context + prompt) for body, subject, and summary generation.
   emailOrganising.ts         organiseCurrentFolder(); organise folder messages via LLM and move with browser.messages.move() to FolderRule targets.
                              Runs the deterministic pre-filter pass first (see preFilters.ts) so matched mail never reaches the LLM.
@@ -94,6 +98,7 @@ manifest.json                MV3 source manifest. Webpack rewrites paths and str
 webpack.config.js            Builds background.ts + options.ts + reports.ts into build/; copies icons/, public/, and transformed manifest.json.
 public/options.html          Options page markup. Includes a "Query available models" control that GETs the OpenAI-style {base}/models (base derived from the chat URL) and, per model, an arrow that upserts params.model into the "Other options" JSON.
 public/reports.html          Report window markup.
+public/summary.html          Summary popup markup.
 icons/                       Extension icons + busy indicator (loader-32px.gif).
 docs/CONTRIBUTING.md         Dev/test/release instructions + sample test emails.
 docs/create_new_release.md   Release process.
@@ -104,6 +109,7 @@ build/                       Generated webpack output (do not edit manually).
 
 - **Listener ordering is critical:** in `background.ts`, `browser.commands.onCommand` must remain the first statement or shortcuts can fail after event-page restart.
 - **Compose flow:** `executeLlmAction` -> `compose()` gathers compose details, recent sent mails, and reply quote; builds prompt/context in `promptAndContext.ts`; optionally generates subject; calls `sendContentToLlm`; writes result back and re-appends signature/quote.
+- **Summarize flow:** `summarize()` asks the LLM for JSON (summary + typed open points) and opens the summary popup instead of touching the body. "Write answer" sends `write-summary-answer`; `writeSummaryAnswer` prepends the formatted answers to the compose body and runs the normal compose flow.
 - **Per-tab request state:** singleton `allRequestsStatus` (`AllRequestsStatus`) holds an `AbortController` by `tabId`; cancel aborts active request; compose-action icon switches to `loader-32px.gif` while running.
 - **LLM HTTP call:** `callLlmApi` POSTs `{ messages, ...params }` to `options.model` (endpoint URL), adds `Authorization: Bearer` if token exists, merges user-abort and timeout signals, and wraps fetch with keep-alive.
 - **Toolbar action menu:** `browser.action` is a native menu (`"type": "menu"`) whose entries (`organise-folder`, `create-report`) are registered via `browser.menus` in `menu.ts`, matching the compose_action menu. `background.ts` `menus.onClicked` routes those ids to `toggleOrganiseFolder`/`openReportWindow`; other ids fall through to the LLM action handler.

@@ -12,7 +12,7 @@ import {
   resolveFolderPath,
 } from "./emailOrganising";
 import { handleKeepAliveAlarm } from "./keepAlive";
-import { executeLlmAction, type LlmPluginAction } from "./llmButtonClickHandling";
+import { executeLlmAction, type LlmPluginAction, writeSummaryAnswer } from "./llmButtonClickHandling";
 import type { AgenticProgress, LlmApiRequestMessage } from "./llmConnection";
 import {
   addLlmActionsToMenu,
@@ -25,7 +25,7 @@ import {
 import { notifyOnError, timedNotification } from "./notifications";
 import { getPluginOptions } from "./optionsParams";
 import { deleteFromOriginalTabCache, storeOriginalReplyText } from "./originalTabConversation";
-import { getRememberedPopupSize, type PopupName } from "./popupSize";
+import { createPopupWindow } from "./popupSize";
 import {
   continueReport,
   continueReportWithoutSearch,
@@ -34,6 +34,7 @@ import {
   rebuildSessionFromReport,
 } from "./reportGeneration";
 import type { ReportScope } from "./reportTools";
+import { forgetSummaryWindow, loadSummary } from "./summaryWindow";
 
 import Tab = browser.tabs.Tab;
 import OnClickData = browser.menus.OnClickData;
@@ -192,23 +193,6 @@ async function deleteConfirmPlan(planKey: string): Promise<void> {
   await confirmPlanStore.remove(confirmPlanStorageKey(planKey));
 }
 
-/**
- * Open an extension popup window at the size it was last seen with (see popupSize.ts).
- *
- * Do not "correct" the size with `windows.update` afterwards: Thunderbird applies its own persisted
- * size after the window is on screen, and a late second resize is exactly what makes the window jump
- * under the user's cursor. Asking for the remembered size instead means there is nothing to correct.
- */
-async function createPopupWindow(
-  name: PopupName,
-  url: string,
-  width: number,
-  height: number,
-): Promise<browser.windows.Window> {
-  const size = await getRememberedPopupSize(name, { width, height });
-  return browser.windows.create({ type: "popup", url, ...size });
-}
-
 /** Open the confirmation popup for a plan and persist it so the window can fetch and apply it. */
 async function openConfirmWindow(plan: OrganisePlan): Promise<void> {
   // organiseConfirm.html sits next to the options page in public/. Resolve it relative to the options
@@ -352,6 +336,7 @@ browser.windows.onRemoved.addListener((windowId: number) => {
     confirmPlanKeysByWindow.delete(windowId);
     void deleteConfirmPlan(planKey).catch(() => {});
   }
+  forgetSummaryWindow(windowId);
 });
 
 // Register menu entries without blocking listener registration; this keeps
@@ -385,7 +370,9 @@ type RuntimeRequestMessage =
   | { type: "open-email"; id: number }
   | { type: "reply-email"; id: number }
   | { type: "get-organise-plan"; planKey: string }
-  | { type: "apply-organise-plan"; planKey: string; assignments: OrganiseAssignment[] };
+  | { type: "apply-organise-plan"; planKey: string; assignments: OrganiseAssignment[] }
+  | { type: "get-summary"; summaryKey: string }
+  | { type: "write-summary-answer"; summaryKey: string; instructions: string };
 
 function isRuntimeRequestMessage(value: unknown): value is RuntimeRequestMessage {
   if (!value || typeof value !== "object") return false;
@@ -399,7 +386,9 @@ function isRuntimeRequestMessage(value: unknown): value is RuntimeRequestMessage
     type === "open-email" ||
     type === "reply-email" ||
     type === "get-organise-plan" ||
-    type === "apply-organise-plan"
+    type === "apply-organise-plan" ||
+    type === "get-summary" ||
+    type === "write-summary-answer"
   );
 }
 
@@ -482,6 +471,16 @@ browser.runtime.onMessage.addListener((message: unknown) => {
 
     case "apply-organise-plan":
       return applyConfirmedPlan(message.planKey, message.assignments);
+
+    case "get-summary":
+      return loadSummary(message.summaryKey).then((summary) => ({
+        found: summary !== undefined,
+        summary: summary?.summary ?? "",
+        openPoints: summary?.openPoints ?? [],
+      }));
+
+    case "write-summary-answer":
+      return writeSummaryAnswer(message.summaryKey, message.instructions);
 
     default:
       return false;

@@ -17,6 +17,9 @@ import {
   getSummaryPromptAndContext,
 } from "./promptAndContext";
 import { getSentMessages } from "./retrieveSentContext";
+import { parseSummaryResponse } from "./summary";
+import { deleteSummary, loadSummary, openSummaryWindow } from "./summaryWindow";
+import { stripHtml } from "./utils";
 
 import Tab = browser.tabs.Tab;
 
@@ -211,14 +214,44 @@ export async function summarize(tabId: number, originalConversation?: string): P
       (response as LlmTextCompletionResponse).choices[0].message.content ?? "",
       options,
     );
-    await browser.compose.setComposeDetails(tabId, {
-      plainTextBody: `${content}\n\n\n\n${originalConversation}`,
-    });
+    await openSummaryWindow(tabId, parseSummaryResponse(content));
   } else {
     throw Error(
       `LLM while attempting to summarize responded with an error: ${(response as TgiErrorResponse).error.message}`,
     );
   }
+}
+
+/**
+ * Write the answers chosen in the summary popup into the composer, above whatever is already there,
+ * and run the regular compose flow on them — as if the user had typed the instructions themselves.
+ */
+export async function writeSummaryAnswer(
+  summaryKey: string,
+  instructions: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const summary = await loadSummary(summaryKey);
+  if (!summary) {
+    return { ok: false, error: "This summary is no longer available." };
+  }
+  let tab: Tab;
+  try {
+    tab = await browser.tabs.get(summary.tabId);
+  } catch {
+    return { ok: false, error: "The email this summary belongs to was closed." };
+  }
+
+  if (instructions.trim()) {
+    const details = await browser.compose.getComposeDetails(summary.tabId);
+    const currentBody = details.isPlainText ? (details.plainTextBody ?? "") : stripHtml(details.body ?? "");
+    await browser.compose.setComposeDetails(summary.tabId, {
+      plainTextBody: `${instructions.trim()}\n\n${currentBody.replace(/^\s+/, "")}`,
+    });
+  }
+  await deleteSummary(summaryKey);
+  // Detached: the popup closes right away while the composer shows the usual busy state.
+  void executeLlmAction("compose", tab).catch((e) => console.error("SUMMARY: compose failed", e));
+  return { ok: true };
 }
 
 export async function executeLlmAction(actionId: LlmPluginAction, tab: Tab) {

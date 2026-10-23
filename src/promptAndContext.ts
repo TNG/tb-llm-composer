@@ -1,6 +1,7 @@
 import { type LlmApiRequestMessage, LlmRoles } from "./llmConnection";
 
 import type { Options } from "./optionsParams";
+import { SUMMARY_JSON_SCHEMA } from "./summary";
 import { stripHtml } from "./utils";
 
 export const DEFAULT_PROMPT = "Schreib den Partnern, dass ich kündige, auf Deutsch.";
@@ -88,8 +89,13 @@ export async function getSummaryPromptAndContext(previousConversation: string): 
   return [
     {
       content:
-        "I want to reply to an email. Give me a short summary of the previous conversation, " +
-        "highlighting the open points I needs to cover in my answer.",
+        "I want to reply to an email. Give me a short summary of the previous conversation " +
+        "and list the open points I need to cover in my answer.\n" +
+        `Respond with a single JSON object and nothing else, using this schema: ${SUMMARY_JSON_SCHEMA}\n` +
+        'Use "single" when exactly one of a few distinct answers fits (e.g. yes/no, picking one date), ' +
+        '"multi" when several of the options can apply together, and "text" for open questions (empty options). ' +
+        "Phrase each question so I can answer it directly, and keep options short. " +
+        "Write the summary, questions and options in the language of the conversation.",
       role: LlmRoles.SYSTEM,
     },
     {
