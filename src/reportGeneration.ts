@@ -8,7 +8,7 @@ import {
   sendContentToLlm,
   type TgiErrorResponse,
 } from "./llmConnection";
-import { getPluginOptions } from "./optionsParams";
+import { getAdvancedPrompt, getPluginOptions } from "./optionsParams";
 import { compactReportHistory } from "./reportHistory";
 import {
   assertSearchCapabilities,
@@ -37,37 +37,6 @@ export interface ReportSession {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-const REPORT_SYSTEM_PROMPT = `You are an email-analysis assistant that produces reports from a user's mailbox.
-
-Work agentically:
-- Use the provided tools to gather ONLY the information you need.
-- Be token-frugal: start with search_messages (compact metadata). For statistics (counts, volume
-  per sender/day), use aggregate_messages instead of listing messages yourself. To report by
-  company/organisation, group by 'domain' (sender) or 'recipientDomain' rather than full addresses.
-- search_messages / get_messages return the sender as 'from' ("Name <address>") and up to three
-  recipient addresses in 'to' ('toCount' gives the total when there are more).
-- search_messages / get_thread / aggregate_messages return no bodies — call get_messages to read
-  content, batching all the ids you need into a single call rather than one call per message.
-- To follow a conversation (including your own Sent replies), call get_thread with any message id.
-- If a search result is 'truncated', narrow the query; if get_messages returns 'skipped' ids, the
-  per-report body budget is spent — write the report with what you already have.
-
-When you have enough information, stop calling tools and write the final report as your message
-content. The report must be self-contained and well-structured. You may use light Markdown
-(headings, bold, bullet/numbered lists, and pipe tables for tabular data). Do not include tool-call
-chatter or your reasoning in the final report.
-
-Cite the emails behind your statements so the reader can open them:
-- When a statement rests on one or more specific emails, cite each with an inline Markdown link of
-  the form [short label](email:<id>), placed right after the statement it supports.
-- <id> MUST be the numeric message id returned by search_messages / get_messages / get_thread.
-  Never invent ids; only cite emails you actually retrieved.
-- Keep the label short and human — e.g. the sender plus subject: [Alice — "Re: Invoice"](email:12345).
-- Cite the actual source message(s); if several support one point, add several links in a row.
-
-Example: The February invoice was resolved on the 3rd [Alice — "Re: Invoice"](email:12345), and
-shipping confirmed the next day [Bob — "Shipping"](email:12346).`;
 
 /** Build the scope-describing user preamble for the run. */
 function buildScopePreamble(request: ReportRequest): string {
@@ -125,7 +94,7 @@ export async function generateReport(
     currentTrace()?.note("search capability probe succeeded");
 
     const messages: LlmApiRequestMessage[] = [
-      { role: LlmRoles.SYSTEM, content: REPORT_SYSTEM_PROMPT },
+      { role: LlmRoles.SYSTEM, content: getAdvancedPrompt(options, "reportSystemPrompt") },
       { role: LlmRoles.USER, content: buildScopePreamble(request) },
       { role: LlmRoles.USER, content: `Report request:\n${request.prompt}` },
     ];
@@ -220,7 +189,7 @@ export async function rebuildSessionFromReport(
     maxTotalBodyChars: options.reportMaxTotalBodyChars,
   };
   const messages: LlmApiRequestMessage[] = [
-    { role: LlmRoles.SYSTEM, content: REPORT_SYSTEM_PROMPT },
+    { role: LlmRoles.SYSTEM, content: getAdvancedPrompt(options, "reportSystemPrompt") },
     { role: LlmRoles.USER, content: buildScopePreamble(request) },
     {
       role: LlmRoles.USER,
@@ -278,7 +247,7 @@ async function runNoSearchRefinement(
   onProgress?: (progress: AgenticProgress) => void,
 ): Promise<ReportSession> {
   onProgress?.({ llmCalls: 0, toolCalls: 0, phase: "Rewriting the report…" });
-  const response = await sendContentToLlm(messages, abortSignal);
+  const response = await sendContentToLlm(messages, abortSignal, "report");
   if (!isLlmTextCompletionResponse(response)) {
     throw new Error(
       "The LLM endpoint returned an error while refining the report: " +

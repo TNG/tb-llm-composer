@@ -60,9 +60,15 @@ function clamp(value: string): string {
   return `${value.slice(0, MAX_FIELD_CHARS)}…[truncated ${value.length - MAX_FIELD_CHARS} chars]`;
 }
 
-/** Strip the API token from the options snapshot; everything else is useful for analysis. */
+/** Strip the API tokens (main and per-feature) from the options snapshot; everything else is useful for analysis. */
 function redactOptions(options: Options): Record<string, unknown> {
-  const snapshot: Record<string, unknown> = { ...options, hasApiToken: Boolean(options.api_token) };
+  const featureEndpoints = Object.fromEntries(
+    Object.entries(options.featureEndpoints ?? {}).map(([feature, { api_token, ...rest }]) => [
+      feature,
+      { ...rest, hasApiToken: Boolean(api_token) },
+    ]),
+  );
+  const snapshot: Record<string, unknown> = { ...options, featureEndpoints, hasApiToken: Boolean(options.api_token) };
   delete snapshot.api_token;
   return snapshot;
 }

@@ -31,7 +31,7 @@ describe("Testing sentContentToLlm", () => {
   test.each([[undefined], [""]])("throws if the model is %s", async (model) => {
     mockBrowserAndFetch({ responseBody: getMockResponseBody(), options: { model } });
 
-    await expect(sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal)).rejects.toThrow(
+    await expect(sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal, "compose")).rejects.toThrow(
       "Missing LLM model, set it in the options panel.",
     );
   });
@@ -40,7 +40,7 @@ describe("Testing sentContentToLlm", () => {
     const mockResponseBody = getMockResponseBody();
     mockBrowserAndFetch({ responseBody: mockResponseBody, options: { model: MOCK_MODEL_URL } });
 
-    const result = await sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal);
+    const result = await sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal, "compose");
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith(
@@ -63,7 +63,7 @@ describe("Testing sentContentToLlm", () => {
       options: { api_token: mockToken, model: MOCK_MODEL_URL },
     });
 
-    const result = await sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal);
+    const result = await sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal, "compose");
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith(
@@ -81,15 +81,48 @@ describe("Testing sentContentToLlm", () => {
   test("appends the chat route when the options hold only the API base URL", async () => {
     mockBrowserAndFetch({ responseBody: getMockResponseBody(), options: { model: "https://mock.llm.test/v1" } });
 
-    await sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal);
+    await sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal, "compose");
 
     expect(global.fetch).toHaveBeenCalledWith(MOCK_MODEL_URL, expect.objectContaining({ method: "POST" }));
+  });
+
+  test.each([
+    [true, "https://other.llm.test/v1/chat/completions", "otherToken"],
+    [false, MOCK_MODEL_URL, undefined],
+  ])("uses the feature's own endpoint only in advanced mode (advanced=%s)", async (advanced, expectedUrl, token) => {
+    mockBrowserAndFetch({
+      responseBody: getMockResponseBody(),
+      options: {
+        model: MOCK_MODEL_URL,
+        showAdvancedOptions: advanced,
+        featureEndpoints: {
+          summarize: {
+            enabled: true,
+            model: "https://other.llm.test/v1",
+            api_token: "otherToken",
+            params: { temperature: 0 },
+          },
+        },
+      },
+    });
+
+    await sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal, "summarize");
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expectedUrl,
+      expect.objectContaining({
+        headers: token
+          ? { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+          : { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [MOCK_CONTEXT, MOCK_PROMPT], ...(advanced ? { temperature: 0 } : {}) }),
+      }),
+    );
   });
 
   test("error response", async () => {
     mockBrowserAndFetch({ responseBody: "NOT_OK_RESPONSE", options: { model: MOCK_MODEL_URL } });
 
-    await expect(sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal)).rejects.toThrow(
+    await expect(sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal, "compose")).rejects.toThrow(
       `LLM-CONNECTION: Error response from ${MOCK_MODEL_URL}: Error response from LLM API`,
     );
   });
@@ -98,7 +131,7 @@ describe("Testing sentContentToLlm", () => {
     mockBrowserAndFetch({ responseBody: getMockResponseBody(), options: { model: MOCK_MODEL_URL } });
     vi.mocked(global.browser.permissions.contains).mockResolvedValue(false);
 
-    await expect(sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal)).rejects.toThrow(
+    await expect(sendContentToLlm([MOCK_CONTEXT, MOCK_PROMPT], abortSignal, "compose")).rejects.toThrow(
       `Missing permission to access ${MOCK_MODEL_URL}`,
     );
     expect(global.fetch).not.toHaveBeenCalled();

@@ -224,8 +224,44 @@
       }
 
       #other_options,
-      #subject_context {
+      #subject_context,
+      .fe-other-options {
         height: 5em;
+      }
+
+      #summary_context,
+      #organise_system_prompt {
+        height: 7em;
+      }
+
+      #report_system_prompt {
+        height: 14em;
+      }
+
+      /* Advanced-only controls are hidden until "Show advanced options" is checked. */
+      body:not(.show-advanced) .advanced-only {
+        display: none;
+      }
+
+      /* Top-of-page toggle, visually separated from the first section. */
+      .advanced-toggle {
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      /* Per-feature endpoint block; its fields only show while the override is enabled. */
+      .feature-endpoint {
+        margin-top: 10px;
+      }
+
+      .fe-fields {
+        margin-top: 8px;
+        padding-left: 12px;
+        border-left: 2px solid var(--border);
+      }
+
+      .feature-endpoint:not(.enabled) .fe-fields {
+        display: none;
       }
 
       /* Round info badge: a bordered "i" that inherits the theme's text color and scales with the font. */
@@ -323,8 +359,10 @@
         align-items: center;
       }
 
-      .folder-rule-row input {
+      .folder-rule-row input,
+      .folder-rule-row select {
         flex: 1;
+        min-width: 0;
         padding: 6px;
         border: 1px solid var(--border);
         border-radius: 4px;
@@ -515,8 +553,19 @@
   <body>
     <div class="settings-container">
       <form id="settingsForm">
+        <div class="form-group checkbox-row advanced-toggle">
+          <input type="checkbox" id="show_advanced_options" name="show advanced options" />
+          <label for="show_advanced_options">
+            Show advanced options
+            <span class="info-icon" title="Edit the system prompts of every feature and give Compose, Summarize, Reports and Organise Folder their own endpoint and options.&#10;&#10;Advanced settings only apply while this is checked; otherwise every feature uses the API settings below and the default prompts.">i</span>
+          </label>
+        </div>
+
         <div class="settings-section">
           <h2>API</h2>
+          <p class="advanced-only models-status">
+            Default endpoint. A feature uses it unless a separate endpoint is enabled in its own section below.
+          </p>
           <div class="form-group form-row">
             <div class="url-label-group">
               <label for="url">URL:</label>
@@ -585,7 +634,7 @@
           <div class="form-group">
             <div class="label-with-action">
               <label for="llm_context">LLM Context:</label>
-              <button type="button" id="reset-llm-context-btn" class="reset-btn" title="Reset to default" aria-label="Reset LLM context to default">
+              <button type="button" id="reset-llm-context-btn" class="reset-btn" data-reset-prompt="llm_context" title="Reset to default" aria-label="Reset LLM context to default">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <polyline points="1 4 1 10 7 10" />
                   <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
@@ -606,7 +655,7 @@
                 Subject Context:
                 <span class="info-icon" title="System prompt used when generating a subject line. Your name and (optionally) recent mails are appended automatically.">i</span>
               </label>
-              <button type="button" id="reset-subject-context-btn" class="reset-btn" title="Reset to default" aria-label="Reset subject context to default">
+              <button type="button" id="reset-subject-context-btn" class="reset-btn" data-reset-prompt="subject_context" title="Reset to default" aria-label="Reset subject context to default">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <polyline points="1 4 1 10 7 10" />
                   <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
@@ -615,10 +664,47 @@
             </div>
             <textarea id="subject_context" name="subject context"> </textarea>
           </div>
+          <div class="feature-endpoint-slot" data-feature="compose"></div>
+        </div>
+
+        <div class="settings-section advanced-only">
+          <h2>Summarize</h2>
+          <div class="form-group">
+            <div class="label-with-action">
+              <label for="summary_context">
+                Summary system prompt:
+                <span class="info-icon" title="System prompt used to summarise the conversation you reply to. The JSON answer format the summary popup needs is appended automatically.">i</span>
+              </label>
+              <button type="button" class="reset-btn" data-reset-prompt="summary_context" title="Reset to default" aria-label="Reset summary system prompt to default">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="1 4 1 10 7 10" />
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                </svg>
+              </button>
+            </div>
+            <textarea id="summary_context" name="summary context"> </textarea>
+          </div>
+          <div class="feature-endpoint-slot" data-feature="summarize"></div>
         </div>
 
         <div class="settings-section">
           <h2>Organise Folder</h2>
+
+          <div class="form-group advanced-only">
+            <div class="label-with-action">
+              <label for="organise_system_prompt">
+                Organise system prompt:
+                <span class="info-icon" title="System prompt used to classify emails into the LLM folder rules. The JSON answer format the plugin parses is appended automatically.">i</span>
+              </label>
+              <button type="button" class="reset-btn" data-reset-prompt="organise_system_prompt" title="Reset to default" aria-label="Reset organise system prompt to default">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="1 4 1 10 7 10" />
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                </svg>
+              </button>
+            </div>
+            <textarea id="organise_system_prompt" name="organise system prompt"> </textarea>
+          </div>
 
           <h3>
             Pre-filter rules
@@ -654,11 +740,10 @@
             <button type="button" id="add-folder-rule-btn">+ Add Rule</button>
             <span id="folder-paths-status" class="models-status push-right"></span>
             <button type="button" id="refresh-folder-paths-btn"
-              title="List the folder paths available in your mailbox">
-              Show available folder paths
+              title="Reload the folder list offered in the dropdowns (e.g. after creating a folder)">
+              Reload folders
             </button>
           </div>
-          <div id="available-folder-paths" class="model-list"></div>
           <div class="form-group checkbox-row" style="margin-top:10px;">
             <input type="checkbox" id="confirm_moves" name="confirm moves before applying" />
             <label for="confirm_moves">
@@ -666,10 +751,26 @@
               <span class="info-icon" title="When enabled, organising opens a window listing each email with a dropdown to choose its destination folder; nothing moves until you click OK. When disabled, emails are moved automatically in batches.">i</span>
             </label>
           </div>
+          <div class="feature-endpoint-slot" data-feature="organise"></div>
         </div>
 
         <div class="settings-section">
           <h2>Reports</h2>
+          <div class="form-group advanced-only">
+            <div class="label-with-action">
+              <label for="report_system_prompt">
+                Report system prompt:
+                <span class="info-icon" title="System prompt of the report agent. Keep the description of the search tools and of the [label](email:&lt;id&gt;) citation format, which the report window turns into links.">i</span>
+              </label>
+              <button type="button" class="reset-btn" data-reset-prompt="report_system_prompt" title="Reset to default" aria-label="Reset report system prompt to default">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="1 4 1 10 7 10" />
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                </svg>
+              </button>
+            </div>
+            <textarea id="report_system_prompt" name="report system prompt"> </textarea>
+          </div>
           <div class="form-group form-row">
             <label for="report_default_days">Default days in the past:</label>
             <input type="number" id="report_default_days" name="report default days" min="1" step="1" />
@@ -709,10 +810,65 @@
               <span class="info-icon" title="Sends chat_template_kwargs.enable_thinking=false with every report request, which makes reasoning models such as Qwen3 (served by vLLM/SGLang) answer faster with fewer tokens. Applies to all report steps, including the final report. Leave off if your endpoint rejects unknown parameters.">i</span>
             </label>
           </div>
+          <div class="feature-endpoint-slot" data-feature="report"></div>
         </div>
 
       </form>
     </div>
+    <!-- Per-feature endpoint block, cloned by options.ts into every .feature-endpoint-slot (advanced mode only). -->
+    <template id="feature-endpoint-template">
+      <div class="feature-endpoint advanced-only">
+        <div class="form-group checkbox-row">
+          <input type="checkbox" class="fe-enabled" id="fe-enabled" />
+          <label for="fe-enabled">
+            Use a separate endpoint
+            <span class="info-icon" title="When off, this feature uses the endpoint and options of the API section. When first enabled, the fields start as a copy of the API section.">i</span>
+          </label>
+        </div>
+        <div class="fe-fields">
+          <div class="form-group form-row">
+            <div class="url-label-group">
+              <label for="fe-url">URL:</label>
+              <button type="button" class="fe-grant-btn push-right">Grant access</button>
+              <span class="fe-permission-status folder-path-badge"></span>
+            </div>
+            <input type="text" class="fe-url" id="fe-url" placeholder="https://your-llm.example.com/v1" />
+          </div>
+          <div class="fe-url-hint models-status url-hint"></div>
+          <div class="form-group form-row">
+            <label for="fe-token">Api token:</label>
+            <div class="input-with-toggle">
+              <input type="password" class="fe-token" id="fe-token" autocomplete="off" spellcheck="false" />
+              <button type="button" class="fe-toggle-token-btn input-toggle-btn" title="Show token" aria-label="Show token" aria-pressed="false">
+                <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="form-group form-row">
+            <label for="fe-timeout">Request timeout (seconds):</label>
+            <input type="number" class="fe-timeout" id="fe-timeout" min="0" step="1" placeholder="No timeout" />
+          </div>
+          <div class="form-group">
+            <div class="other-options-header">
+              <label for="fe-other-options">Other options (json):</label>
+              <span class="fe-models-status models-status push-right"></span>
+              <button type="button" class="fe-query-models-btn" title="Query the endpoint's available models (GET {base}/models)">
+                Query available models
+              </button>
+            </div>
+            <div class="fe-models-list model-list"></div>
+            <textarea class="fe-other-options" id="fe-other-options"></textarea>
+          </div>
+        </div>
+      </div>
+    </template>
     <!--suppress HtmlUnknownTarget generated from ../src/options.ts-->
     <script src="../options.js"></script>
   </body>

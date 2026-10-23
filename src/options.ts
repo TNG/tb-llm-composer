@@ -2,7 +2,18 @@ import { getAllFolderPaths } from "./emailOrganising";
 import { chatCompletionsEndpoint, modelsEndpoint } from "./endpointUrls";
 import { hasEndpointPermission, requestEndpointPermission } from "./hostPermissions";
 import { notifyOnError } from "./notifications";
-import { DEFAULT_OPTIONS, type FolderRule, getPluginOptions, type Options, type PreFilterRule } from "./optionsParams";
+import {
+  type AdvancedPromptKey,
+  DEFAULT_OPTIONS,
+  type FeatureEndpointOverride,
+  type FolderRule,
+  getPluginOptions,
+  LLM_FEATURES,
+  type LlmFeature,
+  type LlmParameters,
+  type Options,
+  type PreFilterRule,
+} from "./optionsParams";
 import { PRE_FILTER_FIELDS, PRE_FILTER_OPERATORS, toPreFilterField, toPreFilterOperator } from "./preFilters";
 import { getInputElement } from "./utils";
 
@@ -30,16 +41,70 @@ function updateStoredOptions(mutate: (options: Options) => void | Promise<void>)
   return run;
 }
 
+/** System-prompt textareas: element id → stored option. Each has a reset button tagged `data-reset-prompt`. */
+const PROMPT_FIELDS: ReadonlyArray<{ id: string; key: "llmContext" | "subjectContext" | AdvancedPromptKey }> = [
+  { id: "llm_context", key: "llmContext" },
+  { id: "subject_context", key: "subjectContext" },
+  { id: "summary_context", key: "summaryContext" },
+  { id: "organise_system_prompt", key: "organiseSystemPrompt" },
+  { id: "report_system_prompt", key: "reportSystemPrompt" },
+];
+
+/** DOM controls of one endpoint configuration: the main API section or a per-feature override. */
+interface EndpointControls {
+  url: HTMLInputElement;
+  token: HTMLInputElement;
+  otherOptions: HTMLTextAreaElement;
+  permissionStatus: HTMLElement | null;
+  resolvedHint: HTMLElement | null;
+  modelsStatus: HTMLElement | null;
+  modelsList: HTMLElement | null;
+  queryModelsBtn: HTMLButtonElement | null;
+  /** Persist params chosen via the model picker. */
+  saveParams: (params: LlmParameters) => Promise<void>;
+}
+
+/** A per-feature endpoint block: the shared endpoint controls plus its enable toggle and timeout. */
+interface FeatureEndpointUi extends EndpointControls {
+  block: HTMLElement;
+  enabled: HTMLInputElement;
+  timeout: HTMLInputElement;
+}
+
+const featureEndpointUis = new Map<LlmFeature, FeatureEndpointUi>();
+
+function mainEndpointControls(): EndpointControls {
+  return {
+    url: getInputElement("#url"),
+    token: getInputElement("#api_token"),
+    otherOptions: getInputElement<HTMLTextAreaElement>("#other_options"),
+    permissionStatus: document.querySelector<HTMLElement>("#url-permission-status"),
+    resolvedHint: document.querySelector<HTMLElement>("#url-resolved-hint"),
+    modelsStatus: document.querySelector<HTMLElement>("#models-status"),
+    modelsList: document.querySelector<HTMLElement>("#models-list"),
+    queryModelsBtn: document.querySelector<HTMLButtonElement>("#query-models-btn"),
+    saveParams: (params) =>
+      updateStoredOptions((options) => {
+        options.params = params;
+      }),
+  };
+}
+
 document.addEventListener("DOMContentLoaded", restoreOptions);
+document.querySelector("#show_advanced_options")?.addEventListener("change", updateShowAdvancedOptions);
 document.querySelector("#url")?.addEventListener("change", updateUrl);
-document.querySelector("#grant-access-btn")?.addEventListener("click", grantEndpointAccess);
+document
+  .querySelector("#grant-access-btn")
+  ?.addEventListener("click", () => grantEndpointAccess(mainEndpointControls()));
 document.querySelector("#api_token")?.addEventListener("change", updateApiToken);
-document.querySelector("#toggle-token-btn")?.addEventListener("click", toggleTokenVisibility);
+document.querySelector("#toggle-token-btn")?.addEventListener("click", (event) => {
+  toggleTokenVisibility(getInputElement("#api_token"), event.currentTarget as HTMLButtonElement);
+});
 document.querySelector("#timeout")?.addEventListener("change", updateTimeout);
-document.querySelector("#llm_context")?.addEventListener("change", updateLlmContext);
-document.querySelector("#reset-llm-context-btn")?.addEventListener("click", resetLlmContext);
-document.querySelector("#subject_context")?.addEventListener("change", updateSubjectContext);
-document.querySelector("#reset-subject-context-btn")?.addEventListener("click", resetSubjectContext);
+for (const { id, key } of PROMPT_FIELDS) {
+  document.getElementById(id)?.addEventListener("change", (event) => updatePrompt(key, event));
+  document.querySelector(`[data-reset-prompt="${id}"]`)?.addEventListener("click", () => resetPrompt(id, key));
+}
 document.querySelector("#use_last_mails")?.addEventListener("change", updateUseLastMails);
 document.querySelector("#recent_mails_count")?.addEventListener("change", updateRecentMailsCount);
 document.querySelector("#strip_think_tag")?.addEventListener("change", updateStripThinkTag);
@@ -54,8 +119,43 @@ document.querySelector("#confirm_moves")?.addEventListener("change", updateConfi
 document.querySelector("#report_disable_thinking")?.addEventListener("change", updateReportDisableThinking);
 document.querySelector("#add-folder-rule-btn")?.addEventListener("click", addFolderRuleRow);
 document.querySelector("#add-prefilter-rule-btn")?.addEventListener("click", addPreFilterRuleRow);
-document.querySelector("#refresh-folder-paths-btn")?.addEventListener("click", toggleFolderPaths);
-document.querySelector("#query-models-btn")?.addEventListener("click", toggleAvailableModels);
+document.querySelector("#refresh-folder-paths-btn")?.addEventListener("click", refreshFolderPaths);
+document
+  .querySelector("#query-models-btn")
+  ?.addEventListener("click", () => toggleAvailableModels(mainEndpointControls()));
+setupFeatureEndpoints();
+
+// ── Advanced options ──────────────────────────────────────────────────────────
+
+/** Show/hide every `.advanced-only` element. */
+function applyAdvancedVisibility(show: boolean): void {
+  document.body.classList.toggle("show-advanced", show);
+}
+
+async function updateShowAdvancedOptions(event: Event) {
+  const input = event.target as HTMLInputElement;
+  applyAdvancedVisibility(input.checked);
+  await updateStoredOptions((options) => {
+    options.showAdvancedOptions = input.checked;
+  });
+}
+
+async function updatePrompt(key: (typeof PROMPT_FIELDS)[number]["key"], event: Event) {
+  const textarea = event.target as HTMLTextAreaElement;
+  await updateStoredOptions((options) => {
+    options[key] = textarea.value;
+  });
+}
+
+/** Reset a prompt textarea to the shipped default and persist it. */
+async function resetPrompt(id: string, key: (typeof PROMPT_FIELDS)[number]["key"]) {
+  getInputElement<HTMLTextAreaElement>(`#${id}`).value = DEFAULT_OPTIONS[key];
+  await updateStoredOptions((options) => {
+    options[key] = DEFAULT_OPTIONS[key];
+  });
+}
+
+// ── Main endpoint ─────────────────────────────────────────────────────────────
 
 async function updateUrl(event: Event) {
   await notifyOnError(async () => {
@@ -68,73 +168,9 @@ async function updateUrl(event: Event) {
     });
   });
   // Reflect whether this (possibly new) endpoint origin is already permitted.
-  await updateUrlPermissionStatus();
-  updateResolvedUrlHint();
-}
-
-/**
- * The URL field accepts either the full chat route or just the API base, so show which URL the
- * plugin will actually POST to — otherwise a base URL looks like it was silently ignored.
- */
-function updateResolvedUrlHint() {
-  const hintEl = document.querySelector<HTMLElement>("#url-resolved-hint");
-  if (!hintEl) return;
-  const modelUrl = getInputElement("#url").value.trim();
-  const resolved = chatCompletionsEndpoint(modelUrl);
-  hintEl.textContent = !modelUrl || resolved === modelUrl ? "" : `Requests go to ${resolved}`;
-}
-
-/**
- * Request the host permission for the current endpoint URL. MV3 host permissions are opt-in and
- * permissions.request requires a real user-activation event — a button click qualifies (the
- * input's "change" event does not), so this is wired to the "Grant access" button.
- */
-async function grantEndpointAccess() {
-  const modelUrl = getInputElement("#url").value;
-  if (!modelUrl) {
-    await notifyOnError(async () => {
-      throw new Error("Enter the LLM endpoint URL first.");
-    });
-    return;
-  }
-  const granted = await requestEndpointPermission(modelUrl);
-  await updateUrlPermissionStatus();
-  if (!granted) {
-    await notifyOnError(async () => {
-      throw new Error("Permission to access this endpoint was not granted. The extension cannot reach the LLM.");
-    });
-  }
-}
-
-/**
- * Show whether the extension currently has host permission for the configured endpoint.
- * Renders as an icon-only badge (like the folder-existence badge); the wording shows on hover.
- */
-async function updateUrlPermissionStatus() {
-  const statusEl = document.querySelector<HTMLElement>("#url-permission-status");
-  if (!statusEl) return;
-  const modelUrl = getInputElement("#url").value;
-  if (!modelUrl) {
-    statusEl.textContent = "";
-    statusEl.title = "";
-    return;
-  }
-  const granted = await hasEndpointPermission(modelUrl);
-  statusEl.textContent = granted ? "✅" : "⚠️";
-  statusEl.title = granted ? "Access granted" : 'Access not granted — click "Grant access".';
-}
-
-/** Toggle the api-token field between obscured (password) and revealed (text). */
-function toggleTokenVisibility() {
-  const tokenInput = getInputElement("#api_token");
-  const btn = document.querySelector<HTMLButtonElement>("#toggle-token-btn");
-  const revealed = tokenInput.type === "password";
-  tokenInput.type = revealed ? "text" : "password";
-  btn?.classList.toggle("revealed", revealed);
-  btn?.setAttribute("aria-pressed", String(revealed));
-  const label = revealed ? "Hide token" : "Show token";
-  btn?.setAttribute("aria-label", label);
-  btn?.setAttribute("title", label);
+  const controls = mainEndpointControls();
+  await updateUrlPermissionStatus(controls);
+  updateResolvedUrlHint(controls);
 }
 
 async function updateApiToken(event: Event) {
@@ -145,43 +181,213 @@ async function updateApiToken(event: Event) {
 }
 
 async function updateTimeout(event: Event) {
-  const timeoutInput = event.target as HTMLInputElement;
-  const timeoutSeconds = timeoutInput.valueAsNumber;
+  const timeoutMs = timeoutInputToMs(event.target as HTMLInputElement);
   await updateStoredOptions((options) => {
-    // Convert seconds to milliseconds, or set to undefined if 0 or empty
-    options.timeout = timeoutSeconds > 0 ? timeoutSeconds * 1000 : undefined;
+    options.timeout = timeoutMs;
   });
 }
 
-async function updateLlmContext(event: Event) {
-  const llmContextInput = event.target as HTMLTextAreaElement;
-  await updateStoredOptions((options) => {
-    options.llmContext = llmContextInput.value;
+/** Seconds in the input → milliseconds, or undefined (no timeout) if 0 or empty. */
+function timeoutInputToMs(input: HTMLInputElement): number | undefined {
+  const seconds = input.valueAsNumber;
+  return seconds > 0 ? seconds * 1000 : undefined;
+}
+
+function timeoutMsToInput(timeout: number | undefined): string {
+  return timeout ? `${timeout / 1000}` : "";
+}
+
+async function updateOtherOptions(event: Event) {
+  await notifyOnError(async () => {
+    const otherOptionsElement = event.target as HTMLTextAreaElement;
+    const params = JSON.parse(otherOptionsElement.value);
+    await updateStoredOptions((options) => {
+      options.params = params;
+    });
   });
 }
 
-async function updateSubjectContext(event: Event) {
-  const subjectContextInput = event.target as HTMLTextAreaElement;
-  await updateStoredOptions((options) => {
-    options.subjectContext = subjectContextInput.value;
+// ── Shared endpoint controls ──────────────────────────────────────────────────
+
+/**
+ * The URL field accepts either the full chat route or just the API base, so show which URL the
+ * plugin will actually POST to — otherwise a base URL looks like it was silently ignored.
+ */
+function updateResolvedUrlHint(controls: EndpointControls) {
+  if (!controls.resolvedHint) return;
+  const modelUrl = controls.url.value.trim();
+  const resolved = chatCompletionsEndpoint(modelUrl);
+  controls.resolvedHint.textContent = !modelUrl || resolved === modelUrl ? "" : `Requests go to ${resolved}`;
+}
+
+/**
+ * Request the host permission for the endpoint URL. MV3 host permissions are opt-in and
+ * permissions.request requires a real user-activation event — a button click qualifies (the
+ * input's "change" event does not), so this is wired to the "Grant access" buttons.
+ */
+async function grantEndpointAccess(controls: EndpointControls) {
+  const modelUrl = controls.url.value;
+  if (!modelUrl) {
+    await notifyOnError(async () => {
+      throw new Error("Enter the LLM endpoint URL first.");
+    });
+    return;
+  }
+  const granted = await requestEndpointPermission(modelUrl);
+  await updateUrlPermissionStatus(controls);
+  if (!granted) {
+    await notifyOnError(async () => {
+      throw new Error("Permission to access this endpoint was not granted. The extension cannot reach the LLM.");
+    });
+  }
+}
+
+/**
+ * Show whether the extension currently has host permission for the endpoint.
+ * Renders as an icon-only badge (like the folder-existence badge); the wording shows on hover.
+ */
+async function updateUrlPermissionStatus(controls: EndpointControls) {
+  const statusEl = controls.permissionStatus;
+  if (!statusEl) return;
+  const modelUrl = controls.url.value;
+  if (!modelUrl) {
+    statusEl.textContent = "";
+    statusEl.title = "";
+    return;
+  }
+  const granted = await hasEndpointPermission(modelUrl);
+  statusEl.textContent = granted ? "✅" : "⚠️";
+  statusEl.title = granted ? "Access granted" : 'Access not granted — click "Grant access".';
+}
+
+/** Toggle an api-token field between obscured (password) and revealed (text). */
+function toggleTokenVisibility(tokenInput: HTMLInputElement, btn: HTMLButtonElement | null) {
+  const revealed = tokenInput.type === "password";
+  tokenInput.type = revealed ? "text" : "password";
+  btn?.classList.toggle("revealed", revealed);
+  btn?.setAttribute("aria-pressed", String(revealed));
+  const label = revealed ? "Hide token" : "Show token";
+  btn?.setAttribute("aria-label", label);
+  btn?.setAttribute("title", label);
+}
+
+// ── Per-feature endpoints ─────────────────────────────────────────────────────
+
+function emptyOverride(): FeatureEndpointOverride {
+  return { enabled: false, model: "", params: {} };
+}
+
+/** Clone the endpoint template into every `.feature-endpoint-slot` and wire its controls. */
+function setupFeatureEndpoints(): void {
+  const template = document.querySelector<HTMLTemplateElement>("#feature-endpoint-template");
+  if (!template) return;
+  for (const slot of document.querySelectorAll<HTMLElement>(".feature-endpoint-slot")) {
+    const feature = LLM_FEATURES.find((f) => f.value === slot.dataset.feature)?.value;
+    const block = template.content.firstElementChild?.cloneNode(true) as HTMLElement | undefined;
+    if (!feature || !block) continue;
+    // Template ids are shared by every clone: prefix them (and their labels) with the feature.
+    for (const el of block.querySelectorAll<HTMLElement>("[id]")) {
+      el.id = `${feature}-${el.id}`;
+    }
+    for (const label of block.querySelectorAll<HTMLLabelElement>("label[for]")) {
+      label.htmlFor = `${feature}-${label.htmlFor}`;
+    }
+    slot.replaceChildren(block);
+    featureEndpointUis.set(feature, wireFeatureEndpoint(feature, block));
+  }
+}
+
+function wireFeatureEndpoint(feature: LlmFeature, block: HTMLElement): FeatureEndpointUi {
+  const q = <T extends Element>(selector: string) => block.querySelector<T>(selector) as T;
+  const ui: FeatureEndpointUi = {
+    block,
+    enabled: q<HTMLInputElement>(".fe-enabled"),
+    url: q<HTMLInputElement>(".fe-url"),
+    token: q<HTMLInputElement>(".fe-token"),
+    timeout: q<HTMLInputElement>(".fe-timeout"),
+    otherOptions: q<HTMLTextAreaElement>(".fe-other-options"),
+    permissionStatus: q<HTMLElement>(".fe-permission-status"),
+    resolvedHint: q<HTMLElement>(".fe-url-hint"),
+    modelsStatus: q<HTMLElement>(".fe-models-status"),
+    modelsList: q<HTMLElement>(".fe-models-list"),
+    queryModelsBtn: q<HTMLButtonElement>(".fe-query-models-btn"),
+    saveParams: (params) =>
+      updateFeatureEndpoint(feature, (override) => {
+        override.params = params;
+      }),
+  };
+
+  ui.enabled.addEventListener("change", () => toggleFeatureEndpoint(feature, ui));
+  ui.url.addEventListener("change", async () => {
+    await updateFeatureEndpoint(feature, (override) => {
+      override.model = ui.url.value.trim();
+    });
+    await updateUrlPermissionStatus(ui);
+    updateResolvedUrlHint(ui);
+  });
+  ui.token.addEventListener("change", () =>
+    updateFeatureEndpoint(feature, (override) => {
+      override.api_token = ui.token.value;
+    }),
+  );
+  ui.timeout.addEventListener("change", () =>
+    updateFeatureEndpoint(feature, (override) => {
+      override.timeout = timeoutInputToMs(ui.timeout);
+    }),
+  );
+  ui.otherOptions.addEventListener("change", () =>
+    notifyOnError(async () => {
+      const params = JSON.parse(ui.otherOptions.value);
+      await updateFeatureEndpoint(feature, (override) => {
+        override.params = params;
+      });
+    }),
+  );
+  q<HTMLButtonElement>(".fe-grant-btn").addEventListener("click", () => grantEndpointAccess(ui));
+  const tokenToggle = q<HTMLButtonElement>(".fe-toggle-token-btn");
+  tokenToggle.addEventListener("click", () => toggleTokenVisibility(ui.token, tokenToggle));
+  ui.queryModelsBtn?.addEventListener("click", () => toggleAvailableModels(ui));
+  return ui;
+}
+
+function updateFeatureEndpoint(feature: LlmFeature, mutate: (override: FeatureEndpointOverride) => void) {
+  return updateStoredOptions((options) => {
+    const override = { ...emptyOverride(), ...options.featureEndpoints?.[feature] };
+    mutate(override);
+    options.featureEndpoints = { ...options.featureEndpoints, [feature]: override };
   });
 }
 
-/** Reset the LLM context textarea to the shipped default and persist it. */
-async function resetLlmContext() {
-  getInputElement<HTMLTextAreaElement>("#llm_context").value = DEFAULT_OPTIONS.llmContext;
+/** Enable/disable a feature's own endpoint; the first time, start from a copy of the main endpoint. */
+async function toggleFeatureEndpoint(feature: LlmFeature, ui: FeatureEndpointUi) {
+  const enabled = ui.enabled.checked;
+  let updated: FeatureEndpointOverride | undefined;
   await updateStoredOptions((options) => {
-    options.llmContext = DEFAULT_OPTIONS.llmContext;
+    const override = { ...emptyOverride(), ...options.featureEndpoints?.[feature], enabled };
+    if (enabled && !override.model.trim()) {
+      override.model = options.model;
+      override.api_token = options.api_token;
+      override.timeout = options.timeout;
+      override.params = { ...options.params };
+    }
+    options.featureEndpoints = { ...options.featureEndpoints, [feature]: override };
+    updated = override;
   });
+  if (updated) await renderFeatureEndpoint(ui, updated);
 }
 
-/** Reset the subject context textarea to the shipped default and persist it. */
-async function resetSubjectContext() {
-  getInputElement<HTMLTextAreaElement>("#subject_context").value = DEFAULT_OPTIONS.subjectContext;
-  await updateStoredOptions((options) => {
-    options.subjectContext = DEFAULT_OPTIONS.subjectContext;
-  });
+async function renderFeatureEndpoint(ui: FeatureEndpointUi, override: FeatureEndpointOverride) {
+  ui.enabled.checked = override.enabled;
+  ui.block.classList.toggle("enabled", override.enabled);
+  ui.url.value = override.model;
+  ui.token.value = override.api_token ?? "";
+  ui.timeout.value = timeoutMsToInput(override.timeout);
+  ui.otherOptions.value = JSON.stringify(override.params ?? {}, null, 2);
+  updateResolvedUrlHint(ui);
+  await updateUrlPermissionStatus(ui);
 }
+
+// ── Other settings ────────────────────────────────────────────────────────────
 
 async function updateUseLastMails(event: Event) {
   const useLastMailsInput = event.target as HTMLInputElement;
@@ -229,16 +435,6 @@ async function updateContextWindow(event: Event) {
   });
 }
 
-async function updateOtherOptions(event: Event) {
-  await notifyOnError(async () => {
-    const otherOptionsElement = event.target as HTMLTextAreaElement;
-    const params = JSON.parse(otherOptionsElement.value);
-    await updateStoredOptions((options) => {
-      options.params = params;
-    });
-  });
-}
-
 // ── Model discovery ────────────────────────────────────────────────────────────
 
 /** Extract model ids from an OpenAI-style models response (`{data:[{id}]}`), tolerating variants. */
@@ -255,12 +451,11 @@ function extractModelIds(body: unknown): string[] {
 }
 
 /** Query the endpoint's available models and render them, each with a button to apply it. */
-async function queryAvailableModels(): Promise<void> {
-  const statusEl = document.querySelector("#models-status");
-  const listEl = document.querySelector("#models-list");
+async function queryAvailableModels(controls: EndpointControls): Promise<void> {
+  const { modelsStatus: statusEl, modelsList: listEl } = controls;
   if (listEl) listEl.textContent = "";
 
-  const chatUrl = getInputElement("#url").value.trim();
+  const chatUrl = controls.url.value.trim();
   if (!chatUrl) {
     if (statusEl) statusEl.textContent = "Enter the LLM endpoint URL first.";
     return;
@@ -274,7 +469,7 @@ async function queryAvailableModels(): Promise<void> {
 
   if (statusEl) statusEl.textContent = "Querying models…";
   try {
-    const apiToken = getInputElement("#api_token").value.trim();
+    const apiToken = controls.token.value.trim();
     const headers: Record<string, string> = {};
     if (apiToken) headers.Authorization = `Bearer ${apiToken}`;
 
@@ -286,7 +481,7 @@ async function queryAvailableModels(): Promise<void> {
     if (statusEl) {
       statusEl.textContent = models.length ? `${models.length} model(s) found.` : "No models returned by the endpoint.";
     }
-    if (listEl) renderModelList(listEl, models);
+    if (listEl) renderModelList(controls, models);
   } catch (e) {
     console.error("OPTIONS: Could not query models:", e);
     if (statusEl) statusEl.textContent = `Could not query models: ${(e as Error).message}`;
@@ -297,31 +492,25 @@ async function queryAvailableModels(): Promise<void> {
  * Accordion toggle for the models list: closed → fetch and show (button becomes "Hide…");
  * open → clear the list and reset the button label.
  */
-async function toggleAvailableModels(): Promise<void> {
-  const listEl = document.querySelector("#models-list");
-  const btn = document.querySelector<HTMLButtonElement>("#query-models-btn");
+async function toggleAvailableModels(controls: EndpointControls): Promise<void> {
+  const { modelsList: listEl, queryModelsBtn: btn } = controls;
   if (listEl && listEl.childElementCount > 0) {
-    collapseModelsList();
+    collapseModelsList(controls);
     return;
   }
-  await queryAvailableModels();
+  await queryAvailableModels(controls);
   if (btn && listEl && listEl.childElementCount > 0) btn.textContent = "Hide available models";
 }
 
 /** Clear the models list and reset the query button to its collapsed state. */
-function collapseModelsList(): void {
-  document.querySelector("#models-list")?.replaceChildren();
-  const statusEl = document.querySelector("#models-status");
-  if (statusEl) statusEl.textContent = "";
-  const btn = document.querySelector<HTMLButtonElement>("#query-models-btn");
-  if (btn) btn.textContent = "Query available models";
+function collapseModelsList(controls: EndpointControls): void {
+  controls.modelsList?.replaceChildren();
+  if (controls.modelsStatus) controls.modelsStatus.textContent = "";
+  if (controls.queryModelsBtn) controls.queryModelsBtn.textContent = "Query available models";
 }
 
-/**
- * Build a clickable list row (the whole row acts as the button — no inner button) with the given
- * label and an activation handler that also receives the row (used for in-row feedback).
- */
-function makeClickableRow(label: string, title: string, onActivate: (row: HTMLElement) => void): HTMLElement {
+/** Build a clickable list row (the whole row acts as the button — no inner button). */
+function makeClickableRow(label: string, title: string, onActivate: () => void): HTMLElement {
   const row = document.createElement("div");
   row.className = "model-row";
   row.setAttribute("role", "button");
@@ -333,38 +522,36 @@ function makeClickableRow(label: string, title: string, onActivate: (row: HTMLEl
   id.textContent = label;
   row.appendChild(id);
 
-  const activate = () => onActivate(row);
-  row.addEventListener("click", activate);
+  row.addEventListener("click", onActivate);
   row.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      activate();
+      onActivate();
     }
   });
   return row;
 }
 
 /** Render each discovered model as a clickable row that applies it. */
-function renderModelList(container: Element, models: string[]): void {
-  container.replaceChildren();
+function renderModelList(controls: EndpointControls, models: string[]): void {
+  controls.modelsList?.replaceChildren();
   for (const model of models) {
-    container.appendChild(
+    controls.modelsList?.appendChild(
       makeClickableRow(model, `Use "${model}" (sets params.model in Other options)`, () => {
         // Selecting a model applies it and collapses the list (like picking an item from a menu).
-        void applyModelToOtherOptions(model);
-        collapseModelsList();
+        void applyModelToOtherOptions(controls, model);
+        collapseModelsList(controls);
       }),
     );
   }
 }
 
 /** Upsert the chosen model into the "other options" JSON (params.model) and persist it. */
-async function applyModelToOtherOptions(model: string): Promise<void> {
+async function applyModelToOtherOptions(controls: EndpointControls, model: string): Promise<void> {
   await notifyOnError(async () => {
-    const otherOptionsEl = getInputElement<HTMLTextAreaElement>("#other_options");
     let params: Record<string, unknown>;
     try {
-      const parsed = JSON.parse(otherOptionsEl.value.trim() || "{}");
+      const parsed = JSON.parse(controls.otherOptions.value.trim() || "{}");
       params =
         parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
     } catch {
@@ -372,11 +559,8 @@ async function applyModelToOtherOptions(model: string): Promise<void> {
       params = {};
     }
     params.model = model;
-    otherOptionsEl.value = JSON.stringify(params, null, 2);
-
-    await updateStoredOptions((options) => {
-      options.params = params;
-    });
+    controls.otherOptions.value = JSON.stringify(params, null, 2);
+    await controls.saveParams(params);
   });
 }
 
@@ -423,27 +607,34 @@ async function updateReportMaxTotalBodyChars(event: Event) {
 export async function restoreOptions(): Promise<void> {
   const options = await getPluginOptions();
 
-  getInputElement("#url").value = options.model;
-  await updateUrlPermissionStatus();
-  updateResolvedUrlHint();
-  getInputElement("#api_token").value = options.api_token || "";
-  getInputElement("#timeout").value = options.timeout ? `${options.timeout / 1000}` : "";
+  getInputElement("#show_advanced_options").checked = options.showAdvancedOptions;
+  applyAdvancedVisibility(options.showAdvancedOptions);
+
+  const main = mainEndpointControls();
+  main.url.value = options.model;
+  await updateUrlPermissionStatus(main);
+  updateResolvedUrlHint(main);
+  main.token.value = options.api_token || "";
+  getInputElement("#timeout").value = timeoutMsToInput(options.timeout);
   getInputElement("#context_window").value = `${options.context_window}`;
   getInputElement("#use_last_mails").checked = options.include_recent_mails;
   getInputElement("#recent_mails_count").value = `${options.recentMailsCount}`;
   getInputElement("#strip_think_tag").checked = options.strip_think_tag ?? true;
   getInputElement("#confirm_moves").checked = options.confirmMovesBeforeApplying ?? true;
-  getInputElement<HTMLTextAreaElement>("#other_options").value = JSON.stringify(options.params, null, 2);
-  getInputElement<HTMLTextAreaElement>("#llm_context").value = options.llmContext;
-  getInputElement<HTMLTextAreaElement>("#subject_context").value = options.subjectContext;
+  main.otherOptions.value = JSON.stringify(options.params, null, 2);
+  for (const { id, key } of PROMPT_FIELDS) {
+    getInputElement<HTMLTextAreaElement>(`#${id}`).value = options[key];
+  }
   getInputElement("#report_default_days").value = `${options.reportDefaultDays}`;
   getInputElement("#report_max_search_results").value = `${options.reportMaxSearchResults}`;
   getInputElement("#report_max_steps").value = `${options.reportMaxSteps}`;
   getInputElement("#report_max_message_bodies").value = `${options.reportMaxMessageBodies}`;
   getInputElement("#report_max_total_body_chars").value = `${options.reportMaxTotalBodyChars}`;
   getInputElement("#report_disable_thinking").checked = options.reportDisableThinking;
+  for (const [feature, ui] of featureEndpointUis) {
+    await renderFeatureEndpoint(ui, { ...emptyOverride(), ...options.featureEndpoints?.[feature] });
+  }
 
-  const rules = options.folderSortingRules ?? [];
   const list = document.querySelector("#folder-rules-list");
   const preFilterList = document.querySelector("#prefilter-rules-list");
   if (!list) return;
@@ -452,109 +643,40 @@ export async function restoreOptions(): Promise<void> {
 
   await primeFolderPaths();
 
-  const knownPaths = getKnownPaths();
-  for (const rule of rules) {
-    appendFolderRuleRow(rule.folderPath, rule.description, knownPaths);
+  for (const rule of options.folderSortingRules ?? []) {
+    appendFolderRuleRow(rule.folderPath, rule.description);
   }
   for (const rule of options.preFilterRules ?? []) {
-    appendPreFilterRuleRow(rule, knownPaths);
+    appendPreFilterRuleRow(rule);
   }
 }
 
 // ── Folder path loading ───────────────────────────────────────────────────────
 
-function getKnownPaths(): string[] {
-  const dl = document.querySelector<HTMLDataListElement>("#folder-paths-datalist");
-  return dl ? Array.from(dl.options).map((o) => o.value) : [];
-}
+/** Folder paths offered in the folder dropdowns; `null` until the first successful load. */
+let knownFolderPaths: string[] | null = null;
 
-/** Button handler: (re)fetch folder paths and render them as a copyable list (like the models list). */
+/** Button handler: reload folder paths (e.g. after creating a folder) and refresh every dropdown. */
 async function refreshFolderPaths() {
   const statusEl = document.querySelector("#folder-paths-status");
-  const availableEl = document.querySelector("#available-folder-paths");
-  if (statusEl) statusEl.textContent = "Loading folder paths…";
-  if (availableEl) availableEl.replaceChildren();
-
+  if (statusEl) statusEl.textContent = "Loading folders…";
   try {
-    const paths = await loadFolderPaths();
-    populateFolderDatalist(paths);
-    if (statusEl) statusEl.textContent = `${paths.length} folder(s) found.`;
-    if (availableEl) renderAvailablePaths(availableEl, paths);
-    revalidateAllRows(paths);
+    knownFolderPaths = await loadFolderPaths();
+    if (statusEl) statusEl.textContent = `${knownFolderPaths.length} folder(s) found.`;
+    refreshAllFolderSelects();
   } catch (e) {
     console.error("OPTIONS: Could not fetch folder paths:", e);
-    if (statusEl) statusEl.textContent = `Could not load folder paths: ${(e as Error).message}`;
+    if (statusEl) statusEl.textContent = `Could not load folders: ${(e as Error).message}`;
   }
 }
 
-/**
- * Accordion toggle for the folder-paths list: closed → fetch and show (button becomes "Hide…");
- * open → clear the list and reset the button label.
- */
-async function toggleFolderPaths(): Promise<void> {
-  const listEl = document.querySelector("#available-folder-paths");
-  const statusEl = document.querySelector("#folder-paths-status");
-  const btn = document.querySelector<HTMLButtonElement>("#refresh-folder-paths-btn");
-  if (listEl && listEl.childElementCount > 0) {
-    listEl.replaceChildren();
-    if (statusEl) statusEl.textContent = "";
-    if (btn) btn.textContent = "Show available folder paths";
-    return;
-  }
-  await refreshFolderPaths();
-  if (btn && listEl && listEl.childElementCount > 0) btn.textContent = "Hide available folder paths";
-}
-
-/** On page load: fetch folder paths only to power rule autocomplete + validation (no visible list). */
+/** On page load: fetch folder paths to fill the dropdowns. */
 async function primeFolderPaths() {
   try {
-    const paths = await loadFolderPaths();
-    populateFolderDatalist(paths);
-    revalidateAllRows(paths);
+    knownFolderPaths = await loadFolderPaths();
   } catch (e) {
     console.warn("OPTIONS: Could not prime folder paths:", e);
   }
-}
-
-/** Populate the hidden datalist backing folder-path autocomplete in the rule inputs. */
-function populateFolderDatalist(paths: string[]): void {
-  let dl = document.querySelector<HTMLDataListElement>("#folder-paths-datalist");
-  if (!dl) {
-    dl = document.createElement("datalist");
-    dl.id = "folder-paths-datalist";
-    document.body.appendChild(dl);
-  }
-  dl.replaceChildren();
-  for (const path of paths) {
-    const option = document.createElement("option");
-    option.value = path;
-    option.textContent = path;
-    dl.appendChild(option);
-  }
-}
-
-/** Render the available folder paths as clickable rows (styled like the models list); clicking copies the path. */
-function renderAvailablePaths(container: Element, paths: string[]): void {
-  container.replaceChildren();
-  for (const path of paths) {
-    container.appendChild(makeClickableRow(path, `Copy "${path}"`, (row) => copyPathToClipboard(path, row)));
-  }
-}
-
-/** Copy a folder path to the clipboard and briefly show a "Copied!" flag on the row. */
-async function copyPathToClipboard(path: string, row: HTMLElement): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(path);
-  } catch {
-    console.warn("OPTIONS: Clipboard API unavailable; could not copy folder path.");
-    return;
-  }
-  row.querySelector(".copied-flag")?.remove();
-  const flag = document.createElement("span");
-  flag.className = "copied-flag";
-  flag.textContent = "Copied!";
-  row.appendChild(flag);
-  setTimeout(() => flag.remove(), 1200);
 }
 
 async function loadFolderPaths(): Promise<string[]> {
@@ -571,59 +693,75 @@ async function loadFolderPaths(): Promise<string[]> {
   return response;
 }
 
-function revalidateAllRows(knownPaths: string[]) {
-  for (const row of document.querySelectorAll<HTMLDivElement>(".folder-rule-row")) {
-    const pathInput = row.querySelector<HTMLInputElement>("input");
-    const badge = row.querySelector<HTMLSpanElement>(".folder-path-badge");
-    if (pathInput && badge) applyBadge(badge, pathInput.value.trim(), knownPaths);
+/**
+ * Fill a folder dropdown: an empty choice (`emptyLabel`), then every known folder. A stored path
+ * that no longer exists stays selectable (flagged "not found") so it is not silently dropped.
+ */
+function fillFolderSelect(select: HTMLSelectElement, selected: string, emptyLabel: string): void {
+  const paths = knownFolderPaths ?? [];
+  const choices = [{ value: "", label: emptyLabel }, ...paths.map((path) => ({ value: path, label: path }))];
+  if (selected && !paths.includes(selected)) {
+    choices.push({ value: selected, label: knownFolderPaths ? `${selected} (not found)` : selected });
   }
-  for (const row of document.querySelectorAll<HTMLDivElement>(".prefilter-rule-row")) {
-    const pathInput = row.querySelector<HTMLInputElement>(".pf-target");
-    const badge = row.querySelector<HTMLSpanElement>(".folder-path-badge");
-    if (pathInput && badge) applyBadge(badge, pathInput.value.trim(), knownPaths);
+  select.replaceChildren(
+    ...choices.map((choice) => {
+      const option = document.createElement("option");
+      option.value = choice.value;
+      option.textContent = choice.label;
+      return option;
+    }),
+  );
+  select.value = selected;
+}
+
+function makeFolderSelect(className: string, selected: string, emptyLabel: string): HTMLSelectElement {
+  const select = document.createElement("select");
+  select.className = className;
+  select.dataset.emptyLabel = emptyLabel;
+  fillFolderSelect(select, selected, emptyLabel);
+  return select;
+}
+
+/** Re-fill every folder dropdown from `knownFolderPaths`, keeping each selection, and refresh badges. */
+function refreshAllFolderSelects(): void {
+  for (const select of document.querySelectorAll<HTMLSelectElement>("select.folder-select")) {
+    fillFolderSelect(select, select.value, select.dataset.emptyLabel ?? "");
+    const badge = select.parentElement?.querySelector<HTMLSpanElement>(".folder-path-badge");
+    if (badge) applyBadge(badge, select.value);
+  }
+}
+
+/** Flag a selected folder that is missing from the mailbox (or that could not be checked yet). */
+function applyBadge(badge: HTMLSpanElement, val: string) {
+  if (!val || knownFolderPaths?.includes(val)) {
+    badge.textContent = "";
+    badge.title = "";
+  } else if (!knownFolderPaths) {
+    badge.textContent = "⏳";
+    badge.title = 'Folder list not loaded — click "Reload folders".';
+  } else {
+    badge.textContent = "⚠️";
+    badge.title = "Folder not found in your mailbox. Pick another one.";
   }
 }
 
 // ── Organise-folder rules ──────────────────────────────────────────────────────
 
-function applyBadge(badge: HTMLSpanElement, val: string, knownPaths: string[]) {
-  if (!val) {
-    badge.textContent = "";
-    badge.title = "";
-  } else if (knownPaths.length === 0) {
-    badge.textContent = "⏳";
-    badge.title = "Folder list not yet loaded";
-  } else if (knownPaths.includes(val)) {
-    badge.textContent = "✅";
-    badge.title = "Folder found";
-  } else {
-    badge.textContent = "⚠️";
-    badge.title = `Path not found in your mailbox.\nCheck the "Available folder paths" list below.`;
-  }
-}
-
-function appendFolderRuleRow(folderPath = "", description = "", knownPaths: string[] = []) {
+function appendFolderRuleRow(folderPath = "", description = "") {
   const list = document.querySelector("#folder-rules-list");
   if (!list) return;
   const row = document.createElement("div");
   row.className = "folder-rule-row";
 
-  const pathInput = document.createElement("input");
-  pathInput.type = "text";
-  pathInput.setAttribute("list", "folder-paths-datalist");
-  pathInput.placeholder = "/INBOX/Work";
-  pathInput.value = folderPath;
+  const pathSelect = makeFolderSelect("folder-select fr-path", folderPath, "Select a folder…");
 
   const badge = document.createElement("span");
   badge.className = "folder-path-badge";
-  applyBadge(badge, folderPath, knownPaths);
+  applyBadge(badge, folderPath);
 
-  pathInput.addEventListener("input", () => {
-    applyBadge(badge, pathInput.value.trim(), getKnownPaths());
-  });
-  pathInput.addEventListener("change", () => {
-    applyBadge(badge, pathInput.value.trim(), getKnownPaths());
-    saveFolderRules();
+  pathSelect.addEventListener("change", () => {
+    applyBadge(badge, pathSelect.value);
+    void saveFolderRules();
   });
 
   const descInput = document.createElement("input");
@@ -639,10 +777,10 @@ function appendFolderRuleRow(folderPath = "", description = "", knownPaths: stri
   removeBtn.textContent = "✕";
   removeBtn.addEventListener("click", () => {
     row.remove();
-    saveFolderRules();
+    void saveFolderRules();
   });
 
-  row.appendChild(pathInput);
+  row.appendChild(pathSelect);
   row.appendChild(badge);
   row.appendChild(descInput);
   row.appendChild(removeBtn);
@@ -650,16 +788,14 @@ function appendFolderRuleRow(folderPath = "", description = "", knownPaths: stri
 }
 
 function addFolderRuleRow() {
-  appendFolderRuleRow("", "", getKnownPaths());
+  appendFolderRuleRow();
 }
 
 function collectFolderRules(): FolderRule[] {
-  const rows = document.querySelectorAll<HTMLDivElement>(".folder-rule-row");
   const rules: FolderRule[] = [];
-  for (const row of rows) {
-    const inputs = row.querySelectorAll<HTMLInputElement>("input");
-    const folderPath = inputs[0]?.value.trim() ?? "";
-    const description = inputs[1]?.value.trim() ?? "";
+  for (const row of document.querySelectorAll<HTMLDivElement>(".folder-rule-row")) {
+    const folderPath = row.querySelector<HTMLSelectElement>(".fr-path")?.value ?? "";
+    const description = row.querySelector<HTMLInputElement>(".description-input")?.value.trim() ?? "";
     if (folderPath) {
       rules.push({ folderPath, description });
     }
@@ -693,7 +829,7 @@ function makeSelect(className: string, choices: ReadonlyArray<{ value: string; l
   return select;
 }
 
-function appendPreFilterRuleRow(rule: PreFilterRule, knownPaths: string[] = []) {
+function appendPreFilterRuleRow(rule: PreFilterRule) {
   const list = document.querySelector("#prefilter-rules-list");
   if (!list) return;
   const row = document.createElement("div");
@@ -710,22 +846,17 @@ function appendPreFilterRuleRow(rule: PreFilterRule, knownPaths: string[] = []) 
   valueInput.addEventListener("change", savePreFilterRules);
   row.appendChild(valueInput);
 
-  const targetInput = document.createElement("input");
-  targetInput.type = "text";
-  targetInput.className = "pf-target";
-  targetInput.setAttribute("list", "folder-paths-datalist");
-  targetInput.placeholder = "/INBOX/Newsletters (empty = keep in place)";
-  targetInput.value = rule.targetFolderPath;
-  row.appendChild(targetInput);
+  const targetPath = rule.targetFolderPath.trim();
+  const targetSelect = makeFolderSelect("folder-select pf-target", targetPath, "Keep in place");
+  row.appendChild(targetSelect);
 
   const badge = document.createElement("span");
   badge.className = "folder-path-badge";
-  applyBadge(badge, rule.targetFolderPath.trim(), knownPaths);
+  applyBadge(badge, targetPath);
   row.appendChild(badge);
 
-  targetInput.addEventListener("input", () => applyBadge(badge, targetInput.value.trim(), getKnownPaths()));
-  targetInput.addEventListener("change", () => {
-    applyBadge(badge, targetInput.value.trim(), getKnownPaths());
+  targetSelect.addEventListener("change", () => {
+    applyBadge(badge, targetSelect.value);
     void savePreFilterRules();
   });
 
@@ -743,7 +874,7 @@ function appendPreFilterRuleRow(rule: PreFilterRule, knownPaths: string[] = []) 
 }
 
 function addPreFilterRuleRow() {
-  appendPreFilterRuleRow({ field: "from", operator: "contains", value: "", targetFolderPath: "" }, getKnownPaths());
+  appendPreFilterRuleRow({ field: "from", operator: "contains", value: "", targetFolderPath: "" });
 }
 
 function collectPreFilterRules(): PreFilterRule[] {
@@ -756,7 +887,7 @@ function collectPreFilterRules(): PreFilterRule[] {
       field: toPreFilterField(row.querySelector<HTMLSelectElement>(".pf-field")?.value ?? ""),
       operator: toPreFilterOperator(row.querySelector<HTMLSelectElement>(".pf-operator")?.value ?? ""),
       value,
-      targetFolderPath: row.querySelector<HTMLInputElement>(".pf-target")?.value.trim() ?? "",
+      targetFolderPath: row.querySelector<HTMLSelectElement>(".pf-target")?.value ?? "",
     });
   }
   return rules;

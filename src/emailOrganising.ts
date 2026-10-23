@@ -1,17 +1,11 @@
 import { isLlmTextCompletionResponse, LlmRoles, sendContentToLlm } from "./llmConnection";
 import { timedNotification } from "./notifications";
-import { type FolderRule, getPluginOptions, type PreFilterRule } from "./optionsParams";
+import { type FolderRule, getAdvancedPrompt, getPluginOptions, type PreFilterRule } from "./optionsParams";
 import { findMatchingPreFilterRule, type PreFilterCandidate } from "./preFilters";
 import { stripHtml } from "./utils";
 
-const BATCH_ORGANISING_SYSTEM_PROMPT = `You are an email organisation assistant.
-You will be given:
-- A numbered list of folder categories with descriptions
-- Multiple emails, each with a stable numeric id
-
-Organise each email into exactly one folder index (1-based), or null when no folder fits.
-
-Respond with JSON only in this exact shape:
+/** Answer-format instructions appended to the (user-editable) organise system prompt; parsing depends on them. */
+const BATCH_ORGANISING_FORMAT_INSTRUCTIONS = `Respond with JSON only in this exact shape:
 {"classifications":[{"id":123,"folder":1},{"id":124,"folder":null}]}
 
 Rules:
@@ -82,6 +76,7 @@ export interface OrganiseAssignment {
 /** Mutable per-run state shared across chunk classifications (e.g. whether the endpoint accepts JSON mode). */
 interface ClassifyRunState {
   jsonModeSupported: boolean;
+  systemPrompt: string;
 }
 
 function buildBatchOrganisingPrompt(rules: FolderRule[], messages: MessageForOrganising[]): string {
@@ -352,6 +347,8 @@ interface PreFilterMatch {
 /** Shared setup for both organise paths: everything needed before classification. */
 interface PreparedOrganise {
   rules: FolderRule[];
+  /** Effective organise system prompt, including the required answer format. */
+  systemPrompt: string;
   resolvedFolders: Array<browser.folders.MailFolder | null>;
   source: MoveSource | null;
   /** Messages left for the LLM — those claimed by pre-filters are in `preFilterMatches` instead. */
@@ -470,6 +467,7 @@ async function prepareOrganise(): Promise<PreparedOrganise | null> {
 
   return {
     rules,
+    systemPrompt: `${getAdvancedPrompt(options, "organiseSystemPrompt").trim()}\n\n${BATCH_ORGANISING_FORMAT_INSTRUCTIONS}`,
     resolvedFolders,
     source,
     messages: preFilter.remaining,
@@ -614,7 +612,7 @@ export async function organiseCurrentFolder(
   let errors = preFiltered.errors;
   let processed = 0;
   let aborted = preFiltered.aborted;
-  const classifyState: ClassifyRunState = { jsonModeSupported: true };
+  const classifyState: ClassifyRunState = { jsonModeSupported: true, systemPrompt: prepared.systemPrompt };
 
   await reportProgress(onProgress, 0);
 
@@ -690,7 +688,7 @@ export async function planOrganiseCurrentFolder(
 
   const chunks = chunk(messages, BATCH_SIZE);
   const assignments = new Map<number, number | null>();
-  const classifyState: ClassifyRunState = { jsonModeSupported: true };
+  const classifyState: ClassifyRunState = { jsonModeSupported: true, systemPrompt: prepared.systemPrompt };
   let processed = 0;
 
   await reportProgress(onProgress, 0);
@@ -818,7 +816,12 @@ async function requestClassification(
 ): Promise<ClassificationAttempt> {
   const fallback = new Map<number, number | null>(expectedIds.map((id) => [id, null]));
 
-  const response = await sendContentToLlm(messages, abortSignal, useJsonMode ? { type: "json_object" } : undefined);
+  const response = await sendContentToLlm(
+    messages,
+    abortSignal,
+    "organise",
+    useJsonMode ? { type: "json_object" } : undefined,
+  );
 
   if (!isLlmTextCompletionResponse(response)) {
     console.warn("ORGANISE: LLM error response for batch", response);
@@ -851,7 +854,7 @@ async function classifyChunk(
 ): Promise<{ classifications: Map<number, number | null>; ok: boolean }> {
   const expectedIds = entriesChunk.map((entry) => entry.refId);
   const messages = [
-    { role: LlmRoles.SYSTEM, content: BATCH_ORGANISING_SYSTEM_PROMPT },
+    { role: LlmRoles.SYSTEM, content: state.systemPrompt },
     { role: LlmRoles.USER, content: buildBatchOrganisingPrompt(rules, entriesChunk) },
   ];
 

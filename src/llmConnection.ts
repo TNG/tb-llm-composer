@@ -1,7 +1,7 @@
 import { chatCompletionsEndpoint } from "./endpointUrls";
 import { hasEndpointPermission } from "./hostPermissions";
 import { startKeepAlive, stopKeepAlive } from "./keepAlive";
-import { getPluginOptions, type LlmParameters } from "./optionsParams";
+import { getEndpointSettings, getPluginOptions, type LlmFeature, type LlmParameters } from "./optionsParams";
 import { currentTrace } from "./reportTrace";
 import { stripThinkTags } from "./utils";
 
@@ -139,23 +139,25 @@ export interface TgiErrorResponse {
   };
 }
 
+/** Send a chat completion to the endpoint configured for `feature`. */
 export async function sendContentToLlm(
   messages: Array<LlmApiRequestMessage>,
   abortSignal: AbortSignal,
+  feature: LlmFeature,
   responseFormat?: LlmResponseFormat,
 ): Promise<LlmTextCompletionResponse | TgiErrorResponse> {
-  const options = await getPluginOptions();
-  if (!options.model) {
+  const endpoint = getEndpointSettings(await getPluginOptions(), feature);
+  if (!endpoint.model) {
     throw Error("Missing LLM model, set it in the options panel.");
   }
 
   const requestBody: LlmApiRequestBody = {
     messages,
-    ...options.params,
+    ...endpoint.params,
     ...(responseFormat ? { response_format: responseFormat } : {}),
   };
 
-  return callLlmApi(options.model, requestBody, abortSignal, options.api_token, options.timeout);
+  return callLlmApi(endpoint.model, requestBody, abortSignal, endpoint.api_token, endpoint.timeout);
 }
 
 async function callLlmApi(
@@ -292,7 +294,8 @@ export async function runAgenticLlm(
   compactHistory?: (conversation: LlmApiRequestMessage[]) => void,
 ): Promise<AgenticRunResult> {
   const options = await getPluginOptions();
-  if (!options.model) {
+  const endpoint = getEndpointSettings(options, "report");
+  if (!endpoint.model) {
     throw Error("Missing LLM model, set it in the options panel.");
   }
 
@@ -361,8 +364,8 @@ export async function runAgenticLlm(
         messages: conversation,
         tools,
         tool_choice: "auto",
-        ...options.params,
-        ...(options.reportDisableThinking ? thinkingOffParams(options.params) : {}),
+        ...endpoint.params,
+        ...(options.reportDisableThinking ? thinkingOffParams(endpoint.params) : {}),
       };
 
       console.log(
@@ -371,7 +374,7 @@ export async function runAgenticLlm(
 
       let response: LlmTextCompletionResponse | TgiErrorResponse;
       try {
-        response = await callLlmApi(options.model, requestBody, abortSignal, options.api_token, options.timeout);
+        response = await callLlmApi(endpoint.model, requestBody, abortSignal, endpoint.api_token, endpoint.timeout);
       } catch (e) {
         if ((e as Error).name === "AbortError" || (e as Error).name === "TimeoutError") {
           throw e;

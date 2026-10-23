@@ -1,6 +1,6 @@
 import { type LlmApiRequestMessage, LlmRoles } from "./llmConnection";
 
-import type { Options } from "./optionsParams";
+import { DEFAULT_OPTIONS, type Options } from "./optionsParams";
 import { SUMMARY_JSON_SCHEMA } from "./summary";
 import { stripHtml } from "./utils";
 
@@ -85,17 +85,18 @@ function buildEmailPrompt(
   return `${THIS_IS_THE_CONTENT}\n${contentWithoutSignature.trim()}`;
 }
 
-export async function getSummaryPromptAndContext(previousConversation: string): Promise<Array<LlmApiRequestMessage>> {
+/** Summary system prompt plus user message; the JSON answer format the popup parses is always appended. */
+export async function getSummaryPromptAndContext(
+  previousConversation: string,
+  summaryContext: string = DEFAULT_OPTIONS.summaryContext,
+): Promise<Array<LlmApiRequestMessage>> {
   return [
     {
       content:
-        "I want to reply to an email. Give me a short summary of the previous conversation " +
-        "and list the open points I need to cover in my answer.\n" +
+        `${summaryContext.trim()}\n` +
         `Respond with a single JSON object and nothing else, using this schema: ${SUMMARY_JSON_SCHEMA}\n` +
         'Use "single" when exactly one of a few distinct answers fits (e.g. yes/no, picking one date), ' +
-        '"multi" when several of the options can apply together, and "text" for open questions (empty options). ' +
-        "Phrase each question so I can answer it directly, and keep options short. " +
-        "Write the summary, questions and options in the language of the conversation.",
+        '"multi" when several of the options can apply together, and "text" for open questions (empty options).',
       role: LlmRoles.SYSTEM,
     },
     {

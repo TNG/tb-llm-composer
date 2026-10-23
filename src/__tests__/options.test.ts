@@ -15,7 +15,7 @@ Object.assign(global, { TextDecoder, TextEncoder });
 
 import CreateNotificationOptions = browser.notifications.CreateNotificationOptions;
 
-import type { Options } from "../optionsParams";
+import { DEFAULT_OPTIONS, type Options } from "../optionsParams";
 
 let optionsDom: JSDOM;
 
@@ -258,30 +258,108 @@ describe("The options page", () => {
     });
   });
 
-  test("lists available folder paths and copies a path when its row is clicked", async () => {
-    const win = optionsDom.window;
-    const doc = win.document;
-    const clipboardWriteMock = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(win.navigator, "clipboard", {
-      value: { writeText: clipboardWriteMock },
-      configurable: true,
-    });
+  test("offers mailbox folders in a dropdown for new folder rules and saves the chosen one", async () => {
+    const doc = optionsDom.window.document;
 
-    (doc.getElementById("refresh-folder-paths-btn") as HTMLButtonElement).click();
+    (doc.getElementById("add-folder-rule-btn") as HTMLButtonElement).click();
+    const select = doc.querySelector("#folder-rules-list .fr-path") as HTMLSelectElement;
+    const values = Array.from(select.options).map((o) => o.value);
+    expect(values[0]).toBe("");
+    expect(values).toContain("/INBOX");
 
-    await waitFor(() => {
-      const rows = doc.querySelectorAll("#available-folder-paths .model-row");
-      expect(rows.length).toBeGreaterThan(0);
-    });
-
-    const firstRow = doc.querySelector("#available-folder-paths .model-row") as HTMLElement;
-    const firstPath = (firstRow.querySelector(".model-id") as HTMLElement).textContent;
-    firstRow.click();
+    select.value = "/INBOX";
+    select.dispatchEvent(new optionsDom.window.Event("change"));
 
     await waitFor(() => {
-      expect(clipboardWriteMock).toHaveBeenCalledWith(firstPath);
-      // Confirmation shows a transient "Copied!" flag on the row.
-      expect(firstRow.querySelector(".copied-flag")?.textContent).toBe("Copied!");
+      expect((browserStorage.options as Options).folderSortingRules).toEqual([
+        { folderPath: "/INBOX", description: "" },
+      ]);
+    });
+  });
+
+  test("keeps a stored folder that no longer exists selectable and flags it", async () => {
+    browserStorage = {
+      options: { preFilterRules: [{ field: "from", operator: "contains", value: "x", targetFolderPath: "/Gone" }] },
+    };
+    // Re-run the page's load handler against the new storage.
+    optionsDom.window.document.dispatchEvent(new optionsDom.window.Event("DOMContentLoaded"));
+
+    await waitFor(() => {
+      const select = optionsDom.window.document.querySelector(".prefilter-rule-row .pf-target") as HTMLSelectElement;
+      expect(select.value).toBe("/Gone");
+      expect(select.selectedOptions[0].textContent).toBe("/Gone (not found)");
+      expect(select.options[0].textContent).toBe("Keep in place");
+      const badge = optionsDom.window.document.querySelector(".prefilter-rule-row .folder-path-badge");
+      expect(badge?.textContent).toBe("⚠️");
+    });
+  });
+
+  test("shows advanced options only when the checkbox is checked, and persists the choice", async () => {
+    const doc = optionsDom.window.document;
+    const toggle = doc.getElementById("show_advanced_options") as HTMLInputElement;
+    expect(doc.body.classList.contains("show-advanced")).toBe(false);
+
+    toggle.checked = true;
+    toggle.dispatchEvent(new optionsDom.window.Event("change"));
+
+    await waitFor(() => {
+      expect(doc.body.classList.contains("show-advanced")).toBe(true);
+      expect((browserStorage.options as Options).showAdvancedOptions).toBe(true);
+    });
+  });
+
+  test("renders one endpoint block per feature", () => {
+    const doc = optionsDom.window.document;
+    for (const feature of ["compose", "summarize", "report", "organise"]) {
+      expect(doc.getElementById(`${feature}-fe-url`)).not.toBeNull();
+      expect(doc.querySelector(`label[for="${feature}-fe-url"]`)).not.toBeNull();
+    }
+  });
+
+  test("enabling a feature endpoint starts from a copy of the main endpoint and saves edits", async () => {
+    browserStorage = { options: { model: "https://main.llm/v1", api_token: "tok", params: { model: "big" } } };
+    const doc = optionsDom.window.document;
+    const enabled = doc.getElementById("summarize-fe-enabled") as HTMLInputElement;
+
+    enabled.checked = true;
+    enabled.dispatchEvent(new optionsDom.window.Event("change"));
+
+    await waitFor(() => {
+      expect((browserStorage.options as Options).featureEndpoints.summarize).toEqual({
+        enabled: true,
+        model: "https://main.llm/v1",
+        api_token: "tok",
+        timeout: undefined,
+        params: { model: "big" },
+      });
+      expect((doc.getElementById("summarize-fe-url") as HTMLInputElement).value).toBe("https://main.llm/v1");
+    });
+
+    const otherOptions = doc.getElementById("summarize-fe-other-options") as HTMLTextAreaElement;
+    otherOptions.value = JSON.stringify({ model: "small" });
+    otherOptions.dispatchEvent(new optionsDom.window.Event("change"));
+
+    await waitFor(() => {
+      expect((browserStorage.options as Options).featureEndpoints.summarize?.params).toEqual({ model: "small" });
+      // The main endpoint is untouched.
+      expect((browserStorage.options as Options).params).toEqual({ model: "big" });
+    });
+  });
+
+  test("saves and resets an advanced system prompt", async () => {
+    const doc = optionsDom.window.document;
+    const textarea = doc.getElementById("report_system_prompt") as HTMLTextAreaElement;
+
+    textarea.value = "Custom report prompt";
+    textarea.dispatchEvent(new optionsDom.window.Event("change"));
+    await waitFor(() => {
+      expect((browserStorage.options as Options).reportSystemPrompt).toBe("Custom report prompt");
+    });
+
+    (doc.querySelector('[data-reset-prompt="report_system_prompt"]') as HTMLButtonElement).click();
+    await waitFor(() => {
+      expect((browserStorage.options as Options).reportSystemPrompt).toBe(DEFAULT_OPTIONS.reportSystemPrompt);
+      expect(textarea.value).toBe(DEFAULT_OPTIONS.reportSystemPrompt);
     });
   });
 
