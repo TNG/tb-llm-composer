@@ -24,6 +24,10 @@ export interface ReportRequest {
   days: number;
   folderOnly: boolean;
   folder: { accountId: string; path: string } | null;
+  /** Accounts to search when not folder-only; empty (or absent) = every account. */
+  accountIds?: string[];
+  /** Display names for `accountIds` (same order), used to describe the scope to the model. */
+  accountNames?: string[];
 }
 
 /**
@@ -40,7 +44,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Build the scope-describing user preamble for the run. */
 function buildScopePreamble(request: ReportRequest): string {
-  const scopeText = request.folderOnly && request.folder ? `only the folder "${request.folder.path}"` : "all folders";
+  const names = request.accountNames?.length ? request.accountNames : (request.accountIds ?? []);
+  const accountsText =
+    names.length === 0 ? "" : ` of the account${names.length > 1 ? "s" : ""} ${names.map((n) => `"${n}"`).join(", ")}`;
+  const scopeText =
+    request.folderOnly && request.folder ? `only the folder "${request.folder.path}"` : `all folders${accountsText}`;
   const runDate = new Date();
   const fromDate = new Date(runDate.getTime() - request.days * DAY_MS);
   return [
@@ -75,6 +83,7 @@ export async function generateReport(
   const scope: ReportScope = {
     folderOnly: request.folderOnly,
     folder: request.folder,
+    accountIds: request.accountIds ?? [],
     defaultDays: request.days,
     maxSearchResults: options.reportMaxSearchResults,
     maxMessageBodies: options.reportMaxMessageBodies,
@@ -83,7 +92,7 @@ export async function generateReport(
 
   console.log(
     "REPORT: starting generation " +
-      `(days=${request.days}, folderOnly=${request.folderOnly}, folder=${request.folder?.path ?? "(all)"}, ` +
+      `(days=${request.days}, folderOnly=${request.folderOnly}, folder=${request.folder?.path ?? "(all)"}, accounts=${request.accountIds?.join("|") || "(all)"}, ` +
       `promptChars=${request.prompt.length})`,
   );
 
@@ -110,7 +119,12 @@ function traceInfo(prompt: string, scope: ReportScope): TraceRequestInfo {
     days: scope.defaultDays,
     folderOnly: scope.folderOnly,
     folderPath: scope.folder?.path ?? null,
+    accountIds: scope.accountIds,
   };
+}
+
+function sortedKey(ids: string[]): string {
+  return [...ids].sort().join(",");
 }
 
 /** True when the report window's days/folder settings differ from the scope a session was built with. */
@@ -119,7 +133,8 @@ function scopeChanged(scope: ReportScope, request: ReportRequest): boolean {
     scope.defaultDays !== request.days ||
     scope.folderOnly !== request.folderOnly ||
     scope.folder?.accountId !== request.folder?.accountId ||
-    scope.folder?.path !== request.folder?.path
+    scope.folder?.path !== request.folder?.path ||
+    sortedKey(scope.accountIds) !== sortedKey(request.accountIds ?? [])
   );
 }
 
@@ -142,7 +157,13 @@ export async function continueReport(
   // A new scope object also starts a fresh tool-result cache, whose entries depend on the old defaults.
   const changed = scopeChanged(session.scope, request);
   const scope: ReportScope = changed
-    ? { ...session.scope, defaultDays: request.days, folderOnly: request.folderOnly, folder: request.folder }
+    ? {
+        ...session.scope,
+        defaultDays: request.days,
+        folderOnly: request.folderOnly,
+        folder: request.folder,
+        accountIds: request.accountIds ?? [],
+      }
     : session.scope;
 
   console.log(
@@ -183,6 +204,7 @@ export async function rebuildSessionFromReport(
   const scope: ReportScope = {
     folderOnly: request.folderOnly,
     folder: request.folder,
+    accountIds: request.accountIds ?? [],
     defaultDays: request.days,
     maxSearchResults: options.reportMaxSearchResults,
     maxMessageBodies: options.reportMaxMessageBodies,

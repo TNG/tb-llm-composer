@@ -6,7 +6,13 @@ import { isTraceBuild, ReportTrace, withReportTrace } from "../reportTrace";
 
 const OPTIONS: Options = { ...DEFAULT_OPTIONS, model: "https://llm.example/v1/chat/completions", api_token: "secret" };
 
-const REQUEST = { prompt: "Weekly status for project Foo!", days: 7, folderOnly: false, folderPath: null };
+const REQUEST = {
+  prompt: "Weekly status for project Foo!",
+  days: 7,
+  folderOnly: false,
+  folderPath: null,
+  accountIds: [],
+};
 
 function newTrace(): ReportTrace {
   return new ReportTrace("report", REQUEST, OPTIONS, Date.now());

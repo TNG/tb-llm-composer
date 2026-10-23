@@ -108,6 +108,7 @@ describe("reportGeneration", () => {
       maxSearchResults: 50,
       maxMessageBodies: 25,
       maxTotalBodyChars: 60000,
+      accountIds: [],
     };
 
     const session = await continueReport(
@@ -134,6 +135,7 @@ describe("reportGeneration", () => {
       maxSearchResults: 50,
       maxMessageBodies: 25,
       maxTotalBodyChars: 60000,
+      accountIds: [],
     };
 
     const session = await continueReport(
@@ -148,6 +150,39 @@ describe("reportGeneration", () => {
     expect(messages[0].content).toContain("The search scope has changed");
     expect(messages[0].content).toContain("last 45 day(s)");
     expect(messages[1].content).toContain("Also the older set");
+  });
+
+  test("names the searched accounts in the scope preamble", async () => {
+    await generateReport(
+      { ...BASE_REQUEST, folderOnly: false, folder: null, accountIds: ["a", "b"], accountNames: ["Work", "Home"] },
+      abortSignal,
+    );
+
+    const [messages] = runAgenticLlmMock.mock.calls[0];
+    const preamble = messages.map((m: { content: string }) => m.content).join("\n");
+    expect(preamble).toContain('Search scope: all folders of the accounts "Work", "Home".');
+    expect(createReportToolHandlersMock.mock.calls[0][0]).toMatchObject({ accountIds: ["a", "b"] });
+  });
+
+  test("continueReport starts a new scope when the selected accounts change", async () => {
+    const scope = {
+      folderOnly: false,
+      folder: null,
+      defaultDays: 14,
+      maxSearchResults: 50,
+      maxMessageBodies: 25,
+      maxTotalBodyChars: 60000,
+      accountIds: ["b", "a"],
+    };
+    const request = { ...BASE_REQUEST, folderOnly: false, folder: null };
+
+    // Same accounts in another order: unchanged.
+    const same = await continueReport({ messages: [], scope }, { ...request, accountIds: ["a", "b"] }, abortSignal);
+    expect(same.scope).toBe(scope);
+
+    const changed = await continueReport({ messages: [], scope }, { ...request, accountIds: ["a"] }, abortSignal);
+    expect(changed.scope).toMatchObject({ accountIds: ["a"] });
+    expect(runAgenticLlmMock.mock.calls[1][0][0].content).toContain("The search scope has changed");
   });
 
   test("rebuilds a lost session with the displayed report as the last assistant turn", async () => {

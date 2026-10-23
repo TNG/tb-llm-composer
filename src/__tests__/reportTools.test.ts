@@ -26,6 +26,7 @@ const BASE_SCOPE: ReportScope = {
   maxSearchResults: 50,
   maxMessageBodies: 25,
   maxTotalBodyChars: 60000,
+  accountIds: [],
 };
 
 function setBrowser(overrides: Record<string, unknown>): void {
@@ -282,8 +283,61 @@ describe("reportTools", () => {
       });
       await handlers.search_messages({});
 
-      expect(resolveFolderPathMock).toHaveBeenCalledWith("/INBOX");
+      expect(resolveFolderPathMock).toHaveBeenCalledWith("/INBOX", "a");
       expect(query.mock.calls[0][0].folderId).toBe("folder-7");
+      expect(query.mock.calls[0][0]).not.toHaveProperty("accountId");
+    });
+
+    test.each([
+      [[], undefined],
+      [["acc1"], "acc1"],
+      [
+        ["acc1", "acc2"],
+        ["acc1", "acc2"],
+      ],
+    ])("limits an all-folders search over accounts %j to accountId %j", async (accountIds, expected) => {
+      const query = vi.fn().mockResolvedValue({ messages: [] });
+      setBrowser({ query });
+
+      await createReportToolHandlers({ ...BASE_SCOPE, accountIds }).search_messages({});
+
+      expect(query.mock.calls[0][0].accountId).toEqual(expected);
+      expect(resolveFolderPathMock).not.toHaveBeenCalled();
+    });
+
+    test("remembers full-text stalls per account set", async () => {
+      vi.useFakeTimers();
+      try {
+        const query = vi.fn((info: Record<string, unknown>) =>
+          info.fullText ? new Promise(() => {}) : Promise.resolve({ messages: [] }),
+        );
+        const stored: Record<string, unknown> = {};
+        setBrowser({ query });
+        (global.browser as unknown as Record<string, unknown>).storage = {
+          local: {
+            get: vi.fn(async (key: string) => ({ [key]: stored[key] })),
+            set: vi.fn(async (items: Record<string, unknown>) => Object.assign(stored, items)),
+          },
+        };
+
+        const stalled = createReportToolHandlers({ ...BASE_SCOPE, accountIds: ["imap"] }).search_messages({
+          query: "x",
+        });
+        await vi.advanceTimersByTimeAsync(10_000);
+        await stalled;
+        expect(Object.keys(stored.reportFullTextStalls as object)).toEqual(["accounts:imap"]);
+
+        // Another account still gets a full-text attempt.
+        query.mockClear();
+        const other = createReportToolHandlers({ ...BASE_SCOPE, accountIds: ["local"] }).search_messages({
+          query: "x",
+        });
+        await vi.advanceTimersByTimeAsync(10_000);
+        await other;
+        expect(query.mock.calls.some((c) => (c[0] as Record<string, unknown>).fullText)).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
@@ -464,6 +518,30 @@ describe("reportTools", () => {
       expect(scan.fromDate).toBeInstanceOf(Date);
       // Starts before the earliest thread message (2026-01-01), with the lookback margin.
       expect((scan.fromDate as Date).getTime()).toBeLessThan(new Date("2026-01-01").getTime());
+    });
+
+    test("keeps thread lookups inside the searched accounts, even for a folder-only scope", async () => {
+      const get = vi.fn().mockResolvedValue({ subject: "Re: Project", headerMessageId: "b@x" });
+      const getFull = vi.fn().mockResolvedValue({ headers: { references: ["<a@x>"] } });
+      const query = vi.fn().mockResolvedValue({ messages: [] });
+      setBrowser({ get, getFull, query });
+
+      await createReportToolHandlers({ ...BASE_SCOPE, accountIds: ["acc1", "acc2"] }).get_thread({ id: 11 });
+      await createReportToolHandlers({
+        ...BASE_SCOPE,
+        folderOnly: true,
+        folder: { accountId: "acc3", path: "/INBOX" },
+      }).get_thread({ id: 11 });
+
+      const calls = query.mock.calls.map((c) => c[0] as Record<string, unknown>);
+      expect(calls.length).toBeGreaterThan(2);
+      const [multi, single] = [calls.slice(0, calls.length / 2), calls.slice(calls.length / 2)];
+      for (const info of multi) expect(info.accountId).toEqual(["acc1", "acc2"]);
+      // The thread bridges to Sent, so it ignores the folder but stays in the folder's account.
+      for (const info of single) {
+        expect(info.accountId).toBe("acc3");
+        expect(info).not.toHaveProperty("folderId");
+      }
     });
 
     test("throws a clear error for a numeric id that cannot be loaded", async () => {

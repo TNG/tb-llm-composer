@@ -1,4 +1,4 @@
-import { getFirstRecipientMailAddress } from "./emailHelpers";
+import { getFirstRecipientMailAddress, getPlainTextSignature } from "./emailHelpers";
 import { startKeepAlive, stopKeepAlive } from "./keepAlive";
 import {
   isLlmTextCompletionResponse,
@@ -15,7 +15,7 @@ import {
   shouldStripThinkTag,
   type ThinkTagFeature,
 } from "./optionsParams";
-import { getOriginalTabConversation } from "./originalTabConversation";
+import { getOriginalTabConversation, getOriginalTabConversationForIdentity } from "./originalTabConversation";
 import {
   getEmailGenerationContext,
   getEmailGenerationPrompt,
@@ -114,22 +114,39 @@ async function resetComposerAction(tabId: number) {
   allRequestsStatus.deleteRequestStatus(tabId);
 }
 
-async function getOldMessagesToFirstRecipient(tabDetails: browser.compose.ComposeDetails, limit: number) {
+async function getOldMessagesToFirstRecipient(
+  tabDetails: browser.compose.ComposeDetails,
+  identity: browser.identities.MailIdentity,
+  limit: number,
+) {
   const recipient = getFirstRecipientMailAddress(tabDetails);
 
-  return recipient ? await getSentMessages(recipient.toString(), limit) : [];
+  return recipient ? await getSentMessages(recipient.toString(), identity, limit) : [];
+}
+
+/** The identity the composer currently sends as (it can change while the tab is open). */
+async function getComposeIdentity(
+  tabDetails: browser.compose.ComposeDetails,
+): Promise<browser.identities.MailIdentity> {
+  const identity = await browser.identities.get(tabDetails.identityId as string);
+  if (!identity) {
+    // It should never happen, if it does this is a bug
+    throw Error(`Could not find an identity for ID '${tabDetails.identityId}'`);
+  }
+  return identity;
 }
 
 export async function compose(tabId: number) {
   const tabDetails = await browser.compose.getComposeDetails(tabId);
+  const identity = await getComposeIdentity(tabDetails);
 
   const options = await getPluginOptions();
   const oldMessages = options.include_recent_mails
-    ? await getOldMessagesToFirstRecipient(tabDetails, options.recentMailsCount)
+    ? await getOldMessagesToFirstRecipient(tabDetails, identity, options.recentMailsCount)
     : [];
   const emailContext = await getEmailGenerationContext(tabDetails, oldMessages, options);
 
-  const previousConversation = await getOriginalTabConversation(tabId);
+  const previousConversation = await getOriginalTabConversationForIdentity(tabId, identity);
   const emailPrompt = await getEmailGenerationPrompt(tabDetails, previousConversation);
 
   const subject = tabDetails.subject;
@@ -170,15 +187,12 @@ async function handleSubjectSuccessResponse(
 }
 
 async function handleComposeSuccessResponse(tabId: number, response: LlmTextCompletionResponse, options: Options) {
+  // Re-read the identity: the user may have switched the From identity while the LLM was working.
   const tabDetails = await browser.compose.getComposeDetails(tabId);
-  const identity = await browser.identities.get(tabDetails.identityId as string);
-  if (!identity) {
-    // It should never happen, if it does this is a bug
-    throw Error(`Could not find an identity for ID '${tabDetails.identityId}'`);
-  }
-  const signature: string | undefined = identity.signature;
+  const identity = await getComposeIdentity(tabDetails);
+  const signature = getPlainTextSignature(identity);
 
-  const originalContent = await getOriginalTabConversation(tabId);
+  const originalContent = await getOriginalTabConversationForIdentity(tabId, identity);
   const cleanedUpGeneratedEmail = await getCleanedUpGeneratedEmail(response, signature, options);
   const fullEmail =
     cleanedUpGeneratedEmail +

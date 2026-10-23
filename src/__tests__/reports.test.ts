@@ -19,6 +19,13 @@ const sendMessageMock = vi.fn();
 const clipboardWriteMock = vi.fn();
 const createObjectUrlMock = vi.fn();
 const revokeObjectUrlMock = vi.fn();
+const accountsListMock = vi.fn();
+
+const ACCOUNTS = [
+  { id: "acc1", name: "Work" },
+  { id: "acc2", name: "Private" },
+  { id: "acc3", name: "Club" },
+];
 
 /** Runtime message listeners registered by the popup, plus a helper to dispatch to them. */
 let messageListeners: Array<(message: unknown) => void>;
@@ -50,6 +57,9 @@ let syncStore: Record<string, unknown>;
 const mockBrowser = {
   windows: {
     getCurrent: (...args: unknown[]) => getCurrentMock(...args),
+  },
+  accounts: {
+    list: (...args: unknown[]) => accountsListMock(...args),
   },
   runtime: {
     sendMessage: (...args: unknown[]) => sendMessageMock(...args),
@@ -112,7 +122,27 @@ beforeEach(() => {
   clipboardWriteMock.mockReset().mockResolvedValue(undefined);
   createObjectUrlMock.mockReset().mockReturnValue("blob:mock-url");
   revokeObjectUrlMock.mockReset();
+  accountsListMock.mockReset().mockResolvedValue(ACCOUNTS);
 });
+
+/** Open the account picker and click the row labelled `label`. */
+function toggleAccount(doc: Document, label: string): void {
+  const list = doc.getElementById("account-list") as HTMLElement;
+  if (list.hidden) (doc.getElementById("account-select-btn") as HTMLButtonElement).click();
+  const row = [...list.querySelectorAll("label")].find((r) => r.textContent === label);
+  if (!row) throw new Error(`No account row "${label}"`);
+  row.querySelector("input")?.click();
+}
+
+/** Submit `prompt` and return the request the popup sent to the background. */
+function submitAndGetRequest(doc: Document, prompt: string): Record<string, unknown> {
+  sendMessageMock.mockClear();
+  (doc.getElementById("prompt") as HTMLTextAreaElement).value = prompt;
+  (doc.getElementById("create-btn") as HTMLButtonElement).click();
+  const call = sendMessageMock.mock.calls.find(([msg]) => (msg as { type?: string }).type === "generate-report");
+  if (!call) throw new Error("no generate-report message sent");
+  return (call[0] as { request: Record<string, unknown> }).request;
+}
 
 afterEach(() => {
   reportsDom.window.close();
@@ -132,6 +162,107 @@ describe("The report popup", () => {
     const folderOnly = reportsDom.window.document.getElementById("folder-only") as HTMLInputElement;
     expect(folderOnly.checked).toBe(false);
     expect(folderOnly.disabled).toBe(true);
+  });
+
+  describe("account selection", () => {
+    test("defaults to the current folder's account", async () => {
+      await loadPopup(FOLDER_SEARCH);
+      const doc = reportsDom.window.document;
+
+      expect(doc.getElementById("selected-accounts-name")?.textContent).toBe("Work");
+      const request = submitAndGetRequest(doc, "status");
+      expect(request).toMatchObject({
+        folderOnly: true,
+        folder: { accountId: "acc1", path: "/INBOX" },
+        accountIds: ["acc1"],
+        accountNames: ["Work"],
+      });
+    });
+
+    test("selects every account without a folder context and searches unrestricted", async () => {
+      await loadPopup("");
+      const doc = reportsDom.window.document;
+
+      expect(doc.getElementById("selected-accounts-name")?.textContent).toBe("All accounts");
+      expect(submitAndGetRequest(doc, "status")).toMatchObject({ folderOnly: false, folder: null, accountIds: [] });
+    });
+
+    test("locks the folder toggle to all folders while several accounts are selected", async () => {
+      await loadPopup(FOLDER_SEARCH);
+      const doc = reportsDom.window.document;
+      const folderOnly = doc.getElementById("folder-only") as HTMLInputElement;
+      const folderPicker = doc.getElementById("folder-picker") as HTMLElement;
+      expect(folderOnly.checked).toBe(true);
+
+      toggleAccount(doc, "Private");
+
+      expect(folderOnly.disabled).toBe(true);
+      expect(folderOnly.checked).toBe(false);
+      expect(folderPicker.hidden).toBe(true);
+      expect(doc.getElementById("selected-accounts-name")?.textContent).toBe("Work + 1");
+      expect(submitAndGetRequest(doc, "status")).toMatchObject({
+        folderOnly: false,
+        folder: null,
+        accountIds: ["acc1", "acc2"],
+        accountNames: ["Work", "Private"],
+      });
+    });
+
+    test("restores the single-folder choice when going back to one account", async () => {
+      await loadPopup(FOLDER_SEARCH);
+      const doc = reportsDom.window.document;
+      const folderOnly = doc.getElementById("folder-only") as HTMLInputElement;
+
+      toggleAccount(doc, "Private");
+      toggleAccount(doc, "Private");
+
+      expect(folderOnly.disabled).toBe(false);
+      expect(folderOnly.checked).toBe(true);
+      expect(submitAndGetRequest(doc, "status")).toMatchObject({ folderOnly: true, accountIds: ["acc1"] });
+    });
+
+    test("never leaves the selection empty", async () => {
+      await loadPopup(FOLDER_SEARCH);
+      const doc = reportsDom.window.document;
+
+      toggleAccount(doc, "Work");
+
+      expect(doc.getElementById("selected-accounts-name")?.textContent).toBe("Work");
+      expect(doc.getElementById("status")?.textContent).toContain("at least one account");
+    });
+
+    test("requires picking a folder after switching to another single account", async () => {
+      await loadPopup(FOLDER_SEARCH);
+      const doc = reportsDom.window.document;
+
+      toggleAccount(doc, "Private");
+      toggleAccount(doc, "Work");
+
+      // The launch folder belongs to Work, so it no longer applies.
+      expect(doc.getElementById("selected-folder-name")?.textContent).toBe("Choose folder");
+      sendMessageMock.mockClear();
+      (doc.getElementById("prompt") as HTMLTextAreaElement).value = "status";
+      (doc.getElementById("create-btn") as HTMLButtonElement).click();
+      expect(sendMessageMock).not.toHaveBeenCalled();
+      expect(doc.getElementById("status")?.textContent).toContain("Choose a folder");
+
+      // Switching to all folders searches the whole Private account.
+      const folderOnly = doc.getElementById("folder-only") as HTMLInputElement;
+      folderOnly.click();
+      expect(submitAndGetRequest(doc, "status")).toMatchObject({ folderOnly: false, accountIds: ["acc2"] });
+    });
+
+    test("'All accounts' selects everything and unticking it falls back to the launch account", async () => {
+      await loadPopup(FOLDER_SEARCH);
+      const doc = reportsDom.window.document;
+
+      toggleAccount(doc, "All accounts");
+      expect(doc.getElementById("selected-accounts-name")?.textContent).toBe("All accounts");
+      expect(submitAndGetRequest(doc, "a")).toMatchObject({ folderOnly: false, accountIds: [] });
+
+      toggleAccount(doc, "All accounts");
+      expect(doc.getElementById("selected-accounts-name")?.textContent).toBe("Work");
+    });
   });
 
   test("requests a report and renders it in the output area", async () => {

@@ -25,6 +25,8 @@ interface mockBrowserArgs {
   composeDetailsType?: ComposeDetails["type"];
   signature?: string;
   subject?: string;
+  /** Further identities (e.g. of other accounts) returned by identities.list(). */
+  otherIdentities?: Partial<browser.identities.MailIdentity>[];
 }
 
 const localStore: { [key: string]: unknown } = {};
@@ -93,7 +95,13 @@ export function mockBrowser(args: mockBrowserArgs) {
       },
     },
     identities: {
-      get: vi.fn().mockReturnValue({ name: MOCK_USER_NAME, signature: args.signature }),
+      get: vi.fn().mockReturnValue({ id: MOCK_IDENTITY_ID, name: MOCK_USER_NAME, signature: args.signature }),
+      list: vi
+        .fn()
+        .mockResolvedValue([
+          { id: MOCK_IDENTITY_ID, name: MOCK_USER_NAME, signature: args.signature },
+          ...(args.otherIdentities ?? []),
+        ]),
     },
     compose: {
       getComposeDetails: vi.fn().mockResolvedValue({

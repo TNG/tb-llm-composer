@@ -44,6 +44,8 @@ export interface TraceRequestInfo {
   days: number;
   folderOnly: boolean;
   folderPath: string | null;
+  /** Searched accounts; empty = every account. */
+  accountIds: string[];
 }
 
 interface TraceEvent {

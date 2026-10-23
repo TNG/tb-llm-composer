@@ -17,6 +17,7 @@ import {
   type TgiErrorResponse,
 } from "../llmConnection";
 import { addLlmActionsToMenu, handleMenuClickListener } from "../menu";
+import { deleteFromOriginalTabCache, updateOriginalTabCache } from "../originalTabConversation";
 import { deleteSummary, loadSummary, openSummaryWindow } from "../summaryWindow";
 import { mockBrowser, mockBrowserMenus, waitFor } from "./testUtils";
 
@@ -80,6 +81,45 @@ describe("The llmActionClickHandler", () => {
 
     expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
       plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n--\n${mockSignature}`,
+    });
+  });
+
+  test("calls compose with a plain-text version of an HTML signature", async () => {
+    mockBrowser({ signature: "<b>Jane</b><br>ACME" });
+    vi.mocked(browser.identities.get).mockReturnValue({
+      name: "Jane",
+      signature: "<b>Jane</b><br>ACME",
+      signatureIsPlainText: false,
+    } as unknown as ReturnType<typeof browser.identities.get>);
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
+
+    await llmActionClickHandler(MOCK_TAB, compose);
+
+    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
+      plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n--\nJane\nACME`,
+    });
+  });
+
+  test("writes a reply with the current identity's signature after the From identity was switched", async () => {
+    // The quote was cached when the reply opened with the other identity, so it holds that signature.
+    const cachedQuote = (signature: string) => `-- \n${signature}\n\nOn Monday Bob wrote:\n> Hi`;
+    mockBrowser({
+      signature: "New Sig",
+      subject: "Re: Hi",
+      composeDetailsType: "reply",
+      otherIdentities: [{ id: "other-identity", signature: "Old Sig" }],
+    });
+    await updateOriginalTabCache(MOCK_TAB_ID, cachedQuote("Old Sig"));
+    (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
+
+    try {
+      await llmActionClickHandler(MOCK_TAB, compose);
+    } finally {
+      await deleteFromOriginalTabCache(MOCK_TAB_ID);
+    }
+
+    expect(browser.compose.setComposeDetails).toHaveBeenCalledWith(MOCK_TAB_ID, {
+      plainTextBody: `${MOCK_RESPONSE_LLM_TEXT}\n\n${cachedQuote("New Sig")}`,
     });
   });
 
