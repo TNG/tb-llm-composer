@@ -17,7 +17,7 @@ For step-by-step usage of each feature and a full settings reference, see the
 
 ## Requirements
 
-- Thunderbird >= 121.0
+- Thunderbird >= 128.0 (first release with official Manifest V3 support)
 
 ## Install the Plugin
 

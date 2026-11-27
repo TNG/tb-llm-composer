@@ -80,13 +80,13 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// The bundled typings predate TB 121, which added folderId and account/folder id arrays.
+// The bundled typings predate TB 128, which added folderId and account/folder id arrays.
 export type QueryInfo = Omit<browser.messages._QueryQueryInfo, "accountId"> & {
   folderId?: string;
   accountId?: string | string[];
 };
 
-/** `browser.messages.query` with the TB 121+ query shape. */
+/** `browser.messages.query` with the TB 128+ query shape. */
 export function queryMessages(queryInfo: QueryInfo): ReturnType<typeof browser.messages.query> {
   return browser.messages.query(queryInfo as browser.messages._QueryQueryInfo);
 }
