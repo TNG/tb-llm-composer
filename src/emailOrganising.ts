@@ -252,13 +252,37 @@ export async function listAccountInfos(): Promise<AccountInfo[]> {
   return (await listAccounts()).map((a) => ({ id: a.id, name: a.name, type: a.type }));
 }
 
-/** Resolve `folderPath` in `accountId` if it exists there, else in the first account that has it. */
-export async function resolveFolderPathPreferringAccount(
+/**
+ * A resolver for many folder paths at once: each resolves in `preferredAccountId` if it exists there,
+ * else in the first account that has it. Accounts are listed once and each account's folder tree is
+ * loaded at most once, on first need.
+ */
+export function createFolderPathResolver(): (
   folderPath: string,
-  accountId: string | undefined,
-): Promise<browser.folders.MailFolder | null> {
-  const own = accountId ? await resolveFolderPath(folderPath, accountId) : null;
-  return own ?? (await resolveFolderPath(folderPath));
+  preferredAccountId: string | undefined,
+) => Promise<browser.folders.MailFolder | null> {
+  let accounts: Promise<browser.accounts.MailAccount[]> | undefined;
+  const trees = new Map<string, Promise<browser.folders.MailFolder[]>>();
+  const treeOf = (account: browser.accounts.MailAccount) => {
+    let tree = trees.get(account.id);
+    if (!tree) {
+      tree = getFoldersForAccount(account);
+      trees.set(account.id, tree);
+    }
+    return tree;
+  };
+
+  return async (folderPath, preferredAccountId) => {
+    accounts ??= listAccounts();
+    const all = await accounts;
+    const preferred = all.find((account) => account.id === preferredAccountId);
+    for (const account of preferred ? [preferred, ...all.filter((a) => a !== preferred)] : all) {
+      if (account.rootFolder?.path === folderPath) return account.rootFolder;
+      const found = findFolderInTree(await treeOf(account), (folder) => folder.path === folderPath);
+      if (found) return found;
+    }
+    return null;
+  };
 }
 
 /** Depth-first search of a folder tree for the first folder matching `predicate`. */
@@ -422,7 +446,8 @@ async function prepareOrganise(): Promise<PreparedOrganise | null> {
   // Rule paths carry no account, and paths like "/INBOX/Work" can exist in several accounts: resolve
   // them in the displayed folder's account first so mail is never moved into another account.
   const sourceFolder = await getActiveMailFolder();
-  const resolveTarget = (path: string) => resolveFolderPathPreferringAccount(path, sourceFolder?.accountId);
+  const resolveFolder = createFolderPathResolver();
+  const resolveTarget = (path: string) => resolveFolder(path, sourceFolder?.accountId);
 
   // Resolve destination folders up front so we can warn early about bad paths.
   const resolvedFolders: Array<browser.folders.MailFolder | null> = await Promise.all(
