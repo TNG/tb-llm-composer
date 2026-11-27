@@ -526,19 +526,23 @@ describe("reportTools", () => {
       const query = vi.fn().mockResolvedValue({ messages: [] });
       setBrowser({ get, getFull, query });
 
-      await createReportToolHandlers({ ...BASE_SCOPE, accountIds: ["acc1", "acc2"] }).get_thread({ id: 11 });
-      await createReportToolHandlers({
+      const queriesOf = async (scope: ReportScope) => {
+        query.mockClear();
+        await createReportToolHandlers(scope).get_thread({ id: 11 });
+        expect(query).toHaveBeenCalled();
+        return query.mock.calls.map((c) => c[0] as Record<string, unknown>);
+      };
+
+      for (const info of await queriesOf({ ...BASE_SCOPE, accountIds: ["acc1", "acc2"] })) {
+        expect(info.accountId).toEqual(["acc1", "acc2"]);
+      }
+      // The thread bridges to Sent, so it ignores the folder but stays in the folder's account.
+      const folderOnly = await queriesOf({
         ...BASE_SCOPE,
         folderOnly: true,
         folder: { accountId: "acc3", path: "/INBOX" },
-      }).get_thread({ id: 11 });
-
-      const calls = query.mock.calls.map((c) => c[0] as Record<string, unknown>);
-      expect(calls.length).toBeGreaterThan(2);
-      const [multi, single] = [calls.slice(0, calls.length / 2), calls.slice(calls.length / 2)];
-      for (const info of multi) expect(info.accountId).toEqual(["acc1", "acc2"]);
-      // The thread bridges to Sent, so it ignores the folder but stays in the folder's account.
-      for (const info of single) {
+      });
+      for (const info of folderOnly) {
         expect(info.accountId).toBe("acc3");
         expect(info).not.toHaveProperty("folderId");
       }

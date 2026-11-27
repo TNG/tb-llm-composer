@@ -9,28 +9,27 @@ import {
   getSummaryPromptAndContext,
 } from "../promptAndContext";
 import { SUMMARY_JSON_SCHEMA } from "../summary";
-import { MOCK_TAB_DETAILS, MOCK_USER_NAME, mockBrowser } from "./testUtils";
+import { MOCK_USER_NAME } from "./testUtils";
+
+const IDENTITY = { name: MOCK_USER_NAME } as browser.identities.MailIdentity;
+const identityWithSignature = (signature: string) => ({ ...IDENTITY, signature }) as browser.identities.MailIdentity;
 
 const EMAIL_BASIC_PROMPT = `${DEFAULT_OPTIONS.llmContext}\nI am ${MOCK_USER_NAME}.`;
 const SUBJECT_BASIC_PROMPT = `${DEFAULT_OPTIONS.subjectContext}\nI am ${MOCK_USER_NAME}.`;
 
-const originalBrowser = global.browser;
-
 describe("Testing getEmailGenerationContext", () => {
   test("no old messages, default options", async () => {
-    mockBrowser({});
     const expectedContext = {
       content: EMAIL_BASIC_PROMPT,
       role: LlmRoles.SYSTEM,
     };
 
-    const result = await getEmailGenerationContext(MOCK_TAB_DETAILS, [], DEFAULT_OPTIONS);
+    const result = getEmailGenerationContext(IDENTITY, [], DEFAULT_OPTIONS);
 
     expect(result).toEqual(expectedContext);
   });
 
   test("old messages, include_recent_mails is true", async () => {
-    mockBrowser({});
     const expectedContext = {
       content: `${EMAIL_BASIC_PROMPT}
 Furthermore, here are some older messages to give you an idea of the style I'm writing in when talking to this person:
@@ -42,7 +41,7 @@ old message 2`,
       role: LlmRoles.SYSTEM,
     };
 
-    const result = await getEmailGenerationContext(MOCK_TAB_DETAILS, ["old message 1", "old message 2"], {
+    const result = getEmailGenerationContext(IDENTITY, ["old message 1", "old message 2"], {
       ...DEFAULT_OPTIONS,
       include_recent_mails: true,
     });
@@ -51,13 +50,12 @@ old message 2`,
   });
 
   test("old messages, include_recent_mails is false", async () => {
-    mockBrowser({});
     const expectedContext = {
       content: EMAIL_BASIC_PROMPT,
       role: LlmRoles.SYSTEM,
     };
 
-    const result = await getEmailGenerationContext(MOCK_TAB_DETAILS, ["old message 1", "old message 2"], {
+    const result = getEmailGenerationContext(IDENTITY, ["old message 1", "old message 2"], {
       ...DEFAULT_OPTIONS,
       include_recent_mails: false,
     });
@@ -68,24 +66,25 @@ old message 2`,
 
 describe("Testing getEmailGenerationPrompt", () => {
   test("plain text email body, no signature, no previous conversation", async () => {
-    mockBrowser({});
     const expectedPrompt = {
       content: "This is what I want the content of my email to be:\n" + "Test email",
       role: LlmRoles.USER,
     };
 
-    const result = await getEmailGenerationPrompt({
-      isPlainText: true,
-      plainTextBody: "Test email",
-      type: "new",
-    });
+    const result = getEmailGenerationPrompt(
+      {
+        isPlainText: true,
+        plainTextBody: "Test email",
+        type: "new",
+      },
+      IDENTITY,
+    );
 
     expect(result).toEqual(expectedPrompt);
   });
 
   test("plain text email body, signature, no previous conversation", async () => {
     const testSignature = "My signature";
-    mockBrowser({ signature: testSignature });
     const testEmailWithoutSignature = "Test email";
     const testEmail = `${testEmailWithoutSignature}\n\n${testSignature}`;
 
@@ -94,18 +93,20 @@ describe("Testing getEmailGenerationPrompt", () => {
       role: LlmRoles.USER,
     };
 
-    const result = await getEmailGenerationPrompt({
-      isPlainText: true,
-      plainTextBody: testEmail,
-      type: "new",
-    });
+    const result = getEmailGenerationPrompt(
+      {
+        isPlainText: true,
+        plainTextBody: testEmail,
+        type: "new",
+      },
+      identityWithSignature(testSignature),
+    );
 
     expect(result).toEqual(expectedPrompt);
   });
 
   test("plain text email body, signature, previous conversation", async () => {
     const testSignature = "My signature";
-    mockBrowser({ signature: testSignature });
     const testEmailWithoutSignature = "Test email";
     const testPreviousConversation = "Previous conversation";
     const testEmail = `${testEmailWithoutSignature}\n\n${testSignature}\n\n${testPreviousConversation}`;
@@ -119,12 +120,13 @@ ${testPreviousConversation}`,
       role: LlmRoles.USER,
     };
 
-    const result = await getEmailGenerationPrompt(
+    const result = getEmailGenerationPrompt(
       {
         isPlainText: true,
         plainTextBody: testEmail,
         type: "new",
       },
+      identityWithSignature(testSignature),
       testPreviousConversation,
     );
 
@@ -134,19 +136,17 @@ ${testPreviousConversation}`,
 
 describe("Testing getSubjectGenerationContext", () => {
   test("no old messages, default options", async () => {
-    mockBrowser({});
     const expectedContext = {
       content: SUBJECT_BASIC_PROMPT,
       role: LlmRoles.SYSTEM,
     };
 
-    const result = await getSubjectGenerationContext(MOCK_TAB_DETAILS, [], DEFAULT_OPTIONS);
+    const result = getSubjectGenerationContext(IDENTITY, [], DEFAULT_OPTIONS);
 
     expect(result).toEqual(expectedContext);
   });
 
   test("old messages, include_recent_mails is true", async () => {
-    mockBrowser({});
     const expectedContext = {
       content: `${SUBJECT_BASIC_PROMPT}
 Furthermore, here are some older messages to give you an idea of the style I'm writing in when talking to this person:
@@ -158,7 +158,7 @@ old message 2`,
       role: LlmRoles.SYSTEM,
     };
 
-    const result = await getSubjectGenerationContext(MOCK_TAB_DETAILS, ["old message 1", "old message 2"], {
+    const result = getSubjectGenerationContext(IDENTITY, ["old message 1", "old message 2"], {
       ...DEFAULT_OPTIONS,
       include_recent_mails: true,
     });
@@ -167,13 +167,12 @@ old message 2`,
   });
 
   test("old messages, include_recent_mails is false", async () => {
-    mockBrowser({});
     const expectedContext = {
       content: SUBJECT_BASIC_PROMPT,
       role: LlmRoles.SYSTEM,
     };
 
-    const result = await getSubjectGenerationContext(MOCK_TAB_DETAILS, ["old message 1", "old message 2"], {
+    const result = getSubjectGenerationContext(IDENTITY, ["old message 1", "old message 2"], {
       ...DEFAULT_OPTIONS,
       include_recent_mails: false,
     });
@@ -184,7 +183,6 @@ old message 2`,
 
 describe("Testing getSubjectGenerationPrompt", () => {
   test("plain text email body, no signature, no previous conversation", async () => {
-    mockBrowser({});
     const expectedPrompt = {
       content: "This is what I want the content of my email to be:\nTest email",
       role: LlmRoles.USER,
@@ -215,5 +213,3 @@ ${testPreviousConversation}`,
     });
   });
 });
-
-global.browser = originalBrowser;

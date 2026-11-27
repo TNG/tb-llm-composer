@@ -221,17 +221,35 @@ export async function resolveFolderPath(
   folderPath: string,
   accountId?: string,
 ): Promise<browser.folders.MailFolder | null> {
-  const accounts = await browser.accounts.list(true);
-  for (const account of accounts) {
-    if (accountId && account.id !== accountId) continue;
+  for (const account of await listAccounts(accountId)) {
     const foundInRoot = account.rootFolder?.path === folderPath ? account.rootFolder : null;
     if (foundInRoot) return foundInRoot;
 
     const accountFolders = await getFoldersForAccount(account);
-    const found = findFolderInTree(accountFolders, folderPath);
+    const found = findFolderInTree(accountFolders, (folder) => folder.path === folderPath);
     if (found) return found;
   }
   return null;
+}
+
+/**
+ * All accounts, or only `accountId`. Listed without subfolders: getFoldersForAccount fetches the
+ * tree itself, so only the accounts actually searched pay for it.
+ */
+async function listAccounts(accountId?: string): Promise<browser.accounts.MailAccount[]> {
+  const accounts = await browser.accounts.list(false);
+  return accountId ? accounts.filter((account) => account.id === accountId) : accounts;
+}
+
+/** Account summary used by the report window's account picker. */
+export interface AccountInfo {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export async function listAccountInfos(): Promise<AccountInfo[]> {
+  return (await listAccounts()).map((a) => ({ id: a.id, name: a.name, type: a.type }));
 }
 
 /** Resolve `folderPath` in `accountId` if it exists there, else in the first account that has it. */
@@ -243,10 +261,14 @@ export async function resolveFolderPathPreferringAccount(
   return own ?? (await resolveFolderPath(folderPath));
 }
 
-function findFolderInTree(folders: browser.folders.MailFolder[], path: string): browser.folders.MailFolder | null {
+/** Depth-first search of a folder tree for the first folder matching `predicate`. */
+export function findFolderInTree(
+  folders: browser.folders.MailFolder[],
+  predicate: (folder: browser.folders.MailFolder) => boolean,
+): browser.folders.MailFolder | null {
   for (const folder of folders) {
-    if (folder.path === path) return folder;
-    const sub = findFolderInTree(folder.subFolders ?? [], path);
+    if (predicate(folder)) return folder;
+    const sub = findFolderInTree(folder.subFolders ?? [], predicate);
     if (sub) return sub;
   }
   return null;
@@ -254,11 +276,9 @@ function findFolderInTree(folders: browser.folders.MailFolder[], path: string): 
 
 /** Return a flat list of all folder paths across all accounts, or only `accountId`'s (for diagnostics / options UI). */
 export async function getAllFolderPaths(accountId?: string): Promise<string[]> {
-  const accounts = await browser.accounts.list(true);
   const paths = new Set<string>();
 
-  for (const account of accounts) {
-    if (accountId && account.id !== accountId) continue;
+  for (const account of await listAccounts(accountId)) {
     if (account.rootFolder?.path) {
       paths.add(account.rootFolder.path);
     }

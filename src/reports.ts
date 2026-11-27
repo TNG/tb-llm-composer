@@ -1,4 +1,4 @@
-import { getAllFolderPaths, resolveFolderPath } from "./emailOrganising";
+import { type AccountInfo, getAllFolderPaths, listAccountInfos, resolveFolderPath } from "./emailOrganising";
 import type { AgenticProgress } from "./llmConnection";
 import { getPluginOptions } from "./optionsParams";
 import { rememberPopupSize } from "./popupSize";
@@ -33,7 +33,6 @@ let selectedFolder: { accountId: string; path: string; name: string } | null = f
   ? { accountId: folderContext.accountId, path: folderContext.path, name: folderName || folderContext.path }
   : null;
 
-type AccountInfo = { id: string; name: string; type?: string };
 // The listed mail accounts, in Thunderbird's order, and the ones the report searches. Defaults to the
 // account of the folder the window was opened from (or every listed account without a folder context).
 let accounts: AccountInfo[] = [];
@@ -294,8 +293,8 @@ function renderAccountSummary(): void {
   else if (chosen.length > 1 && chosen.length < accounts.length) label = `${chosen[0].name} + ${chosen.length - 1}`;
   if (selectedAccountsNameEl) selectedAccountsNameEl.textContent = label;
   // With a single account there is nothing to choose.
-  if (accountSelectBtn) accountSelectBtn.disabled = accounts.length <= 1;
   if (accountSelectBtn) {
+    accountSelectBtn.disabled = accounts.length <= 1;
     accountSelectBtn.title = chosen.map((a) => a.name).join(", ") || "Choose which accounts to search";
   }
 }
@@ -335,7 +334,7 @@ function renderAccountList(focusIndex?: number): void {
   if (accounts.length > 1) {
     const allChecked = accounts.every((a) => selectedAccountIds.has(a.id));
     rows.push(
-      accountRow("All accounts", allChecked, "all-accounts", (checked) => {
+      accountRow(rows.length, "All accounts", allChecked, "all-accounts", (checked) => {
         // Unticking "All" falls back to the launch account (or the first one) — never to nothing.
         const fallback = folderContext?.accountId ?? accounts[0].id;
         selectedAccountIds = new Set(checked ? accounts.map((a) => a.id) : [fallback]);
@@ -344,7 +343,7 @@ function renderAccountList(focusIndex?: number): void {
   }
   for (const account of accounts) {
     rows.push(
-      accountRow(account.name, selectedAccountIds.has(account.id), "", (checked) => {
+      accountRow(rows.length, account.name, selectedAccountIds.has(account.id), "", (checked) => {
         if (checked) {
           selectedAccountIds.add(account.id);
         } else if (selectedAccountIds.size > 1) {
@@ -355,19 +354,13 @@ function renderAccountList(focusIndex?: number): void {
       }),
     );
   }
-  rows.forEach((row, index) => {
-    row.querySelector("input")?.addEventListener("change", () => {
-      // Re-rendering replaces the focused checkbox; keep keyboard focus on the same row.
-      renderAccountList(index);
-      updateScopeControls();
-    });
-  });
   accountListEl.append(...rows);
   if (focusIndex !== undefined) rows[focusIndex]?.querySelector("input")?.focus();
 }
 
-/** One checkbox row for the account list. */
+/** One checkbox row for the account list; `index` is its position, to restore focus after re-rendering. */
 function accountRow(
+  index: number,
   label: string,
   checked: boolean,
   extraClass: string,
@@ -378,7 +371,12 @@ function accountRow(
   const box = document.createElement("input");
   box.type = "checkbox";
   box.checked = checked;
-  box.addEventListener("change", () => onToggle(box.checked));
+  box.addEventListener("change", () => {
+    onToggle(box.checked);
+    // Re-rendering replaces the focused checkbox; keep keyboard focus on the same row.
+    renderAccountList(index);
+    updateScopeControls();
+  });
   const name = document.createElement("span");
   name.className = "model-id";
   name.textContent = label;
@@ -394,8 +392,7 @@ function isLocalFoldersAccount(account: AccountInfo): boolean {
 /** Load the mail accounts, falling back to the background script if the direct API call fails. */
 async function loadAccounts(): Promise<AccountInfo[]> {
   try {
-    const list = await browser.accounts.list(false);
-    return list.map((a) => ({ id: a.id, name: a.name, type: a.type }));
+    return await listAccountInfos();
   } catch (directError) {
     console.warn("REPORT-WINDOW: direct account lookup failed, trying background fallback:", directError);
   }
@@ -543,7 +540,7 @@ async function onCreate(): Promise<void> {
   }
 
   const days = daysInput.valueAsNumber > 0 ? daysInput.valueAsNumber : 30;
-  const folderOnly = folderOnlyInput.checked && !folderOnlyInput.disabled;
+  const folderOnly = folderOnlyInput.checked;
   if (folderOnly && !selectedFolder) {
     setStatus("Choose a folder to search, or switch to all folders.");
     return;

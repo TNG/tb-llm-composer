@@ -11,7 +11,8 @@ vi.mock("../llmConnection", () => ({
   runAgenticLlm: runAgenticLlmMock,
 }));
 
-vi.mock("../reportTools", () => ({
+vi.mock("../reportTools", async () => ({
+  accountSetKey: (await vi.importActual<typeof import("../reportTools")>("../reportTools")).accountSetKey,
   assertSearchCapabilities: assertSearchCapabilitiesMock,
   createReportToolHandlers: createReportToolHandlersMock,
   reportToolDefinitions: [{ type: "function", function: { name: "search_messages" } }],
@@ -27,6 +28,7 @@ vi.mock("../optionsParams", async () => {
 
 import { getPluginOptions } from "../optionsParams";
 import { continueReport, generateReport, type ReportRequest, rebuildSessionFromReport } from "../reportGeneration";
+import type { ReportScope } from "../reportTools";
 
 const abortSignal = new AbortController().signal;
 
@@ -35,6 +37,16 @@ const BASE_REQUEST: ReportRequest = {
   days: 14,
   folderOnly: true,
   folder: { accountId: "a", path: "/INBOX" },
+};
+
+const BASE_SCOPE: ReportScope = {
+  folderOnly: true,
+  folder: { accountId: "a", path: "/INBOX" },
+  defaultDays: 14,
+  maxSearchResults: 50,
+  maxMessageBodies: 25,
+  maxTotalBodyChars: 60000,
+  accountIds: [],
 };
 
 /** runAgenticLlm now returns the final text plus the full conversation. */
@@ -101,15 +113,7 @@ describe("reportGeneration", () => {
       { role: "system", content: "sys" },
       { role: "assistant", content: "First report" },
     ] as unknown as Parameters<typeof continueReport>[0]["messages"];
-    const scope = {
-      folderOnly: true,
-      folder: { accountId: "a", path: "/INBOX" },
-      defaultDays: 14,
-      maxSearchResults: 50,
-      maxMessageBodies: 25,
-      maxTotalBodyChars: 60000,
-      accountIds: [],
-    };
+    const scope = { ...BASE_SCOPE };
 
     const session = await continueReport(
       { messages: priorMessages, scope },
@@ -128,15 +132,7 @@ describe("reportGeneration", () => {
   });
 
   test("continueReport applies a changed time window and tells the model about it", async () => {
-    const scope = {
-      folderOnly: true,
-      folder: { accountId: "a", path: "/INBOX" },
-      defaultDays: 30,
-      maxSearchResults: 50,
-      maxMessageBodies: 25,
-      maxTotalBodyChars: 60000,
-      accountIds: [],
-    };
+    const scope = { ...BASE_SCOPE, defaultDays: 30 };
 
     const session = await continueReport(
       { messages: [], scope },
@@ -165,15 +161,7 @@ describe("reportGeneration", () => {
   });
 
   test("continueReport starts a new scope when the selected accounts change", async () => {
-    const scope = {
-      folderOnly: false,
-      folder: null,
-      defaultDays: 14,
-      maxSearchResults: 50,
-      maxMessageBodies: 25,
-      maxTotalBodyChars: 60000,
-      accountIds: ["b", "a"],
-    };
+    const scope = { ...BASE_SCOPE, folderOnly: false, folder: null, accountIds: ["b", "a"] };
     const request = { ...BASE_REQUEST, folderOnly: false, folder: null };
 
     // Same accounts in another order: unchanged.

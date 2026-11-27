@@ -1,3 +1,4 @@
+import { type QueryInfo, queryMessages } from "./emailHelpers";
 import { extractTextFromPart, resolveFolderPath } from "./emailOrganising";
 import type { LlmToolDefinition, LlmToolHandler } from "./llmConnection";
 import { cleanReportBody } from "./reportBodyCleanup";
@@ -120,17 +121,6 @@ export interface ReportScope {
   maxMessageBodies: number;
   /** Run-level ceiling on summed body characters served by get_messages. */
   maxTotalBodyChars: number;
-}
-
-// The bundled typings predate TB 121, which added folderId and account/folder id arrays.
-type QueryInfo = Omit<browser.messages._QueryQueryInfo, "accountId"> & {
-  folderId?: string;
-  accountId?: string | string[];
-};
-
-/** `browser.messages.query` with the TB 121+ query shape. */
-function queryMessages(queryInfo: QueryInfo): ReturnType<typeof browser.messages.query> {
-  return browser.messages.query(queryInfo as browser.messages._QueryQueryInfo);
 }
 
 /** A raw From/To header value parsed into its display name, address, and domain. */
@@ -487,10 +477,15 @@ const FULL_TEXT_STALLS_KEY = "reportFullTextStalls";
 /** A remembered stall is trusted this long, then full-text search is given another chance. */
 const FULL_TEXT_STALL_TTL_MS = 7 * DAY_MS;
 
+/** Order-independent key for a set of account ids. */
+export function accountSetKey(accountIds: string[]): string {
+  return [...accountIds].sort().join(",");
+}
+
 /** Which mailbox area a stall applies to: one folder, or the all-folders search of a set of accounts. */
 function stallKey(scope: ReportScope): string {
   if (scope.folderOnly && scope.folder) return `${scope.folder.accountId}:${scope.folder.path}`;
-  return scope.accountIds.length > 0 ? `accounts:${[...scope.accountIds].sort().join(",")}` : "all-folders";
+  return scope.accountIds.length > 0 ? `accounts:${accountSetKey(scope.accountIds)}` : "all-folders";
 }
 
 /**
@@ -941,7 +936,7 @@ async function handleGetThread(
   for (const messageId of lookupIds) {
     if (hits.length >= cap) break;
     const page = await guardedQuery(
-      () => queryMessages({ headerMessageId: messageId, ...accountFilter(scope) } as QueryInfo),
+      () => queryMessages({ headerMessageId: messageId, ...accountFilter(scope) }),
       abortSignal,
       `thread lookup for ${messageId}`,
     );
@@ -967,7 +962,7 @@ async function handleGetThread(
     const knownDates = hits.map((h) => Date.parse(h.date)).filter(Number.isFinite);
     const earliest = Math.min(Date.now(), ...knownDates) - THREAD_SUBJECT_LOOKBACK_DAYS * DAY_MS;
     const fromDate = new Date(Math.min(earliest, Date.now() - scope.defaultDays * DAY_MS));
-    const scan = await collectHeaders({ fromDate, ...accountFilter(scope) } as QueryInfo, cap * 2, norm, abortSignal);
+    const scan = await collectHeaders({ fromDate, ...accountFilter(scope) }, cap * 2, norm, abortSignal);
     subjectTruncated = scan.truncated;
     for (const hit of scan.hits) {
       if (hits.length >= cap) break;
