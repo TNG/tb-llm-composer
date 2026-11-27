@@ -286,7 +286,7 @@ export function createFolderPathResolver(): (
 }
 
 /** Depth-first search of a folder tree for the first folder matching `predicate`. */
-export function findFolderInTree(
+function findFolderInTree(
   folders: browser.folders.MailFolder[],
   predicate: (folder: browser.folders.MailFolder) => boolean,
 ): browser.folders.MailFolder | null {

@@ -2,7 +2,6 @@ import MessageHeader = browser.messages.MessageHeader;
 import MessagePart = browser.messages.MessagePart;
 
 import { getContentFromEmailParts, queryMessages } from "./emailHelpers";
-import { findFolderInTree, getFoldersForAccount } from "./emailOrganising";
 
 /**
  * Recent mails `identity` sent to `recipientEmail`, as writing-style context. Only the identity's own
@@ -14,13 +13,7 @@ export async function getSentMessages(
   limit = 10,
 ): Promise<string[]> {
   if (!identity.accountId) return [];
-  const account = await browser.accounts.get(identity.accountId, true);
-  if (!account) return [];
-  // MV3 `specialUse`, with the legacy `type` as fallback.
-  const sentFolder = findFolderInTree(
-    await getFoldersForAccount(account),
-    (folder) => folder.specialUse?.includes("sent") || folder.type === "sent",
-  );
+  const [sentFolder] = await browser.folders.query({ accountId: identity.accountId, specialUse: ["sent"] });
   if (!sentFolder?.id) return [];
 
   const messageHeaders = await searchSentFolder(sentFolder.id, recipientEmail, identity.email, limit);

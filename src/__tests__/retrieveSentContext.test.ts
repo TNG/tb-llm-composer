@@ -3,12 +3,10 @@ import { getSentMessages } from "../retrieveSentContext";
 
 const originalBrowser = global.browser;
 
-const sentFolder = (accountId: string) => ({ id: `${accountId}-sent`, accountId, path: "/Sent", specialUse: ["sent"] });
-
-const ACCOUNTS: Record<string, unknown> = {
-  work: { id: "work", folders: [{ id: "work-inbox", path: "/INBOX", subFolders: [sentFolder("work")] }] },
-  home: { id: "home", folders: [sentFolder("home")] },
-  bare: { id: "bare", folders: [{ id: "bare-inbox", path: "/INBOX" }] },
+// Sent folders by account; "bare" has none.
+const SENT_FOLDERS: Record<string, unknown[]> = {
+  work: [{ id: "work-sent", accountId: "work", path: "/INBOX/Sent", specialUse: ["sent"] }],
+  home: [{ id: "home-sent", accountId: "home", path: "/Sent", specialUse: ["sent"] }],
 };
 
 const IDENTITY = { id: "id-home", accountId: "home", email: "me@home.example" } as browser.identities.MailIdentity;
@@ -24,7 +22,7 @@ describe("getSentMessages", () => {
       ],
     });
     global.browser = {
-      accounts: { get: vi.fn(async (id: string) => ACCOUNTS[id] ?? null) },
+      folders: { query: vi.fn(async ({ accountId }: { accountId: string }) => SENT_FOLDERS[accountId] ?? []) },
       messages: {
         query,
         getFull: vi.fn(async (id: number) => ({ parts: [{ contentType: "text/plain", body: `mail ${id}` }] })),
@@ -39,7 +37,7 @@ describe("getSentMessages", () => {
   test("searches the sending identity's own Sent folder, newest first", async () => {
     const mails = await getSentMessages("bob@example.com", IDENTITY, 10);
 
-    expect(browser.accounts.get).toHaveBeenCalledWith("home", true);
+    expect(browser.folders.query).toHaveBeenCalledWith({ accountId: "home", specialUse: ["sent"] });
     expect(query).toHaveBeenCalledWith({
       recipients: "bob@example.com",
       folderId: "home-sent",
@@ -48,7 +46,7 @@ describe("getSentMessages", () => {
     expect(mails).toEqual(["mail 2", "mail 1"]);
   });
 
-  test("finds a nested Sent folder", async () => {
+  test("uses the Sent folder of the identity's account", async () => {
     await getSentMessages("bob@example.com", { ...IDENTITY, accountId: "work" }, 10);
 
     expect(query.mock.calls[0][0]).toMatchObject({ folderId: "work-sent" });
