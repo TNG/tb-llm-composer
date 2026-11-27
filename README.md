@@ -17,7 +17,7 @@ For step-by-step usage of each feature and a full settings reference, see the
 
 ## Requirements
 
-- Thunderbird >= 110.0
+- Thunderbird >= 121.0
 
 ## Install the Plugin
 
