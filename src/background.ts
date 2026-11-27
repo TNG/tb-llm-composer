@@ -1,5 +1,6 @@
 import {
   applyOrganisePlan,
+  createFolderPathResolver,
   getActiveMailFolder,
   getAllFolderPaths,
   listAccountInfos,
@@ -10,7 +11,6 @@ import {
   type OrganisePlanEntry,
   organiseCurrentFolder,
   planOrganiseCurrentFolder,
-  resolveFolderPathPreferringAccount,
 } from "./emailOrganising";
 import { handleKeepAliveAlarm } from "./keepAlive";
 import { executeLlmAction, type LlmPluginAction, writeSummaryAnswer } from "./llmButtonClickHandling";
@@ -225,10 +225,9 @@ async function applyConfirmedPlan(
   try {
     // Re-resolve the destination folders from their paths (index-aligned with the folder options).
     // Prefer the account each path was resolved in when the plan was made (paths repeat across accounts).
+    const resolveFolder = createFolderPathResolver();
     const resolvedFolders = await Promise.all(
-      plan.folders.map((folder) =>
-        resolveFolderPathPreferringAccount(folder.path, folder.accountId ?? plan.source?.accountId),
-      ),
+      plan.folders.map((folder) => resolveFolder(folder.path, folder.accountId ?? plan.source?.accountId)),
     );
     const abortController = new AbortController();
     await applyOrganisePlan(assignments, resolvedFolders, plan.source, abortController.signal);

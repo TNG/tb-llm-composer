@@ -43,11 +43,11 @@ vi.mock("../optionsParams", async () => {
 });
 
 import {
+  createFolderPathResolver,
   getAllFolderPaths,
   organiseCurrentFolder,
   planOrganiseCurrentFolder,
   resolveFolderPath,
-  resolveFolderPathPreferringAccount,
 } from "../emailOrganising";
 
 const originalBrowser = global.browser;
@@ -705,10 +705,13 @@ describe("folder lookup across accounts", () => {
     expect(await resolveFolderPath("/Archive", "home")).toBeNull();
   });
 
-  test("resolveFolderPathPreferringAccount falls back to any account", async () => {
-    expect((await resolveFolderPathPreferringAccount("/INBOX", "home"))?.id).toBe("home:/INBOX");
-    expect((await resolveFolderPathPreferringAccount("/Archive", "home"))?.id).toBe("work:/Archive");
-    expect((await resolveFolderPathPreferringAccount("/Family", undefined))?.id).toBe("home:/Family");
+  test("createFolderPathResolver prefers the given account and falls back to any account", async () => {
+    const resolveFolder = createFolderPathResolver();
+    expect((await resolveFolder("/INBOX", "home"))?.id).toBe("home:/INBOX");
+    expect((await resolveFolder("/Archive", "home"))?.id).toBe("work:/Archive");
+    expect((await resolveFolder("/Family", undefined))?.id).toBe("home:/Family");
+    // Accounts are listed once for all lookups.
+    expect(browser.accounts.list).toHaveBeenCalledTimes(1);
   });
 
   test("getAllFolderPaths can be limited to one account", async () => {
