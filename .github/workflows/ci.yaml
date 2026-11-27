@@ -2,7 +2,7 @@ name: Build and run tests
 on: [push]
 
 env:
-  node_version: 24
+  node_version: 26
 
 jobs:
   build:
