@@ -282,10 +282,31 @@ describe("reportTools", () => {
         folder: { accountId: "a", path: "/INBOX" },
       });
       await handlers.search_messages({});
+      await handlers.search_messages({ author: "bob" });
 
       expect(resolveFolderPathMock).toHaveBeenCalledWith("/INBOX", "a");
-      expect(query.mock.calls[0][0].folderId).toBe("folder-7");
-      expect(query.mock.calls[0][0]).not.toHaveProperty("accountId");
+      // The folder is looked up once per scope, not on every tool call.
+      expect(resolveFolderPathMock).toHaveBeenCalledTimes(1);
+      for (const [info] of query.mock.calls) {
+        expect(info.folderId).toBe("folder-7");
+        expect(info).not.toHaveProperty("accountId");
+      }
+    });
+
+    test("retries a folder lookup that failed", async () => {
+      setBrowser({ query: vi.fn().mockResolvedValue({ messages: [] }) });
+      resolveFolderPathMock.mockResolvedValueOnce(null);
+      resolveFolderPathMock.mockResolvedValueOnce({ id: "folder-7", accountId: "a", path: "/INBOX", name: "Inbox" });
+      const handlers = createReportToolHandlers({
+        ...BASE_SCOPE,
+        folderOnly: true,
+        folder: { accountId: "a", path: "/INBOX" },
+      });
+
+      await expect(handlers.search_messages({})).rejects.toThrow(/Could not resolve/);
+      await handlers.search_messages({ author: "bob" });
+
+      expect(resolveFolderPathMock).toHaveBeenCalledTimes(2);
     });
 
     test.each([

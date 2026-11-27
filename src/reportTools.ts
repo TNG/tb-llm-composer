@@ -195,6 +195,8 @@ interface MessageWithBody extends SearchHit {
 interface ReportToolState {
   fullTextUnavailable: boolean;
   cache: Map<string, Promise<unknown>>;
+  /** The scope's resolved query restriction, so a folder-only search looks its folder up once. */
+  scopeFilter?: Promise<ScopeFilter>;
 }
 
 const toolStates = new WeakMap<ReportScope, ReportToolState>();
@@ -597,7 +599,22 @@ async function searchWithFullTextFallback(
  * The query restriction for a scope: the target folder's id for a folder-only search, otherwise the
  * chosen accounts (an empty object = every account).
  */
-async function resolveScopeFilter(scope: ReportScope): Promise<Pick<QueryInfo, "folderId" | "accountId">> {
+function resolveScopeFilter(scope: ReportScope): Promise<ScopeFilter> {
+  const state = toolStateFor(scope);
+  if (!state.scopeFilter) {
+    const filter = lookUpScopeFilter(scope);
+    state.scopeFilter = filter;
+    // Forget a failed lookup so a later run can retry.
+    filter.catch(() => {
+      if (state.scopeFilter === filter) state.scopeFilter = undefined;
+    });
+  }
+  return state.scopeFilter;
+}
+
+type ScopeFilter = Pick<QueryInfo, "folderId" | "accountId">;
+
+async function lookUpScopeFilter(scope: ReportScope): Promise<ScopeFilter> {
   if (!scope.folderOnly || !scope.folder) {
     return accountFilter(scope);
   }
