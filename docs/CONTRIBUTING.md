@@ -4,6 +4,7 @@
 
 ### Requirements
 
+- Node.js 26 or newer
 - pnpm (see [pnpm installation guide](https://pnpm.io/installation))
 - (Windows): 7‑Zip (its installation folder, usually "C:\Program Files\7-Zip", needs to be added to the PATH environment variable)
 

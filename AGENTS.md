@@ -26,7 +26,7 @@ It uses any **OpenAI-compatible chat-completions HTTP endpoint**. Endpoint URL, 
 | Concern | Choice |
 | --- | --- |
 | Language | TypeScript 5 (strict), ES2022, ESM |
-| Package manager | **pnpm** (v10+), Node **>=22** (CI uses Node 24) |
+| Package manager | **pnpm** (v12.3+), Node **>=26** (CI uses Node 26) |
 | Bundler | Webpack 5 (`ts-loader`, Terser) |
 | Linter/format | **Biome** (`biome.json`): 2 spaces, double quotes, width 120 |
 | Tests | **Vitest** (node env, `vitest-fetch-mock`) |
