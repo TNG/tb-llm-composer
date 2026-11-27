@@ -1,9 +1,8 @@
-import MailFolder = browser.folders.MailFolder;
 import MessageHeader = browser.messages.MessageHeader;
 import MessagePart = browser.messages.MessagePart;
 
-import { getContentFromEmailParts } from "./emailHelpers";
-import { getFoldersForAccount } from "./emailOrganising";
+import { getContentFromEmailParts, queryMessages } from "./emailHelpers";
+import { findFolderInTree, getFoldersForAccount } from "./emailOrganising";
 
 /**
  * Recent mails `identity` sent to `recipientEmail`, as writing-style context. Only the identity's own
@@ -17,7 +16,11 @@ export async function getSentMessages(
   if (!identity.accountId) return [];
   const account = await browser.accounts.get(identity.accountId, true);
   if (!account) return [];
-  const sentFolder = findSentFolder(await getFoldersForAccount(account));
+  // MV3 `specialUse`, with the legacy `type` as fallback.
+  const sentFolder = findFolderInTree(
+    await getFoldersForAccount(account),
+    (folder) => folder.specialUse?.includes("sent") || folder.type === "sent",
+  );
   if (!sentFolder?.id) return [];
 
   const messageHeaders = await searchSentFolder(sentFolder.id, recipientEmail, identity.email, limit);
@@ -26,26 +29,14 @@ export async function getSentMessages(
   return oldMessageContents.filter((content) => Boolean(content));
 }
 
-/** Depth-first search for the account's Sent folder (MV3 `specialUse`, with the legacy `type` as fallback). */
-function findSentFolder(folders: MailFolder[]): MailFolder | undefined {
-  for (const folder of folders) {
-    if (folder.specialUse?.includes("sent") || folder.type === "sent") return folder;
-    const sub = findSentFolder(folder.subFolders ?? []);
-    if (sub) return sub;
-  }
-  return undefined;
-}
-
 /** Query the sent folder for messages to recipient, returning up to limit most recent messages. */
 async function searchSentFolder(folderId: string, recipientEmail: string, author: string | undefined, limit = 10) {
-  // The bundled typings predate TB 121's `folderId`. Several identities can share one Sent folder,
-  // so restrict to the sending identity's address when known.
-  const query = {
+  // Several identities can share one Sent folder, so restrict to the sending identity's address when known.
+  const messages = await queryMessages({
     recipients: recipientEmail,
     folderId,
     ...(author ? { author } : { fromMe: true }),
-  } as browser.messages._QueryQueryInfo;
-  const messages = await browser.messages.query(query);
+  });
   if (typeof messages === "string") {
     return [];
   }

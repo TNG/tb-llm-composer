@@ -8,9 +8,10 @@ import {
   sendContentToLlm,
   type TgiErrorResponse,
 } from "./llmConnection";
-import { getAdvancedPrompt, getPluginOptions, shouldStripThinkTag } from "./optionsParams";
+import { getAdvancedPrompt, getPluginOptions, type Options, shouldStripThinkTag } from "./optionsParams";
 import { compactReportHistory } from "./reportHistory";
 import {
+  accountSetKey,
   assertSearchCapabilities,
   createReportToolHandlers,
   type ReportScope,
@@ -80,15 +81,7 @@ export async function generateReport(
   const startedAt = Date.now();
   const options = await getPluginOptions();
 
-  const scope: ReportScope = {
-    folderOnly: request.folderOnly,
-    folder: request.folder,
-    accountIds: request.accountIds ?? [],
-    defaultDays: request.days,
-    maxSearchResults: options.reportMaxSearchResults,
-    maxMessageBodies: options.reportMaxMessageBodies,
-    maxTotalBodyChars: options.reportMaxTotalBodyChars,
-  };
+  const scope = scopeFromRequest(request, options);
 
   console.log(
     "REPORT: starting generation " +
@@ -123,8 +116,23 @@ function traceInfo(prompt: string, scope: ReportScope): TraceRequestInfo {
   };
 }
 
-function sortedKey(ids: string[]): string {
-  return [...ids].sort().join(",");
+/** The scope fields the report window controls. */
+function requestScopeFields(request: ReportRequest) {
+  return {
+    folderOnly: request.folderOnly,
+    folder: request.folder,
+    accountIds: request.accountIds ?? [],
+    defaultDays: request.days,
+  };
+}
+
+function scopeFromRequest(request: ReportRequest, options: Options): ReportScope {
+  return {
+    ...requestScopeFields(request),
+    maxSearchResults: options.reportMaxSearchResults,
+    maxMessageBodies: options.reportMaxMessageBodies,
+    maxTotalBodyChars: options.reportMaxTotalBodyChars,
+  };
 }
 
 /** True when the report window's days/folder settings differ from the scope a session was built with. */
@@ -134,7 +142,7 @@ function scopeChanged(scope: ReportScope, request: ReportRequest): boolean {
     scope.folderOnly !== request.folderOnly ||
     scope.folder?.accountId !== request.folder?.accountId ||
     scope.folder?.path !== request.folder?.path ||
-    sortedKey(scope.accountIds) !== sortedKey(request.accountIds ?? [])
+    accountSetKey(scope.accountIds) !== accountSetKey(request.accountIds ?? [])
   );
 }
 
@@ -156,15 +164,7 @@ export async function continueReport(
 
   // A new scope object also starts a fresh tool-result cache, whose entries depend on the old defaults.
   const changed = scopeChanged(session.scope, request);
-  const scope: ReportScope = changed
-    ? {
-        ...session.scope,
-        defaultDays: request.days,
-        folderOnly: request.folderOnly,
-        folder: request.folder,
-        accountIds: request.accountIds ?? [],
-      }
-    : session.scope;
+  const scope: ReportScope = changed ? { ...session.scope, ...requestScopeFields(request) } : session.scope;
 
   console.log(
     `REPORT: continuing conversation (priorMessages=${session.messages.length}, promptChars=${prompt.length}, ` +
@@ -201,15 +201,7 @@ export async function rebuildSessionFromReport(
   reportText: string,
 ): Promise<{ messages: LlmApiRequestMessage[]; scope: ReportScope }> {
   const options = await getPluginOptions();
-  const scope: ReportScope = {
-    folderOnly: request.folderOnly,
-    folder: request.folder,
-    accountIds: request.accountIds ?? [],
-    defaultDays: request.days,
-    maxSearchResults: options.reportMaxSearchResults,
-    maxMessageBodies: options.reportMaxMessageBodies,
-    maxTotalBodyChars: options.reportMaxTotalBodyChars,
-  };
+  const scope = scopeFromRequest(request, options);
   const messages: LlmApiRequestMessage[] = [
     { role: LlmRoles.SYSTEM, content: getAdvancedPrompt(options, "reportSystemPrompt") },
     { role: LlmRoles.USER, content: buildScopePreamble(request) },

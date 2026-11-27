@@ -144,14 +144,14 @@ export async function compose(tabId: number) {
   const oldMessages = options.include_recent_mails
     ? await getOldMessagesToFirstRecipient(tabDetails, identity, options.recentMailsCount)
     : [];
-  const emailContext = await getEmailGenerationContext(tabDetails, oldMessages, options);
+  const emailContext = await getEmailGenerationContext(identity, oldMessages, options);
 
   const previousConversation = await getOriginalTabConversationForIdentity(tabId, identity);
-  const emailPrompt = await getEmailGenerationPrompt(tabDetails, previousConversation);
+  const emailPrompt = await getEmailGenerationPrompt(tabDetails, identity, previousConversation);
 
   const subject = tabDetails.subject;
   if (!subject) {
-    const subjectContext = await getSubjectGenerationContext(tabDetails, oldMessages, options);
+    const subjectContext = await getSubjectGenerationContext(identity, oldMessages, options);
     const subjectPrompt = await getSubjectGenerationPrompt(tabDetails);
     const subjectResponse = await sendContentToLlm(
       [subjectContext, subjectPrompt],

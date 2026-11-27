@@ -8,23 +8,11 @@ import { stripHtml } from "./utils";
 export const DEFAULT_PROMPT = "Schreib den Partnern, dass ich kündige, auf Deutsch.";
 const THIS_IS_THE_CONTENT = "This is what I want the content of my email to be:";
 
-export async function getEmailGenerationContext(
-  tabDetails: browser.compose.ComposeDetails,
+export function getEmailGenerationContext(
+  identity: browser.identities.MailIdentity,
   oldMessages: string[],
   options: Options,
-): Promise<LlmApiRequestMessage> {
-  const writerIdentityId = tabDetails.identityId;
-  if (!writerIdentityId) {
-    // It should never happen, if it does this is a bug
-    throw Error("No Identity ID found for this tab, aborting operation.");
-  }
-
-  const identity = await browser.identities.get(writerIdentityId);
-  if (!identity) {
-    // It should never happen, if it does this is a bug
-    throw Error(`Could not find an identity for ID '${tabDetails.identityId}'`);
-  }
-
+): LlmApiRequestMessage {
   const accountContext = `\nI am ${identity.name}.`;
   const oldMessagesContext =
     options.include_recent_mails && oldMessages.length > 0 ? buildOldMessagesContext(oldMessages) : "";
@@ -52,16 +40,11 @@ function getBodyContent(tabDetails: browser.compose.ComposeDetails): string {
   return "";
 }
 
-export async function getEmailGenerationPrompt(
+export function getEmailGenerationPrompt(
   tabDetails: browser.compose.ComposeDetails,
+  identity: browser.identities.MailIdentity,
   previousConversation?: string,
-): Promise<LlmApiRequestMessage> {
-  const identity = await browser.identities.get(tabDetails.identityId as string);
-  if (!identity) {
-    // It should never happen, if it does this is a bug
-    throw Error(`Could not find an identity for ID '${tabDetails.identityId}'`);
-  }
-
+): LlmApiRequestMessage {
   const bodyContent = getBodyContent(tabDetails);
 
   return {
@@ -109,23 +92,11 @@ export async function getSummaryPromptAndContext(
   ];
 }
 
-export async function getSubjectGenerationContext(
-  tabDetails: browser.compose.ComposeDetails,
+export function getSubjectGenerationContext(
+  identity: browser.identities.MailIdentity,
   oldMessages: string[],
   options: Options,
-): Promise<LlmApiRequestMessage> {
-  const writerIdentityId = tabDetails.identityId;
-  if (!writerIdentityId) {
-    // It should never happen, if it does this is a bug
-    throw Error("No Identity ID found for this tab, aborting operation.");
-  }
-
-  const identity = await browser.identities.get(writerIdentityId);
-  if (!identity) {
-    // It should never happen, if it does this is a bug
-    throw Error(`Could not find an identity for ID '${tabDetails.identityId}'`);
-  }
-
+): LlmApiRequestMessage {
   const accountContext = `\nI am ${identity.name}.`;
   const oldMessagesContext =
     options.include_recent_mails && oldMessages.length > 0 ? buildOldMessagesContext(oldMessages) : "";
