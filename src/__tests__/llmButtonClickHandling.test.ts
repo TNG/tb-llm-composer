@@ -109,7 +109,7 @@ describe("The llmActionClickHandler", () => {
       composeDetailsType: "reply",
       otherIdentities: [{ id: "other-identity", signature: "Old Sig" }],
     });
-    await updateOriginalTabCache(MOCK_TAB_ID, cachedQuote("Old Sig"));
+    await updateOriginalTabCache(MOCK_TAB_ID, cachedQuote("Old Sig"), "other-identity");
     (sendContentToLlm as unknown as MockInstance).mockResolvedValue(getTestResponse());
 
     try {

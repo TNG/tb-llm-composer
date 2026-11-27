@@ -95,7 +95,14 @@ export function mockBrowser(args: mockBrowserArgs) {
       },
     },
     identities: {
-      get: vi.fn().mockReturnValue({ id: MOCK_IDENTITY_ID, name: MOCK_USER_NAME, signature: args.signature }),
+      get: vi.fn(
+        async (id: string) =>
+          args.otherIdentities?.find((identity) => identity.id === id) ?? {
+            id: MOCK_IDENTITY_ID,
+            name: MOCK_USER_NAME,
+            signature: args.signature,
+          },
+      ),
       list: vi
         .fn()
         .mockResolvedValue([

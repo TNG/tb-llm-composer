@@ -62,21 +62,18 @@ export function getPlainTextSignature(identity: browser.identities.MailIdentity)
 }
 
 /**
- * Swap another identity's signature in `content` for `current` (or drop it, with its "-- " delimiter,
- * when the current identity has none). A reply's quote is cached when the composer opens, so it still
+ * Swap the `previous` signature in `content` for `current` (or drop it, with its "-- " delimiter, when
+ * the current identity has none). A reply's quote is cached when the composer opens, so it still
  * carries the old signature if the user switches the From identity afterwards.
  */
-export function replaceForeignSignatures(content: string, current: string | undefined, others: string[]): string {
-  for (const other of others) {
-    if (!other || other === current || !content.includes(other)) continue;
-    // Function replacements, so "$" in a signature is not read as a replacement pattern.
-    if (current) return content.replace(other, () => current);
-    const withDelimiter = new RegExp(`(^|\\n)--[ \\t]?\\r?\\n${escapeRegExp(other)}(\\r?\\n)?`);
-    return withDelimiter.test(content)
-      ? content.replace(withDelimiter, (_match, lineStart: string) => lineStart)
-      : content.replace(other, "");
-  }
-  return content;
+export function replaceSignature(content: string, previous: string | undefined, current: string | undefined): string {
+  if (!previous || previous === current || !content.includes(previous)) return content;
+  // Function replacements, so "$" in a signature is not read as a replacement pattern.
+  if (current) return content.replace(previous, () => current);
+  const withDelimiter = new RegExp(`(^|\n)--[ \t]?\r?\n${escapeRegExp(previous)}(\r?\n)?`);
+  return withDelimiter.test(content)
+    ? content.replace(withDelimiter, (_match, lineStart: string) => lineStart)
+    : content.replace(previous, "");
 }
 
 function escapeRegExp(text: string): string {

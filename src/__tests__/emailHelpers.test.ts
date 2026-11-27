@@ -7,7 +7,7 @@ import {
   getContentFromEmailParts,
   getFirstRecipientMailAddress,
   getPlainTextSignature,
-  replaceForeignSignatures,
+  replaceSignature,
 } from "../emailHelpers";
 
 describe("getPlainTextSignature", () => {
@@ -25,23 +25,23 @@ describe("getPlainTextSignature", () => {
   });
 });
 
-describe("replaceForeignSignatures", () => {
+describe("replaceSignature", () => {
   const quote = (sig: string) => `\n\n-- \n${sig}\n\nOn Monday Bob wrote:\n> Hi`;
 
-  test("swaps another identity's signature for the current one", () => {
-    expect(replaceForeignSignatures(quote("Old Sig"), "New Sig", ["Old Sig"])).toBe(quote("New Sig"));
+  test("swaps the previous identity's signature for the current one", () => {
+    expect(replaceSignature(quote("Old Sig"), "Old Sig", "New Sig")).toBe(quote("New Sig"));
   });
 
   test("drops the old signature with its delimiter when the current identity has none", () => {
-    expect(replaceForeignSignatures(quote("Old Sig"), undefined, ["Old Sig"])).toBe("\n\n\nOn Monday Bob wrote:\n> Hi");
+    expect(replaceSignature(quote("Old Sig"), "Old Sig", undefined)).toBe("\n\n\nOn Monday Bob wrote:\n> Hi");
   });
 
-  test("keeps the content when it already carries the current signature", () => {
-    expect(replaceForeignSignatures(quote("New Sig"), "New Sig", ["Old Sig", "New Sig"])).toBe(quote("New Sig"));
+  test("keeps the content when it does not carry the previous signature", () => {
+    expect(replaceSignature(quote("New Sig"), "Old Sig", "New Sig")).toBe(quote("New Sig"));
   });
 
   test("inserts a signature containing $ literally", () => {
-    expect(replaceForeignSignatures(quote("Old"), "Cost $& co", ["Old"])).toBe(quote("Cost $& co"));
+    expect(replaceSignature(quote("Old"), "Old", "Cost $& co")).toBe(quote("Cost $& co"));
   });
 });
 

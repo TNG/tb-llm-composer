@@ -86,7 +86,7 @@ src/
 
   menu.ts                    Native menu entries for the compose_action (compose/summarize) and toolbar action (organise/report) menus + shortcut labels.
   retrieveSentContext.ts     Gets recent sent mail to a recipient (writing style context).
-  originalTabConversation.ts Caches reply quote per tab in browser.storage.local.
+  originalTabConversation.ts Caches reply quote per tab (with the identity it was opened as) in browser.storage.local.
   emailHelpers.ts            MIME text extraction; first-recipient address helper.
   keepAlive.ts               Alarm-based keep-alive to prevent MV3 suspension during long LLM calls (~90s idle threshold).
   notifications.ts           timedNotification() + notifyOnError() wrapper.
@@ -128,8 +128,9 @@ build/                       Generated webpack output (do not edit manually).
 - Preserve dev/prod split: new top-level buttons/titles should include `" (dev)"` in `manifest.json` so dev installs do not clash with production (`webpack.config.js` transform strips it for prod).
 - Tests run in node with `globals: true`; fetch/network is mocked by `vitest-fetch-mock` (`src/__tests__/setupVitest.ts`).
 - Folder paths are only unique per account (every IMAP account has `/INBOX`): pass an `accountId` to `resolveFolderPath`/`getAllFolderPaths`, or use `resolveFolderPathPreferringAccount` for account-less option paths (organise rules resolve in the displayed folder's account first).
-- Compose uses the tab's *current* identity: `getPlainTextSignature()` (flattens HTML signatures) and `getOriginalTabConversationForIdentity()` (swaps another identity's signature in the reply quote cached at open). Sent-mail style context only reads that identity's account's Sent folder.
+- Compose uses the tab's *current* identity: `getPlainTextSignature()` (flattens HTML signatures) and `getOriginalTabConversationForIdentity()` (swaps the opening identity's signature in the reply quote cached at open). Sent-mail style context only reads that identity's account's Sent folder.
 - Plain-text compose is the only fully supported mode; HTML reply content is normalized with `stripHtml`, and storing HTML reply throws.
+- Commits and PRs: do not mention AI/agents (no `Co-Authored-By` AI trailers, no "Generated with" lines) — AI assistance is assumed. Sign off commits (`git commit -s`).
 
 ## References
 

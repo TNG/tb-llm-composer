@@ -1,7 +1,9 @@
 import {
   clearOriginalTabCache,
   getOriginalTabConversationCacheContent,
+  getOriginalTabConversationForIdentity,
   storeOriginalReplyText,
+  updateOriginalTabCache,
 } from "../originalTabConversation";
 import { mockBrowser } from "./testUtils";
 
@@ -52,7 +54,7 @@ describe("The storeOriginalReplyTextAndSummarize", () => {
     await storeOriginalReplyText(testTab);
 
     expect(await getOriginalTabConversationCacheContent()).toEqual({
-      [testTab.id as number]: "Previous Conversation",
+      [testTab.id as number]: { content: "Previous Conversation", identityId: "MOCK_IDENTITY_ID" },
     });
   });
 
@@ -61,7 +63,7 @@ describe("The storeOriginalReplyTextAndSummarize", () => {
       plainTextBody: "Previous Conversation",
       composeDetailsType: "draft",
     });
-    (await getOriginalTabConversationCacheContent())[testTab.id as number] = "Previous Conversation";
+    (await getOriginalTabConversationCacheContent())[testTab.id as number] = { content: "Previous Conversation" };
 
     await storeOriginalReplyText(testTab);
 
@@ -78,7 +80,7 @@ describe("The storeOriginalReplyTextAndSummarize", () => {
     await storeOriginalReplyText(testTab);
 
     expect(await getOriginalTabConversationCacheContent()).toEqual({
-      [testTab.id as number]: "Previous Conversation",
+      [testTab.id as number]: { content: "Previous Conversation", identityId: "MOCK_IDENTITY_ID" },
     });
   });
 
@@ -92,7 +94,7 @@ describe("The storeOriginalReplyTextAndSummarize", () => {
     await storeOriginalReplyText(testTab);
 
     expect(await getOriginalTabConversationCacheContent()).toEqual({
-      [testTab.id as number]: plainTextBodyNoLeadingNewLine,
+      [testTab.id as number]: { content: plainTextBodyNoLeadingNewLine, identityId: "MOCK_IDENTITY_ID" },
     });
   });
 
@@ -106,7 +108,38 @@ describe("The storeOriginalReplyTextAndSummarize", () => {
     await storeOriginalReplyText(testTab);
 
     expect(await getOriginalTabConversationCacheContent()).toEqual({
-      [testTab.id as number]: plainTextBodyNoLeadingNewLines,
+      [testTab.id as number]: { content: plainTextBodyNoLeadingNewLines, identityId: "MOCK_IDENTITY_ID" },
+    });
+  });
+
+  describe("getOriginalTabConversationForIdentity", () => {
+    const quote = (sig: string) => `-- 
+${sig}
+
+On Monday Bob wrote:
+> Hi
+> -- 
+> Colleague Sig`;
+    const current = { id: "MOCK_IDENTITY_ID", signature: "New Sig" } as browser.identities.MailIdentity;
+
+    test("swaps only the signature of the identity the reply was opened as", async () => {
+      mockBrowser({
+        otherIdentities: [
+          // Listed first: guessing from all identities would wrongly swap this signature in the quote.
+          { id: "colleague", signature: "Colleague Sig" },
+          { id: "opened", signature: "Old Sig" },
+        ],
+      });
+      await updateOriginalTabCache(testTab.id as number, quote("Old Sig"), "opened");
+
+      expect(await getOriginalTabConversationForIdentity(testTab.id as number, current)).toBe(quote("New Sig"));
+    });
+
+    test("returns a quote cached without its identity unchanged", async () => {
+      mockBrowser({ otherIdentities: [{ id: "opened", signature: "Old Sig" }] });
+      await browser.storage.local.set({ ORIGINAL_TAB_CONVERSATION: { [testTab.id as number]: quote("Old Sig") } });
+
+      expect(await getOriginalTabConversationForIdentity(testTab.id as number, current)).toBe(quote("Old Sig"));
     });
   });
 });
